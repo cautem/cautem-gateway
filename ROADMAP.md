@@ -1,6 +1,6 @@
 # Roadmap — cautem-gateway
 
-Status: **v0.1.6** (stable numbered release) · Depends on core / driver / providers / runtime `v0.1.6`; slogx `v0.1.2`
+Status: **v0.1.7** (stable numbered release) · Depends on core / providers `v0.1.6`, driver `v0.1.7`, runtime `v0.1.8`; slogx `v0.1.3`
 
 ## This module
 
