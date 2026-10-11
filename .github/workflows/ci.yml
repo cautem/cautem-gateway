@@ -119,7 +119,7 @@ jobs:
         with:
           repository: cautem/cautem-runtime
           path: cautem-runtime
-          ref: b17e030f9ca0b0bce20fc60a46a6173cd02caad7
+          ref: eab70d72c3871fa6f7135408edec1e4cf6b3325f
 
       - name: Checkout cautem-driver
         uses: actions/checkout@v4
@@ -133,7 +133,7 @@ jobs:
         with:
           repository: cautem/cautem-proxy
           path: cautem-proxy
-          ref: 5e090a706effdde2e63f49921d45386bc12e3b59
+          ref: baa2ed63f15a25966bbf6794a7483d020cc04ea9
 
       - name: Checkout slogx
         uses: actions/checkout@v4
@@ -234,7 +234,7 @@ jobs:
         with:
           repository: cautem/cautem-runtime
           path: cautem-runtime
-          ref: b17e030f9ca0b0bce20fc60a46a6173cd02caad7
+          ref: eab70d72c3871fa6f7135408edec1e4cf6b3325f
 
       - name: Checkout cautem-driver
         uses: actions/checkout@v4
@@ -248,7 +248,7 @@ jobs:
         with:
           repository: cautem/cautem-proxy
           path: cautem-proxy
-          ref: 5e090a706effdde2e63f49921d45386bc12e3b59
+          ref: baa2ed63f15a25966bbf6794a7483d020cc04ea9
 
       - name: Checkout slogx
         uses: actions/checkout@v4
@@ -349,7 +349,7 @@ jobs:
         with:
           repository: cautem/cautem-runtime
           path: cautem-runtime
-          ref: b17e030f9ca0b0bce20fc60a46a6173cd02caad7
+          ref: eab70d72c3871fa6f7135408edec1e4cf6b3325f
 
       - name: Checkout cautem-driver
         uses: actions/checkout@v4
@@ -363,7 +363,7 @@ jobs:
         with:
           repository: cautem/cautem-proxy
           path: cautem-proxy
-          ref: 5e090a706effdde2e63f49921d45386bc12e3b59
+          ref: baa2ed63f15a25966bbf6794a7483d020cc04ea9
 
       - name: Checkout slogx
         uses: actions/checkout@v4
@@ -462,7 +462,7 @@ jobs:
         with:
           repository: cautem/cautem-runtime
           path: cautem-runtime
-          ref: b17e030f9ca0b0bce20fc60a46a6173cd02caad7
+          ref: eab70d72c3871fa6f7135408edec1e4cf6b3325f
 
       - name: Checkout cautem-driver
         uses: actions/checkout@v4
@@ -476,7 +476,7 @@ jobs:
         with:
           repository: cautem/cautem-proxy
           path: cautem-proxy
-          ref: 5e090a706effdde2e63f49921d45386bc12e3b59
+          ref: baa2ed63f15a25966bbf6794a7483d020cc04ea9
 
       - name: Checkout slogx
         uses: actions/checkout@v4

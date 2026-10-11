@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [v0.1.7] - 2026-10-11
+
+### Changed
+
+- Update cautem-runtime to v0.1.8 and cautem-driver to v0.1.7 so gateway builds include the latest sandbox secret-storage and driver fixes.
+- Refresh the AWS SDK and Go crypto, network, and system dependencies while keeping the OpenShell API schema aligned with runtime.
+
 ## [v0.1.6] - 2026-10-11
 
 ### Changed
