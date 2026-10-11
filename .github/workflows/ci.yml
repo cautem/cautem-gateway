@@ -133,7 +133,7 @@ jobs:
         with:
           repository: cautem/cautem-proxy
           path: cautem-proxy
-          ref: baa2ed63f15a25966bbf6794a7483d020cc04ea9
+          ref: 0d2705ef5361109fe3979059574111ca03c4d90a
 
       - name: Checkout slogx
         uses: actions/checkout@v4
@@ -248,7 +248,7 @@ jobs:
         with:
           repository: cautem/cautem-proxy
           path: cautem-proxy
-          ref: baa2ed63f15a25966bbf6794a7483d020cc04ea9
+          ref: 0d2705ef5361109fe3979059574111ca03c4d90a
 
       - name: Checkout slogx
         uses: actions/checkout@v4
@@ -363,7 +363,7 @@ jobs:
         with:
           repository: cautem/cautem-proxy
           path: cautem-proxy
-          ref: baa2ed63f15a25966bbf6794a7483d020cc04ea9
+          ref: 0d2705ef5361109fe3979059574111ca03c4d90a
 
       - name: Checkout slogx
         uses: actions/checkout@v4
@@ -476,7 +476,7 @@ jobs:
         with:
           repository: cautem/cautem-proxy
           path: cautem-proxy
-          ref: baa2ed63f15a25966bbf6794a7483d020cc04ea9
+          ref: 0d2705ef5361109fe3979059574111ca03c4d90a
 
       - name: Checkout slogx
         uses: actions/checkout@v4
