@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [v0.2.1] - 2026-10-13
+
+### Fixed
+
+- Build the released Gateway image with the matching `cautem-cli` v0.2.0 helpers.
+
 ## [v0.2.0] - 2026-10-13
 
 ### Added
