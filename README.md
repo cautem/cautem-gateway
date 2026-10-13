@@ -86,12 +86,12 @@ preserves the full cautem YAML profile and uses resource-version checks for
 updates. Global profiles require platform admin access, and workspace profiles
 require provider scopes plus workspace membership.
 
-The browser console is in [`ui/`](./ui/). It uses the generated TypeScript
+The browser console is in the separate [`cautem-ui`](https://github.com/cautem/cautem-ui) module. It uses the generated TypeScript
 Connect client and OIDC authorization-code flow with PKCE. The same-origin
 Compose Console serves the production static bundle and supports sandbox
 lifecycle actions, workspace policy/provider management, terminal, bounded
 workspace file transfer, and authenticated HTTP/WebSocket service access
-including noVNC. See the [UI README](./ui/README.md) for its security and
+including noVNC. See the [UI README](https://github.com/cautem/cautem-ui/blob/main/README.md) for its security and
 runtime limits and the [shared-server guide](./compose/SHARED-SERVER.md) for
 single-instance OIDC deployment.
 

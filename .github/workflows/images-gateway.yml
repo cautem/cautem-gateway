@@ -11,7 +11,6 @@ on:
       - "go.mod"
       - "go.sum"
       - "Dockerfile"
-      - "ui/**"
       - "compose/**"
       - ".github/workflows/images-gateway.yml"
   pull_request:
@@ -20,7 +19,6 @@ on:
       - "go.mod"
       - "go.sum"
       - "Dockerfile"
-      - "ui/**"
       - "compose/**"
       - ".github/workflows/images-gateway.yml"
   workflow_dispatch:
@@ -32,7 +30,6 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE: ghcr.io/cautem/cautem/gateway
-  CONSOLE_IMAGE: ghcr.io/cautem/cautem/console
   GOWORK: ${{ github.workspace }}/go.work
 
 jobs:
@@ -160,22 +157,3 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-      - name: Console meta
-        id: console-meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.CONSOLE_IMAGE }}
-          tags: |
-            type=raw,value=main,enable={{is_default_branch}}
-            type=sha
-            type=semver,pattern={{version}}
-            type=raw,value=latest,enable={{is_default_branch}}
-      - name: Build and push console
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: cautem-gateway/ui/Dockerfile
-          platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.console-meta.outputs.tags }}
-          labels: ${{ steps.console-meta.outputs.labels }}

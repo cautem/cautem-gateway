@@ -3,7 +3,7 @@
 ## Scope
 
 This repository contains the gateway control plane, APIs, authentication,
-registry, and relay. The browser console is under `ui/`.
+registry, and relay. The browser console is in the separate `cautem-ui` repository.
 
 ## Working rules
 
@@ -19,5 +19,5 @@ registry, and relay. The browser console is under `ui/`.
 
 - Run `go test ./...` from this checkout for Go changes.
 - Run the relevant API or browser checks when changing external behavior; UI
-  package commands are defined in `ui/package.json`.
+  package commands are defined in the sibling `cautem-ui/package.json`.
 - From the parent workspace, `task check` runs the shared Go gate.

@@ -1,8 +1,0 @@
-.terminal-panel{margin-top:13px}
-.terminal-toolbar{display:flex;align-items:center;gap:8px;min-height:28px}
-.terminal-indicator{width:7px;height:7px;border-radius:50%;background:#aab5ae}
-.terminal-indicator.online{background:#58ad89;box-shadow:0 0 0 3px #58ad8922}
-.terminal-state{flex:1;color:#71827b;font:9px var(--mono)}
-.terminal-window{height:300px;max-height:45vh;min-height:180px;overflow:hidden;padding:9px;background:#14262d;border:1px solid #294148}
-.terminal-window .xterm{height:100%}
-.terminal-help{margin:8px 0 0;color:#8d9b96;font-size:9px}

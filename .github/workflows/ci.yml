@@ -71,15 +71,6 @@ jobs:
             git -C ../cautem-proto status --short -- typescript/src/gen
             exit 1
           fi
-      - name: Build management UI
-        run: |
-          npm ci --prefix ui
-          npm run build --prefix ui
-      - name: Install browser for UI smoke tests
-        working-directory: cautem-gateway/ui
-        run: npx playwright install --with-deps chromium webkit
-      - name: Test browser console
-        run: npm run test:e2e --prefix ui
       - uses: azure/setup-helm@v4
         with:
           version: v4.3.0

@@ -45,7 +45,7 @@ services:
     profiles: ["ui"]
     build:
       context: ../..
-      dockerfile: cautem-gateway/ui/Dockerfile
+      dockerfile: cautem-ui/Dockerfile
     image: cautem-console:local
     ports:
       - "127.0.0.1:${CAUTEM_CONSOLE_PORT:-7444}:8080"
