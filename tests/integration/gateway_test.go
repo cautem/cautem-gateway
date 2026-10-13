@@ -56,7 +56,7 @@ func newTestGateway(t *testing.T, opt httpapi.Options) *testGateway {
 		cancel()
 		select {
 		case <-serveDone:
-		case <-time.After(5 * time.Second):
+		case <-time.After(3 * shutdownTimeout):
 			t.Error("gateway server did not stop before test cleanup")
 		}
 	})
