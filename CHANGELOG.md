@@ -7,6 +7,7 @@
 ### Fixed
 
 - Build the released Gateway image with the matching `cautem-cli` v0.2.0 helpers.
+- Allow the supervisor to finalize a durably reported main-process exit after sandbox terminal status blocks ordinary supervisor RPCs.
 
 ## [v0.2.0] - 2026-10-13
 

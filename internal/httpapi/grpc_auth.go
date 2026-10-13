@@ -76,6 +76,12 @@ func authenticateGRPC(ctx context.Context, fullMethod string, opt Options) (cont
 				valid = true
 			}
 		}
+		if !valid && fullMethod == "/openshell.v1.OpenShell/FinalizeMainProcessExit" {
+			if sandbox, ok := runtime.st.SandboxForFinalizeToken(tok); ok {
+				p = Principal{Kind: PrincipalSandbox, Subject: "sandbox:" + sandbox, IDP: "sandbox", Sandbox: sandbox}
+				valid = true
+			}
+		}
 		if !valid {
 			return nil, status.Error(codes.Unauthenticated, "invalid bearer token")
 		}

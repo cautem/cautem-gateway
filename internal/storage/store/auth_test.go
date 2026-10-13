@@ -182,6 +182,39 @@ func TestSandboxBearerAuthFailsClosedDuringStopAndAfterStop(t *testing.T) {
 	}
 }
 
+func TestSandboxForFinalizeTokenRequiresReportedProcessAndCurrentToken(t *testing.T) {
+	st := openTest(t)
+	if err := st.UpsertSandbox(Sandbox{Name: "demo", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	oldToken, err := st.IssueSandboxToken("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := st.IssueSandboxToken("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := st.SandboxForFinalizeToken(token); ok {
+		t.Fatal("finalize token authenticated before a process result was reported")
+	}
+	if _, err := st.RecordMainProcessExit("demo", "instance-1", 7); err != nil {
+		t.Fatal(err)
+	}
+	if name, ok := st.SandboxForFinalizeToken(token); !ok || name != "demo" {
+		t.Fatalf("SandboxForFinalizeToken = %q, %v; want demo, true", name, ok)
+	}
+	if _, ok := st.SandboxForFinalizeToken(oldToken); ok {
+		t.Fatal("rotated token authenticated for finalization")
+	}
+	if _, ok := st.SandboxForToken(token); ok {
+		t.Fatal("terminal sandbox token authenticated for ordinary RPCs")
+	}
+	if _, ok := st.SandboxForFinalizeToken(""); ok {
+		t.Fatal("empty token authenticated for finalization")
+	}
+}
+
 func TestSSHSessionLifecycle(t *testing.T) {
 	st := openTest(t)
 	if err := st.UpsertSandbox(Sandbox{Name: "other"}); err != nil {
