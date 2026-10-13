@@ -17,6 +17,7 @@ import (
 	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-core/relayproto"
 	"github.com/cautem/cautem-gateway/internal/httpapi"
+	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
 	"github.com/cautem/cautem-runtime/relayclient"
 	"github.com/cautem/cautem-runtime/sshserver"
 	"golang.org/x/crypto/ssh"
@@ -226,6 +227,7 @@ func TestRelayNotReady(t *testing.T) {
 func TestRelayExec(t *testing.T) {
 	g := newTestGateway(t, httpapi.Options{})
 	g.createSandbox("demo")
+	g.syncSandbox(&controlv1.SyncManagedSandboxRequest{Workspace: "default", Name: "demo", Status: "running"})
 	g.startSupervisor("demo", g.sandboxToken("demo"))
 
 	client, _ := g.openShellClient()

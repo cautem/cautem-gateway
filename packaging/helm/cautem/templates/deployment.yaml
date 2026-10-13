@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cautem.fullname" . }}
+  labels:
+    {{- include "cautem.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "cautem.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "cautem.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      serviceAccountName: {{ include "cautem.serviceAccountName" . }}
+      containers:
+        - name: gateway
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --name
+            - {{ .Release.Name | quote }}
+            - --listen
+            - 0.0.0.0:{{ .Values.service.port }}
+            - --data-dir
+            - /var/lib/cautem-gateway
+            {{- if .Values.oidc.enabled }}
+            - --oidc-issuer
+            - {{ .Values.oidc.issuer | quote }}
+            {{- if .Values.oidc.clientID }}
+            - --oidc-client-id
+            - {{ .Values.oidc.clientID | quote }}
+            {{- end }}
+            {{- if .Values.oidc.audience }}
+            - --oidc-audience
+            - {{ .Values.oidc.audience | quote }}
+            {{- end }}
+            {{- if .Values.oidc.allowInsecureHTTP }}
+            - --oidc-allow-insecure-http
+            {{- end }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+          env:
+            - name: CAUTEM_GATEWAY_DATA
+              value: /var/lib/cautem-gateway
+            - name: CAUTEM_SUPERVISOR_TOPOLOGY
+              value: {{ .Values.supervisor.topology | quote }}
+            - name: CAUTEM_SUPERVISOR_SIDELOAD
+              value: {{ .Values.supervisor.sideloadMethod | quote }}
+            - name: CAUTEM_GPU_RESOURCE
+              value: {{ .Values.gpu.resourceName | quote }}
+            {{- if .Values.database.existingSecret }}
+            - name: OPENSHELL_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret }}
+                  key: {{ .Values.database.uriKey }}
+            {{- end }}
+            {{- if .Values.secrets.existingSecret }}
+            - name: CAUTEM_SECRETS_KEK
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: {{ .Values.secrets.kekKey }}
+            {{- end }}
+          volumeMounts:
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: /var/lib/cautem-gateway
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "cautem.fullname" . }}-data
+        {{- end }}

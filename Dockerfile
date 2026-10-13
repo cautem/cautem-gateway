@@ -16,6 +16,7 @@ COPY cautem-proxy ./cautem-proxy
 COPY cautem-driver ./cautem-driver
 COPY cautem-sdk ./cautem-sdk
 COPY cautem-slogx ./cautem-slogx
+COPY cautem-proto ./cautem-proto
 COPY cautem-gateway ./cautem-gateway
 WORKDIR /src/cautem-gateway
 ARG TARGETARCH

@@ -1,0 +1,82 @@
+# Values for packaging/helm/cautem — gateway control plane.
+# Sandbox pods remain driver-created; this chart deploys the gateway + RBAC/PVC.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/cautem/cautem/gateway
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 7443
+
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+  accessMode: ReadWriteOnce
+
+# Optional PostgreSQL registry backend. The Secret value is never copied into
+# chart manifests; it is passed to Gateway as OPENSHELL_DB_URL.
+database:
+  existingSecret: ""
+  uriKey: uri
+
+# Pin secrets KEK via existing Secret (recommended).
+secrets:
+  # create: kubectl create secret generic cautem-gateway-kek --from-literal=CAUTEM_SECRETS_KEK=…
+  existingSecret: ""
+  kekKey: CAUTEM_SECRETS_KEK
+
+oidc:
+  enabled: false
+  issuer: ""
+  clientID: ""
+  audience: ""
+  allowInsecureHTTP: false
+
+serviceAccount:
+  create: true
+  name: ""
+
+networkPolicy:
+  enabled: false
+  # allow sandbox namespace to reach gateway
+  sandboxNamespace: cautem-sandboxes
+
+ingress:
+  enabled: false
+  className: ""
+  hosts:
+    - host: cautem-gateway.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 512Mi
+
+# Supervisor injection into sandbox pods (driver-owned; documented for operators).
+supervisor:
+  topology: combined
+  sideloadMethod: ""
+  image:
+    repository: ghcr.io/cautem/cautem/supervisor
+    tag: ""
+    pullPolicy: IfNotPresent
+
+gpu:
+  resourceName: nvidia.com/gpu
+  defaultCount: 1
+
+sandbox:
+  namespace: cautem-sandboxes
+  image: ghcr.io/cautem/cautem/sandboxes/base:latest
+  createNamespace: true

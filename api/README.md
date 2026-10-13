@@ -40,8 +40,9 @@ than duplicating them here.
 
 ## Control API and generated clients
 
-`api/proto/cautem/control/v1/console.proto` is the single source for the
-`cautem.control.v1` user-facing API. It defines console, sandbox,
+`../cautem-proto/proto/cautem/control/v1/console.proto` in the independent
+`cautem-proto` module is the single source for the `cautem.control.v1`
+user-facing API. It defines console, sandbox,
 operations/audit, catalog, policy proposal, provider profile, and partial
 provider-credential services. Policy reads/writes and bounded revision history
 also use `PolicyService`. The gateway's Connect
@@ -96,19 +97,19 @@ workspace-visible summaries. `ListPolicyProposals`/`GetPolicyProposal` expose
 proposal review data without the review token. Catalog and policy reads check
 workspace authorization on every call.
 
-The Go Proto, native gRPC, and Connect generators are pinned in `go.mod`; CI pins the Buf CLI. Generation
-uses `buf.yaml` and `buf.gen.yaml`. Regenerate and check the source with:
+The Go Proto, native gRPC, and Connect clients are imported from
+`github.com/cautem/cautem-proto`; the Gateway does not generate copies of the
+contract. Generate and validate clients in the protocol module:
 
 ```bash
+cd ../cautem-proto
 buf lint
-buf generate
-go test ./tests/integration -run '^TestControlAPIReadSlice$'
+buf generate --template buf.gen.yaml
+buf generate --template typescript/buf.gen.yaml
+npm ci --prefix typescript
+npm run build --prefix typescript
 ```
 
-The private TypeScript browser client in `api/typescript` is generated from the
-same Proto with a pinned `protoc-gen-es`. Run `npm ci && npm run check` there.
-Its package build and an independent tarball import have been checked locally.
-The generated Go Connect client can select native gRPC; integration coverage
-exercises gRPC and gRPC-Web against the same handlers. The browser session and
-read-only screens now build; lifecycle actions and real browser/reverse-proxy
-validation, along with CLI/Python SDK adoption, remain pending.
+The TypeScript browser client is consumed by the UI as
+`@cautem/control-client`. Gateway integration coverage exercises gRPC and
+gRPC-Web against the same handlers.

@@ -5,6 +5,7 @@ import (
 	"math"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
 	"reflect"
 	"sort"
@@ -222,7 +223,24 @@ func configStartup(args []string) (Options, *gatewayconfig.File, error) {
 			return opt, file, fmt.Errorf("%s must be a boolean", EnvAllowUnauthenticated)
 		}
 	}
-	for _, key := range []string{"OPENSHELL_DB_URL", "OPENSHELL_DRIVERS", "OPENSHELL_COMPUTE_DRIVER_SOCKET", "OPENSHELL_GRPC_RATE_LIMIT_REQUESTS", "OPENSHELL_GRPC_RATE_LIMIT_WINDOW_SECONDS", "OPENSHELL_SERVER_SAN", "OPENSHELL_ENABLE_LOOPBACK_SERVICE_HTTP"} {
+	if value, present := os.LookupEnv("OPENSHELL_DB_URL"); present && !explicit["--db-url"] {
+		if strings.TrimSpace(value) != "" {
+			opt.DatabaseURL = value
+		}
+	}
+	if value, present := gatewayFlagValue(args, "--db-url"); present {
+		if strings.TrimSpace(value) == "" {
+			return opt, file, fmt.Errorf("--db-url needs a non-empty PostgreSQL URL")
+		}
+		opt.DatabaseURL = value
+	}
+	if opt.DatabaseURL != "" {
+		parsed, parseErr := url.Parse(opt.DatabaseURL)
+		if parseErr != nil || (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") || parsed.Host == "" {
+			return opt, file, fmt.Errorf("gateway database URL must be a PostgreSQL URL with a host")
+		}
+	}
+	for _, key := range []string{"OPENSHELL_DRIVERS", "OPENSHELL_COMPUTE_DRIVER_SOCKET", "OPENSHELL_GRPC_RATE_LIMIT_REQUESTS", "OPENSHELL_GRPC_RATE_LIMIT_WINDOW_SECONDS", "OPENSHELL_SERVER_SAN", "OPENSHELL_ENABLE_LOOPBACK_SERVICE_HTTP"} {
 		if _, present := os.LookupEnv(key); present {
 			return opt, file, fmt.Errorf("gateway runtime consumer not implemented for %s", key)
 		}

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -303,7 +304,7 @@ func TestEngineGatewayConnectE2E(t *testing.T) {
 		Spec: &openshellv1.SandboxSpec{
 			Policy:   &sandboxv1.SandboxPolicy{Version: 1},
 			Template: &openshellv1.SandboxTemplate{Image: image},
-			Command:  []string{"sleep", "infinity"},
+			Command:  []string{"sh", "-c", `rm -f /tmp/cautem-process-event-trigger; mkfifo /tmp/cautem-process-event-trigger; IFS= read -r _ < /tmp/cautem-process-event-trigger; i=0; while [ "$i" -lt 24 ]; do (sleep 2 &) ; i=$((i + 1)); done; exec sleep infinity`},
 		},
 	})
 	if err != nil {
@@ -315,6 +316,7 @@ func TestEngineGatewayConnectE2E(t *testing.T) {
 	if !runtime.Connected(name) {
 		t.Fatal("CreateSandbox returned before the supervisor relay connected")
 	}
+	measureSupervisorProcessEventDelivery(t, userCtx, grpcClient, name)
 	policyUpdate, err := grpcClient.UpdateConfig(userCtx, &openshellv1.UpdateConfigRequest{
 		Name: name, Workspace: "default",
 		Policy: &sandboxv1.SandboxPolicy{Version: 1, NetworkPolicies: map[string]*sandboxv1.NetworkPolicyRule{
@@ -995,4 +997,124 @@ func TestEngineGatewayConnectE2E(t *testing.T) {
 	if stores == 0 || resolves == 0 || deletes == 0 || remaining != 0 {
 		t.Fatalf("external credential driver lifecycle store=%d resolve=%d delete=%d remaining=%d", stores, resolves, deletes, remaining)
 	}
+}
+
+func measureSupervisorProcessEventDelivery(t *testing.T, ctx context.Context, client openshellv1.OpenShellClient, sandbox string) {
+	t.Helper()
+	baseline, err := client.GetSandboxLogs(ctx, &openshellv1.GetSandboxLogsRequest{SandboxId: sandbox, Lines: 1000, Sources: []string{"sandbox"}})
+	if err != nil {
+		t.Fatalf("read initial supervisor process events from gateway: %v", err)
+	}
+	t.Logf("gateway initially has %d sandbox log lines for process-event probe", len(baseline.GetLogs()))
+	for _, line := range baseline.GetLogs() {
+		if line.GetFields()["activity"] != "" {
+			t.Logf("initial supervisor process event: activity=%s pid=%s executable=%s", line.GetFields()["activity"], line.GetFields()["pid"], line.GetFields()["executable"])
+		}
+	}
+
+	rtts := make([]time.Duration, 20)
+	for i := range rtts {
+		started := time.Now()
+		if _, err := client.Health(ctx, &openshellv1.HealthRequest{}); err != nil {
+			t.Fatalf("gateway Health RTT sample %d: %v", i+1, err)
+		}
+		rtts[i] = time.Since(started)
+	}
+	sort.Slice(rtts, func(i, j int) bool { return rtts[i] < rtts[j] })
+	t.Logf("gateway Health RPC round-trip on the E2E gateway host (20 samples): p50=%s p95=%s max=%s", durationPercentile(rtts, 0.50), durationPercentile(rtts, 0.95), rtts[len(rtts)-1])
+
+	const expectedExits = 8
+	startedAt := time.Now()
+	probeCtx, probeCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer probeCancel()
+	probe, err := client.ExecSandbox(probeCtx, &openshellv1.ExecSandboxRequest{
+		SandboxId:      sandbox,
+		Command:        []string{"sh", "-c", `test -p /tmp/cautem-process-event-trigger && printf 'start' > /tmp/cautem-process-event-trigger`},
+		TimeoutSeconds: 20, NoLoginShell: true,
+	})
+	if err != nil {
+		t.Fatalf("trigger adopted-child process event probes: %v", err)
+	}
+	var probeExit *openshellv1.ExecSandboxExit
+	for {
+		event, recvErr := probe.Recv()
+		if recvErr == io.EOF {
+			break
+		}
+		if recvErr != nil {
+			t.Fatalf("receive adopted-child process event probe result: %v", recvErr)
+		}
+		if event.GetExit() != nil {
+			probeExit = event.GetExit()
+		}
+	}
+	if probeExit == nil || probeExit.GetExitCode() != 0 {
+		t.Fatalf("process event probe trigger exit=%v; want exit 0", probeExit)
+	}
+
+	marker := startedAt.UnixMilli()
+	latencies := make(map[string]time.Duration, expectedExits)
+	deadline := time.Now().Add(20 * time.Second)
+	for len(latencies) < expectedExits && time.Now().Before(deadline) {
+		response, err := client.GetSandboxLogs(probeCtx, &openshellv1.GetSandboxLogsRequest{
+			SandboxId: sandbox, SinceMs: marker, Lines: 1000, Sources: []string{"sandbox"},
+		})
+		if err != nil {
+			t.Fatalf("read process event probe logs from gateway: %v", err)
+		}
+		observedAt := time.Now()
+		for _, line := range response.GetLogs() {
+			fields := line.GetFields()
+			if fields["activity"] != "EXIT" {
+				continue
+			}
+			pid := fields["pid"]
+			if pid == "" || line.GetTimestampMs() < marker {
+				continue
+			}
+			if _, seen := latencies[pid]; !seen {
+				latencies[pid] = observedAt.Sub(time.UnixMilli(line.GetTimestampMs()))
+			}
+		}
+		if len(latencies) < expectedExits {
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	if len(latencies) < expectedExits {
+		all, readErr := client.GetSandboxLogs(ctx, &openshellv1.GetSandboxLogsRequest{SandboxId: sandbox, Lines: 1000, Sources: []string{"sandbox"}})
+		if readErr != nil {
+			t.Fatalf("gateway received %d/%d adopted-child EXIT events; diagnostic log query: %v", len(latencies), expectedExits, readErr)
+		}
+		var events []string
+		for _, line := range all.GetLogs() {
+			fields := line.GetFields()
+			if fields["activity"] != "" {
+				events = append(events, fields["activity"]+":"+fields["executable"]+":"+fields["pid"])
+			}
+		}
+		t.Fatalf("gateway received %d/%d adopted-child EXIT events; process logs=%v", len(latencies), expectedExits, events)
+	}
+	processLatencies := make([]time.Duration, 0, len(latencies))
+	for _, latency := range latencies {
+		if latency < 0 {
+			t.Fatalf("gateway observed process exit before its event timestamp: %s", latency)
+		}
+		processLatencies = append(processLatencies, latency)
+	}
+	sort.Slice(processLatencies, func(i, j int) bool { return processLatencies[i] < processLatencies[j] })
+	t.Logf("supervisor detected-exit -> gateway log query observed (sandbox %s, %d samples): p50=%s p95=%s max=%s", sandbox, len(processLatencies), durationPercentile(processLatencies, 0.50), durationPercentile(processLatencies, 0.95), processLatencies[len(processLatencies)-1])
+}
+
+func durationPercentile(sorted []time.Duration, percentile float64) time.Duration {
+	if len(sorted) == 0 {
+		return 0
+	}
+	index := int(float64(len(sorted))*percentile+0.999999) - 1
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(sorted) {
+		index = len(sorted) - 1
+	}
+	return sorted[index]
 }

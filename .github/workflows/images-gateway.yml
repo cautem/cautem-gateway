@@ -11,6 +11,8 @@ on:
       - "go.mod"
       - "go.sum"
       - "Dockerfile"
+      - "ui/**"
+      - "compose/**"
       - ".github/workflows/images-gateway.yml"
   pull_request:
     paths:
@@ -18,6 +20,8 @@ on:
       - "go.mod"
       - "go.sum"
       - "Dockerfile"
+      - "ui/**"
+      - "compose/**"
       - ".github/workflows/images-gateway.yml"
   workflow_dispatch:
 
@@ -28,6 +32,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE: ghcr.io/cautem/cautem/gateway
+  CONSOLE_IMAGE: ghcr.io/cautem/cautem/console
   GOWORK: ${{ github.workspace }}/go.work
 
 jobs:
@@ -43,11 +48,17 @@ jobs:
         with:
           repository: cautem/cautem-core
           path: cautem-core
+      - name: Checkout cautem-proto
+        uses: actions/checkout@v4
+        with:
+          repository: cautem/cautem-proto
+          path: cautem-proto
+          ref: 35501bd8a5e06cf5fe1a948cec2cabb86827b8d5
       - uses: actions/checkout@v4
         with:
           repository: cautem/cautem-cli
           path: cautem-cli
-          ref: 3f79f643568668def6d7ddd2229bf4ade0a6910d
+          ref: 9ac0a69c307dec1a07bd774cb0a1e10857e26643
       - uses: actions/checkout@v4
         with:
           repository: cautem/cautem-display
@@ -72,7 +83,7 @@ jobs:
         with:
           repository: cautem/cautem-sdk
           path: cautem-sdk
-          ref: b996938742ce46337c290f0baa6bce8bc42700f0
+          ref: 202de046bd183ccfe16afd2cd9702771e1fa335b
 
       - name: Checkout slogx
         uses: actions/checkout@v4
@@ -100,6 +111,7 @@ jobs:
                 echo "  github.com/cautem/${d} v0.1.0-alpha.2 => ./$d"
                 echo "  github.com/cautem/${d} v0.1.0-beta.1 => ./$d"
                 echo "  github.com/cautem/${d} v0.1.0-beta.2 => ./$d"
+                echo "  github.com/cautem/${d} v0.1.0 => ./$d"
                 echo "  github.com/cautem/${d} v0.1.6 => ./$d"
               fi
             done
@@ -148,3 +160,22 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      - name: Console meta
+        id: console-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.CONSOLE_IMAGE }}
+          tags: |
+            type=raw,value=main,enable={{is_default_branch}}
+            type=sha
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Build and push console
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: cautem-gateway/ui/Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.console-meta.outputs.tags }}
+          labels: ${{ steps.console-meta.outputs.labels }}

@@ -1,0 +1,13 @@
+[openshell]
+version = 1
+
+[openshell.gateway]
+compute_drivers = ["docker"]
+disable_tls = true
+
+[openshell.drivers.docker]
+socket_path = "/var/run/docker.sock"
+default_image = "ghcr.io/cautem/cautem/sandboxes/base:latest"
+sandbox_namespace = "cautem"
+network_name = "cautem-net"
+grpc_endpoint = "http://host.cautem.internal:7443"

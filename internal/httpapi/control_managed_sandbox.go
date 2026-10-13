@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	controlv1 "github.com/cautem/cautem-gateway/api/gen/cautem/control/v1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
+	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
 )
 
 const maxManagedSandboxPolicyBytes = 1 << 20
@@ -66,12 +66,20 @@ func (a *controlAPI) SyncManagedSandbox(ctx context.Context, req *connect.Reques
 		seen[providerName] = struct{}{}
 		providers = append(providers, providerName)
 	}
-	if previous, ok := a.store.GetSandbox(name); ok {
+	unlockLifecycle := a.lockLogLifecycle()
+	defer unlockLifecycle()
+	previous, previousExists := a.store.GetSandbox(name)
+	if previousExists {
 		if previous.Workspace != "" && previous.Workspace != workspace {
 			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("sandbox belongs to another workspace"))
 		}
 		if !cliManagedSandbox(previous) {
 			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("sandbox is owned by another runtime manager"))
+		}
+	}
+	if !previousExists || previous.ID != strings.TrimSpace(msg.GetRuntimeId()) {
+		if err := a.logs.ClearArchive(name); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.New("old sandbox logs could not be cleared"))
 		}
 	}
 	record := store.Sandbox{
@@ -127,6 +135,8 @@ func (a *controlAPI) DeleteManagedSandbox(ctx context.Context, req *connect.Requ
 			response, resultErr = nil, err
 		}
 	}()
+	unlockLifecycle := a.lockLogLifecycle()
+	defer unlockLifecycle()
 	current, ok := a.store.GetSandbox(name)
 	if !ok {
 		return connect.NewResponse(&controlv1.DeleteManagedSandboxResponse{Deleted: false}), nil
@@ -137,13 +147,15 @@ func (a *controlAPI) DeleteManagedSandbox(ctx context.Context, req *connect.Requ
 	if !cliManagedSandbox(current) {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("sandbox is not CLI-managed"))
 	}
+	if err := a.logs.Retain(name, workspace); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("sandbox logs could not be retained"))
+	}
 	if err := a.store.DeleteSandbox(name); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.New("managed sandbox registry delete failed"))
 	}
 	if a.opt.grpcRuntime != nil && a.opt.grpcRuntime.relay != nil {
 		a.opt.grpcRuntime.relay.Disconnect(name)
 	}
-	a.logs.Remove(name)
 	return connect.NewResponse(&controlv1.DeleteManagedSandboxResponse{Deleted: true}), nil
 }
 

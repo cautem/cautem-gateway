@@ -7,14 +7,16 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
-	controlv1 "github.com/cautem/cautem-gateway/api/gen/cautem/control/v1"
-	"github.com/cautem/cautem-gateway/api/gen/cautem/control/v1/controlv1connect"
+	"github.com/cautem/cautem-driver/driver"
 	"github.com/cautem/cautem-gateway/internal/logbuf"
 	"github.com/cautem/cautem-gateway/internal/service"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
+	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
+	"github.com/cautem/cautem-proto/gen/go/cautem/control/v1/controlv1connect"
 	"github.com/cautem/cautem-runtime/idp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,16 +25,31 @@ import (
 
 const controlAPIPathPrefix = "/cautem.control.v1."
 
+const runtimeStatusCacheTTL = 5 * time.Second
+
+type runtimeDriverSnapshot struct {
+	checkedAt time.Time
+	available bool
+	byName    map[string]driver.Info
+}
+
 type controlAPI struct {
-	reader     service.ConsoleReader
-	store      *store.Store
-	logs       *logbuf.Hub
-	opt        Options
-	watchSlots chan struct{}
+	reader              service.ConsoleReader
+	store               *store.Store
+	logs                *logbuf.Hub
+	opt                 Options
+	watchSlots          chan struct{}
+	localLogLifecycleMu sync.Mutex
+	sharedLogLifecycle  *sync.Mutex
+	runtimeStatusMu     sync.Mutex
+	runtimeStatus       map[string]runtimeDriverSnapshot
 }
 
 func mountControlAPI(mux *http.ServeMux, st *store.Store, logs *logbuf.Hub, opt Options, oidcValidator *idp.OIDC) {
-	api := &controlAPI{reader: service.ConsoleReader{Store: st}, store: st, logs: logs, opt: opt, watchSlots: make(chan struct{}, 32)}
+	api := &controlAPI{reader: service.ConsoleReader{Store: st}, store: st, logs: logs, opt: opt, watchSlots: make(chan struct{}, 32), runtimeStatus: make(map[string]runtimeDriverSnapshot)}
+	if opt.grpcRuntime != nil {
+		api.sharedLogLifecycle = &opt.grpcRuntime.logLifecycleMu
+	}
 	security := connect.WithInterceptors(controlSecurityInterceptor{api: api})
 	consolePath, consoleHandler := controlv1connect.NewConsoleServiceHandler(api, security)
 	adminPath, adminHandler := controlv1connect.NewGatewayAdminServiceHandler(api, security)
@@ -44,6 +61,7 @@ func mountControlAPI(mux *http.ServeMux, st *store.Store, logs *logbuf.Hub, opt 
 	profilePath, profileHandler := controlv1connect.NewProviderProfileServiceHandler(api, security)
 	credentialPath, credentialHandler := controlv1connect.NewProviderCredentialServiceHandler(api, security)
 	managedSandboxPath, managedSandboxHandler := controlv1connect.NewManagedSandboxServiceHandler(api, security)
+	workspaceAdminPath, workspaceAdminHandler := controlv1connect.NewWorkspaceAdminServiceHandler(api, security)
 	wrap := func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			principal, valid := resolvePrincipal(r, st, oidcValidator, opt.OIDC)
@@ -69,6 +87,16 @@ func mountControlAPI(mux *http.ServeMux, st *store.Store, logs *logbuf.Hub, opt 
 	mux.Handle(profilePath, wrap(profileHandler))
 	mux.Handle(credentialPath, wrap(credentialHandler))
 	mux.Handle(managedSandboxPath, wrap(managedSandboxHandler))
+	mux.Handle(workspaceAdminPath, wrap(workspaceAdminHandler))
+}
+
+func (a *controlAPI) lockLogLifecycle() func() {
+	mu := &a.localLogLifecycleMu
+	if a.sharedLogLifecycle != nil {
+		mu = a.sharedLogLifecycle
+	}
+	mu.Lock()
+	return mu.Unlock
 }
 
 func (a *controlAPI) requireUser(ctx context.Context, sandboxRead bool) error {
@@ -166,7 +194,7 @@ func (a *controlAPI) ListSandboxes(ctx context.Context, req *connect.Request[con
 	}
 	result := &controlv1.ListSandboxesResponse{Sandboxes: make([]*controlv1.SandboxSummary, 0, len(items)), NextPageToken: next}
 	for _, item := range items {
-		result.Sandboxes = append(result.Sandboxes, sandboxSummary(item))
+		result.Sandboxes = append(result.Sandboxes, a.sandboxSummary(ctx, item))
 	}
 	return connect.NewResponse(result), nil
 }
@@ -184,15 +212,73 @@ func (a *controlAPI) GetSandbox(ctx context.Context, req *connect.Request[contro
 	if !ok {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("sandbox not found"))
 	}
-	return connect.NewResponse(&controlv1.GetSandboxResponse{Sandbox: sandboxSummary(item)}), nil
+	return connect.NewResponse(&controlv1.GetSandboxResponse{Sandbox: a.sandboxSummary(ctx, item)}), nil
 }
 
-func sandboxSummary(record store.Sandbox) *controlv1.SandboxSummary {
+func (a *controlAPI) sandboxSummary(ctx context.Context, record store.Sandbox) *controlv1.SandboxSummary {
+	runtimeStatus, runtimeStatusAvailable := a.observedRuntimeStatus(ctx, record)
 	return &controlv1.SandboxSummary{
 		Name: record.Name, Id: record.ID, Image: record.Image, Labels: cloneStringMap(record.Labels), Workspace: service.EffectiveSandboxWorkspace(record),
 		RegistryStatus: record.Status, ComputeDriver: record.ComputeDriver,
 		ResourceVersion: record.ResourceVersion, UpdatedAtUnixMs: record.UpdatedAt.UnixMilli(),
+		RuntimeStatus: runtimeStatus, RuntimeStatusAvailable: runtimeStatusAvailable,
 	}
+}
+
+func (a *controlAPI) observedRuntimeStatus(ctx context.Context, record store.Sandbox) (string, bool) {
+	driverName := strings.ToLower(strings.TrimSpace(record.ComputeDriver))
+	if driverName == "" || a.opt.grpcRuntime == nil || a.opt.grpcRuntime.compute == nil {
+		return "", false
+	}
+	snapshot := a.runtimeDriverSnapshot(ctx, driverName)
+	if !snapshot.available {
+		return "", false
+	}
+	observed, ok := snapshot.byName[record.Name]
+	if !ok || record.RuntimeID != "" && string(observed.ID) != record.RuntimeID {
+		return "missing", true
+	}
+	status := strings.TrimSpace(observed.Status)
+	if status == "" {
+		status = "unknown"
+	}
+	return status, true
+}
+
+func (a *controlAPI) runtimeDriverSnapshot(ctx context.Context, driverName string) runtimeDriverSnapshot {
+	a.runtimeStatusMu.Lock()
+	defer a.runtimeStatusMu.Unlock()
+	now := time.Now()
+	if cached, ok := a.runtimeStatus[driverName]; ok && now.Sub(cached.checkedAt) < runtimeStatusCacheTTL {
+		return cached
+	}
+	snapshot := runtimeDriverSnapshot{checkedAt: now}
+	engine, err := a.opt.grpcRuntime.compute.engine(driverName)
+	if err == nil {
+		listCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		rows, listErr := engine.List(listCtx)
+		cancel()
+		if listErr == nil {
+			snapshot.available = true
+			snapshot.byName = make(map[string]driver.Info, len(rows))
+			for _, row := range rows {
+				if name := strings.TrimSpace(row.Name); name != "" {
+					snapshot.byName[name] = row
+				}
+			}
+		}
+	}
+	if a.runtimeStatus == nil {
+		a.runtimeStatus = make(map[string]runtimeDriverSnapshot)
+	}
+	a.runtimeStatus[driverName] = snapshot
+	return snapshot
+}
+
+func (a *controlAPI) invalidateRuntimeStatus() {
+	a.runtimeStatusMu.Lock()
+	clear(a.runtimeStatus)
+	a.runtimeStatusMu.Unlock()
 }
 
 // WatchSandboxes is a state stream. Each connection starts with RESET and a
@@ -216,7 +302,7 @@ func (a *controlAPI) WatchSandboxes(ctx context.Context, req *connect.Request[co
 			DeletedName: deletedName, ObservedAtUnixMs: time.Now().UTC().UnixMilli(),
 		})
 	}
-	current, err := a.watchSnapshot(workspace)
+	current, err := a.watchSnapshot(ctx, workspace)
 	if err != nil {
 		return err
 	}
@@ -251,7 +337,7 @@ func (a *controlAPI) WatchSandboxes(ctx context.Context, req *connect.Request[co
 			if _, err := a.requireWorkspace(ctx, workspace); err != nil {
 				return err
 			}
-			next, err := a.watchSnapshot(workspace)
+			next, err := a.watchSnapshot(ctx, workspace)
 			if err != nil {
 				return err
 			}
@@ -284,7 +370,7 @@ func sortedSandboxWatchNames(items map[string]*controlv1.SandboxSummary) []strin
 	return names
 }
 
-func (a *controlAPI) watchSnapshot(workspace string) (map[string]*controlv1.SandboxSummary, error) {
+func (a *controlAPI) watchSnapshot(ctx context.Context, workspace string) (map[string]*controlv1.SandboxSummary, error) {
 	result := make(map[string]*controlv1.SandboxSummary)
 	for _, record := range a.reader.ListRecords() {
 		if service.EffectiveSandboxWorkspace(record) != workspace {
@@ -293,7 +379,7 @@ func (a *controlAPI) watchSnapshot(workspace string) (map[string]*controlv1.Sand
 		if len(result) == 1000 {
 			return nil, connect.NewError(connect.CodeResourceExhausted, errors.New("too many sandboxes for one watch"))
 		}
-		result[record.Name] = sandboxSummary(record)
+		result[record.Name] = a.sandboxSummary(ctx, record)
 	}
 	return result, nil
 }

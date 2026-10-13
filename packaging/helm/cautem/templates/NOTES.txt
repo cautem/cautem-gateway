@@ -1,0 +1,6 @@
+1. This is an **EXP stub** chart — not a production install.
+2. Sandbox pods are created by the compute driver (`CAUTEM_DRIVER=kubernetes`), not by this release.
+3. Kubernetes status: https://cautem.github.io/sandbox.dev/providers/kubernetes/
+
+  export CAUTEM_DRIVER=kubernetes
+  # Check the Kubernetes status page before using the driver.

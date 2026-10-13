@@ -57,11 +57,11 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_inventory_test.go"
+            "internal/httpapi/rpc_inventory_test.go"
           ],
           "evidence": [
             "internal/httpapi/openshell_rpc.go",
-            "internal/httpapi/openshell_rpc_inventory_test.go"
+            "internal/httpapi/rpc_inventory_test.go"
           ]
         },
         {
@@ -75,13 +75,13 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_sandbox_test.go",
+            "internal/httpapi/rpc_sandbox_test.go",
             "TestCreateSandboxResolvesWorkspaceTemplateAndGovernanceOverrides",
             "TestOpenShellCreateSandboxValidationMatchesPinnedFieldBoundaries"
           ],
           "evidence": [
             "internal/httpapi/openshell_rpc.go",
-            "internal/httpapi/openshell_rpc_sandbox_test.go",
+            "internal/httpapi/rpc_sandbox_test.go",
             "workspace-scoped workload template resolution",
             "portable CPU/memory mapped into compute request",
             "governance-only request overrides enforced",
@@ -99,7 +99,7 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_rootfs_test.go"
+            "internal/httpapi/rpc_rootfs_test.go"
           ],
           "evidence": [
             "capability-gated single-use staging allocation with workspace, size, expiry, and upload-path validation"
@@ -247,7 +247,7 @@
             "TestOpenShellSandboxProviderAttachmentLimit"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_provider_attachments.go",
+            "internal/httpapi/rpc_attachments.go",
             "credentials redacted in returned provider model"
           ]
         },
@@ -267,7 +267,7 @@
             "TestOpenShellSandboxProviderAttachmentLimit"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_provider_attachments.go",
+            "internal/httpapi/rpc_attachments.go",
             "resource-version guarded provider attachment update"
           ]
         },
@@ -287,7 +287,7 @@
             "TestOpenShellSandboxProviderAttachmentLimit"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_provider_attachments.go",
+            "internal/httpapi/rpc_attachments.go",
             "resource-version guarded provider detach"
           ]
         },
@@ -302,11 +302,11 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_sandbox_test.go"
+            "internal/httpapi/rpc_sandbox_test.go"
           ],
           "evidence": [
             "internal/httpapi/openshell_rpc.go",
-            "internal/httpapi/openshell_rpc_sandbox_test.go"
+            "internal/httpapi/rpc_sandbox_test.go"
           ]
         },
         {
@@ -320,12 +320,12 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_sandbox_test.go",
+            "internal/httpapi/rpc_sandbox_test.go",
             "tests/e2e/engine_connect_test.go"
           ],
           "evidence": [
             "internal/httpapi/openshell_rpc.go",
-            "internal/httpapi/openshell_rpc_sandbox_test.go",
+            "internal/httpapi/rpc_sandbox_test.go",
             "tests/e2e/engine_connect_test.go"
           ]
         },
@@ -340,12 +340,12 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_sandbox_test.go",
+            "internal/httpapi/rpc_sandbox_test.go",
             "tests/e2e/engine_connect_test.go"
           ],
           "evidence": [
             "internal/httpapi/openshell_rpc.go",
-            "internal/httpapi/openshell_rpc_sandbox_test.go",
+            "internal/httpapi/rpc_sandbox_test.go",
             "tests/e2e/engine_connect_test.go"
           ]
         },
@@ -364,8 +364,8 @@
             "TestOpenShellGRPCSSHSessionRequiresRelayAndScopedOwner"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_ssh.go",
-            "internal/httpapi/openshell_rpc_ssh_test.go"
+            "internal/httpapi/rpc_ssh.go",
+            "internal/httpapi/rpc_ssh_test.go"
           ]
         },
         {
@@ -380,8 +380,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellServiceEndpointLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_services.go",
-            "internal/httpapi/openshell_rpc_services_test.go"
+            "internal/httpapi/rpc_services.go",
+            "internal/httpapi/rpc_services_test.go"
           ]
         },
         {
@@ -396,8 +396,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellServiceEndpointLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_services.go",
-            "internal/httpapi/openshell_rpc_services_test.go"
+            "internal/httpapi/rpc_services.go",
+            "internal/httpapi/rpc_services_test.go"
           ]
         },
         {
@@ -412,8 +412,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellServiceEndpointLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_services.go",
-            "internal/httpapi/openshell_rpc_services_test.go"
+            "internal/httpapi/rpc_services.go",
+            "internal/httpapi/rpc_services_test.go"
           ]
         },
         {
@@ -428,8 +428,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellServiceEndpointLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_services.go",
-            "internal/httpapi/openshell_rpc_services_test.go"
+            "internal/httpapi/rpc_services.go",
+            "internal/httpapi/rpc_services_test.go"
           ]
         },
         {
@@ -447,8 +447,8 @@
             "TestOpenShellGRPCSSHSessionRequiresRelayAndScopedOwner"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_ssh.go",
-            "internal/httpapi/openshell_rpc_ssh_test.go"
+            "internal/httpapi/rpc_ssh.go",
+            "internal/httpapi/rpc_ssh_test.go"
           ]
         },
         {
@@ -466,8 +466,8 @@
             "TestOpenShellRPCInventoryMatchesPinnedServiceAndHandlers"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_exec.go",
-            "internal/httpapi/openshell_rpc_exec_test.go"
+            "internal/httpapi/rpc_exec.go",
+            "internal/httpapi/rpc_exec_test.go"
           ]
         },
         {
@@ -493,8 +493,8 @@
             "TestEngineGatewayConnectE2E"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_forward.go",
-            "internal/httpapi/openshell_rpc_forward_test.go",
+            "internal/httpapi/rpc_forward.go",
+            "internal/httpapi/rpc_forward_test.go",
             "internal/httpapi/grpc_mux_test.go",
             "internal/sshrelay/halfpipe.go",
             "internal/sshrelay/halfpipe_test.go",
@@ -516,7 +516,7 @@
             "TestOpenShellRPCInventoryMatchesPinnedServiceAndHandlers"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_exec.go",
+            "internal/httpapi/rpc_exec.go",
             "internal/httpapi/engine_connect_e2e_test.go"
           ]
         },
@@ -532,8 +532,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellProviderLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_providers.go",
-            "internal/httpapi/openshell_rpc_providers_test.go"
+            "internal/httpapi/rpc_providers.go",
+            "internal/httpapi/rpc_providers_test.go"
           ]
         },
         {
@@ -548,8 +548,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellProviderLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_providers.go",
-            "internal/httpapi/openshell_rpc_providers_test.go"
+            "internal/httpapi/rpc_providers.go",
+            "internal/httpapi/rpc_providers_test.go"
           ]
         },
         {
@@ -564,8 +564,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellProviderLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_providers.go",
-            "internal/httpapi/openshell_rpc_providers_test.go"
+            "internal/httpapi/rpc_providers.go",
+            "internal/httpapi/rpc_providers_test.go"
           ]
         },
         {
@@ -580,8 +580,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellProviderProfilesLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_profiles.go",
-            "internal/httpapi/openshell_rpc_profiles_test.go"
+            "internal/httpapi/rpc_profiles.go",
+            "internal/httpapi/rpc_profiles_test.go"
           ]
         },
         {
@@ -596,8 +596,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellProviderProfilesLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_profiles.go",
-            "internal/httpapi/openshell_rpc_profiles_test.go"
+            "internal/httpapi/rpc_profiles.go",
+            "internal/httpapi/rpc_profiles_test.go"
           ]
         },
         {
@@ -612,8 +612,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellProviderProfilesLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_profiles.go",
-            "internal/httpapi/openshell_rpc_profiles_test.go"
+            "internal/httpapi/rpc_profiles.go",
+            "internal/httpapi/rpc_profiles_test.go"
           ]
         },
         {
@@ -628,8 +628,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellProviderProfilesLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_profiles.go",
-            "internal/httpapi/openshell_rpc_profiles_test.go"
+            "internal/httpapi/rpc_profiles.go",
+            "internal/httpapi/rpc_profiles_test.go"
           ]
         },
         {
@@ -644,8 +644,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellProviderProfilesLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_profiles.go",
-            "internal/httpapi/openshell_rpc_profiles_test.go"
+            "internal/httpapi/rpc_profiles.go",
+            "internal/httpapi/rpc_profiles_test.go"
           ]
         },
         {
@@ -660,8 +660,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellProviderLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_providers.go",
-            "internal/httpapi/openshell_rpc_providers_test.go"
+            "internal/httpapi/rpc_providers.go",
+            "internal/httpapi/rpc_providers_test.go"
           ]
         },
         {
@@ -675,11 +675,11 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_credentials_test.go"
+            "internal/httpapi/rpc_credentials_test.go"
           ],
           "evidence": [
             "internal/httpapi/openshell_rpc.go",
-            "internal/httpapi/openshell_rpc_credentials_test.go"
+            "internal/httpapi/rpc_credentials_test.go"
           ]
         },
         {
@@ -693,11 +693,11 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_credentials_test.go"
+            "internal/httpapi/rpc_credentials_test.go"
           ],
           "evidence": [
             "internal/httpapi/openshell_rpc.go",
-            "internal/httpapi/openshell_rpc_credentials_test.go"
+            "internal/httpapi/rpc_credentials_test.go"
           ]
         },
         {
@@ -711,11 +711,11 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_credentials_test.go"
+            "internal/httpapi/rpc_credentials_test.go"
           ],
           "evidence": [
             "internal/httpapi/openshell_rpc.go",
-            "internal/httpapi/openshell_rpc_credentials_test.go"
+            "internal/httpapi/rpc_credentials_test.go"
           ]
         },
         {
@@ -729,11 +729,11 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_credentials_test.go"
+            "internal/httpapi/rpc_credentials_test.go"
           ],
           "evidence": [
             "internal/httpapi/openshell_rpc.go",
-            "internal/httpapi/openshell_rpc_credentials_test.go"
+            "internal/httpapi/rpc_credentials_test.go"
           ]
         },
         {
@@ -748,8 +748,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellProviderLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_providers.go",
-            "internal/httpapi/openshell_rpc_providers_test.go"
+            "internal/httpapi/rpc_providers.go",
+            "internal/httpapi/rpc_providers_test.go"
           ]
         },
         {
@@ -764,8 +764,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellProviderProfilesLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_profiles.go",
-            "internal/httpapi/openshell_rpc_profiles_test.go"
+            "internal/httpapi/rpc_profiles.go",
+            "internal/httpapi/rpc_profiles_test.go"
           ]
         },
         {
@@ -784,7 +784,7 @@
             "TestGetSandboxConfigDualAuthAllowsSandboxBearerOnlyForItsSandbox"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_sandbox_config.go GetSandboxConfig",
+            "internal/httpapi/rpc_sandbox_config.go GetSandboxConfig",
             "stored sandbox policy history, global policy revision, merged sandbox/global registered settings",
             "sandbox token or config:read workspace member authorization",
             "attached provider profile composition and encrypted credential fingerprint",
@@ -830,7 +830,7 @@
             "TestApplyOpenShellPolicyMergeRuleAndRemovalOperations"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_update_config.go UpdateConfig",
+            "internal/httpapi/rpc_update_config.go UpdateConfig",
             "global/sandbox registered settings with revisions and value validation",
             "full policy replacement with static-field guard and sandbox token own-sandbox network policy sync",
             "sandbox annotation projection and atomic resource-version compare-and-swap",
@@ -853,7 +853,7 @@
             "TestGlobalPolicyHistoryIsAdminOnlyAndPaginatedNewestFirst"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_policy_history.go GetSandboxPolicyStatus",
+            "internal/httpapi/rpc_policy_history.go GetSandboxPolicyStatus",
             "sandbox revision detail and active version with user scope/workspace authorization",
             "global status is admin-only and addresses retained global revisions"
           ]
@@ -874,7 +874,7 @@
             "TestGlobalPolicyHistoryIsAdminOnlyAndPaginatedNewestFirst"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_policy_history.go ListSandboxPolicies",
+            "internal/httpapi/rpc_policy_history.go ListSandboxPolicies",
             "sandbox history pagination, provenance and invalid historical payload projection",
             "global history is retained and paginated alongside sandbox history"
           ]
@@ -893,7 +893,7 @@
             "TestReportPolicyStatusUpdatesHistoryAndActiveVersion"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_report_policy_status.go ReportPolicyStatus",
+            "internal/httpapi/rpc_policy_status.go ReportPolicyStatus",
             "sandbox principal is restricted to its own sandbox; LOADED/FAILED updates policy history and active version"
           ]
         },
@@ -908,11 +908,11 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_credentials_test.go"
+            "internal/httpapi/rpc_credentials_test.go"
           ],
           "evidence": [
             "internal/httpapi/openshell_rpc.go",
-            "internal/httpapi/openshell_rpc_credentials_test.go"
+            "internal/httpapi/rpc_credentials_test.go"
           ]
         },
         {
@@ -926,11 +926,11 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_subject_token_test.go"
+            "internal/httpapi/rpc_subject_token_test.go"
           ],
           "evidence": [
             "internal/httpapi/openshell_rpc.go"
-            ,"internal/httpapi/openshell_rpc_subject_token_test.go"
+            ,"internal/httpapi/rpc_subject_token_test.go"
           ]
         },
         {
@@ -998,13 +998,13 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_main_process_test.go",
+            "internal/httpapi/rpc_main_process_test.go",
             "internal/httpapi/grpc_mux_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_main_process.go",
+            "internal/httpapi/rpc_main_process.go",
             "internal/storage/store/store.go",
-            "internal/httpapi/openshell_rpc_main_process_test.go",
+            "internal/httpapi/rpc_main_process_test.go",
             "internal/httpapi/grpc_mux_test.go"
           ]
         },
@@ -1019,13 +1019,13 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_main_process_test.go",
+            "internal/httpapi/rpc_main_process_test.go",
             "internal/httpapi/grpc_mux_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc_main_process.go",
+            "internal/httpapi/rpc_main_process.go",
             "internal/storage/store/store.go",
-            "internal/httpapi/openshell_rpc_main_process_test.go",
+            "internal/httpapi/rpc_main_process_test.go",
             "internal/httpapi/grpc_mux_test.go"
           ]
         },
@@ -1079,8 +1079,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellPolicyDraftLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_policy_draft.go",
-            "internal/httpapi/openshell_rpc_policy_draft_test.go"
+            "internal/httpapi/rpc_policy_draft.go",
+            "internal/httpapi/rpc_policy_draft_test.go"
           ]
         },
         {
@@ -1095,8 +1095,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellPolicyDraftLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_policy_draft.go",
-            "internal/httpapi/openshell_rpc_policy_draft_test.go"
+            "internal/httpapi/rpc_policy_draft.go",
+            "internal/httpapi/rpc_policy_draft_test.go"
           ]
         },
         {
@@ -1111,8 +1111,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellPolicyDraftLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_policy_draft.go",
-            "internal/httpapi/openshell_rpc_policy_draft_test.go"
+            "internal/httpapi/rpc_policy_draft.go",
+            "internal/httpapi/rpc_policy_draft_test.go"
           ]
         },
         {
@@ -1127,8 +1127,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellPolicyDraftLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_policy_draft.go",
-            "internal/httpapi/openshell_rpc_policy_draft_test.go"
+            "internal/httpapi/rpc_policy_draft.go",
+            "internal/httpapi/rpc_policy_draft_test.go"
           ]
         },
         {
@@ -1143,8 +1143,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellPolicyDraftLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_policy_draft.go",
-            "internal/httpapi/openshell_rpc_policy_draft_test.go"
+            "internal/httpapi/rpc_policy_draft.go",
+            "internal/httpapi/rpc_policy_draft_test.go"
           ]
         },
         {
@@ -1159,8 +1159,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellPolicyDraftLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_policy_draft.go",
-            "internal/httpapi/openshell_rpc_policy_draft_test.go"
+            "internal/httpapi/rpc_policy_draft.go",
+            "internal/httpapi/rpc_policy_draft_test.go"
           ]
         },
         {
@@ -1175,8 +1175,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellPolicyDraftLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_policy_draft.go",
-            "internal/httpapi/openshell_rpc_policy_draft_test.go"
+            "internal/httpapi/rpc_policy_draft.go",
+            "internal/httpapi/rpc_policy_draft_test.go"
           ]
         },
         {
@@ -1191,8 +1191,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellPolicyDraftLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_policy_draft.go",
-            "internal/httpapi/openshell_rpc_policy_draft_test.go"
+            "internal/httpapi/rpc_policy_draft.go",
+            "internal/httpapi/rpc_policy_draft_test.go"
           ]
         },
         {
@@ -1207,8 +1207,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellPolicyDraftLifecycle"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_policy_draft.go",
-            "internal/httpapi/openshell_rpc_policy_draft_test.go"
+            "internal/httpapi/rpc_policy_draft.go",
+            "internal/httpapi/rpc_policy_draft_test.go"
           ]
         },
         {
@@ -1223,8 +1223,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellSandboxTokenRotation"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_services.go",
-            "internal/httpapi/openshell_rpc_services_test.go"
+            "internal/httpapi/rpc_services.go",
+            "internal/httpapi/rpc_services_test.go"
           ]
         },
         {
@@ -1239,8 +1239,8 @@
           "conformance_fixture": "partial",
           "tests": ["TestOpenShellSandboxTokenRotation"],
           "evidence": [
-            "internal/httpapi/openshell_rpc_services.go",
-            "internal/httpapi/openshell_rpc_services_test.go"
+            "internal/httpapi/rpc_services.go",
+            "internal/httpapi/rpc_services_test.go"
           ]
         },
         {
@@ -1254,7 +1254,7 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_workspaces_test.go"
+            "internal/httpapi/rpc_workspaces_test.go"
           ],
           "evidence": [
             "workspace CRUD, membership, pagination, scope and role authorization handlers"
@@ -1271,7 +1271,7 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_workspaces_test.go"
+            "internal/httpapi/rpc_workspaces_test.go"
           ],
           "evidence": [
             "workspace CRUD, membership, pagination, scope and role authorization handlers"
@@ -1288,7 +1288,7 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_workspaces_test.go"
+            "internal/httpapi/rpc_workspaces_test.go"
           ],
           "evidence": [
             "workspace CRUD, membership, pagination, scope and role authorization handlers"
@@ -1305,7 +1305,7 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_workspaces_test.go"
+            "internal/httpapi/rpc_workspaces_test.go"
           ],
           "evidence": [
             "workspace CRUD, membership, pagination, scope and role authorization handlers"
@@ -1322,7 +1322,7 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_workspaces_test.go"
+            "internal/httpapi/rpc_workspaces_test.go"
           ],
           "evidence": [
             "workspace CRUD, membership, pagination, scope and role authorization handlers"
@@ -1339,7 +1339,7 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_workspaces_test.go"
+            "internal/httpapi/rpc_workspaces_test.go"
           ],
           "evidence": [
             "workspace CRUD, membership, pagination, scope and role authorization handlers"
@@ -1356,7 +1356,7 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "internal/httpapi/openshell_rpc_workspaces_test.go"
+            "internal/httpapi/rpc_workspaces_test.go"
           ],
           "evidence": [
             "workspace CRUD, membership, pagination, scope and role authorization handlers"

@@ -52,6 +52,32 @@ allow_unauthenticated_users=false
 	}
 }
 
+func TestGatewayPostgreSQLURLSupportsEnvironmentAndFlagPrecedence(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("OPENSHELL_DB_URL", "")
+	opt, err := resolveGatewayOptions(nil)
+	if err != nil || opt.DatabaseURL != "" {
+		t.Fatalf("empty optional environment database URL=%q err=%v", opt.DatabaseURL, err)
+	}
+	t.Setenv("OPENSHELL_DB_URL", "postgres://env:secret@db.example:5432/gateway?sslmode=require")
+	opt, err = resolveGatewayOptions(nil)
+	if err != nil || opt.DatabaseURL != "postgres://env:secret@db.example:5432/gateway?sslmode=require" {
+		t.Fatalf("environment database URL=%q err=%v", opt.DatabaseURL, err)
+	}
+	opt, err = resolveGatewayOptions([]string{"--db-url=postgresql://flag:secret@db.example:5432/gateway?sslmode=require"})
+	if err != nil || opt.DatabaseURL != "postgresql://flag:secret@db.example:5432/gateway?sslmode=require" {
+		t.Fatalf("flag database URL=%q err=%v", opt.DatabaseURL, err)
+	}
+	t.Setenv("OPENSHELL_DB_URL", "not-a-postgres-url")
+	opt, err = resolveGatewayOptions([]string{"--db-url", "postgres://flag@db.example/gateway"})
+	if err != nil || opt.DatabaseURL != "postgres://flag@db.example/gateway" {
+		t.Fatalf("flag did not override invalid environment: database URL=%q err=%v", opt.DatabaseURL, err)
+	}
+	if _, err := resolveGatewayOptions([]string{"--db-url", "sqlite:///gateway.db"}); err == nil || !strings.Contains(err.Error(), "PostgreSQL URL") {
+		t.Fatalf("non-PostgreSQL database URL error=%v", err)
+	}
+}
+
 func TestOpenShellBackendSelectionsAreResolvedToRegistryPlaceholders(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gateway.toml")
 	config := `[openshell.gateway]

@@ -48,8 +48,15 @@ func reconcileRuntimeState(ctx context.Context, st *store.Store, registry *compu
 			// Only delete objects returned by the driver's own sandbox label
 			// filter. This is the narrow orphan target; unrelated containers are
 			// never enumerated or touched here.
-			_ = engine.Stop(reconcileCtx, row.ID)
-			_ = engine.Delete(reconcileCtx, row.ID)
+			deleted, cleanupErr := cleanupEngineSandbox(reconcileCtx, engine, row.ID, true)
+			if !deleted {
+				log.Warn("orphan runtime cleanup failed; it will be retried", slog.String("op", "gateway.runtime.orphan_sweep"), slog.String("driver", name), slog.String("sandbox", row.Name), slog.String("runtime_id", string(row.ID)), slogx.Err(cleanupErr))
+				continue
+			}
+			if cleanupErr != nil {
+				log.Warn("orphan runtime was deleted after a stop error", slog.String("op", "gateway.runtime.orphan_sweep"), slog.String("driver", name), slog.String("sandbox", row.Name), slog.String("runtime_id", string(row.ID)), slogx.Err(cleanupErr))
+				continue
+			}
 			log.Info("removed orphan runtime", slog.String("op", "gateway.runtime.orphan_sweep"), slog.String("driver", name), slog.String("sandbox", row.Name), slog.String("runtime_id", string(row.ID)))
 		}
 		for _, sandbox := range st.ListSandboxes() {

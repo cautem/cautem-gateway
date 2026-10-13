@@ -43,6 +43,7 @@ var controlSecurityPolicies = map[string]controlSecurityPolicy{
 	"/cautem.control.v1.CatalogService/ListTemplates":                        {http.MethodGet, "/v1/templates", "workspace-scoped template summaries"},
 	"/cautem.control.v1.CatalogService/ListWorkspaces":                       {http.MethodGet, "/v1/workspaces/read", "caller-visible workspace summaries"},
 	"/cautem.control.v1.CatalogService/GetWorkspace":                         {http.MethodGet, "/v1/workspaces/read", "caller-visible workspace summary"},
+	"/cautem.control.v1.WorkspaceAdminService/UpdateWorkspaceQuota":          {http.MethodPost, "/v1/workspaces/write", "workspace quota and aggregate allocation usage"},
 	"/cautem.control.v1.InferenceService/GetInferenceRoute":                  {http.MethodGet, "/v1/sandboxes", "route metadata without credentials"},
 	"/cautem.control.v1.InferenceService/UpdateInferenceRoute":               {http.MethodPost, "/v1/sandboxes", "route metadata without credentials"},
 	"/cautem.control.v1.InferenceService/ClearInferenceRoute":                {http.MethodDelete, "/v1/sandboxes", "clear status only"},

@@ -16,6 +16,8 @@ staticClients:
     redirectURIs:
       - http://127.0.0.1:18765/callback
       - http://localhost:18765/callback
+      - http://127.0.0.1:7444/auth/callback
+      - http://localhost:7444/auth/callback
 enablePasswordDB: true
 staticPasswords:
   - email: "admin@example.com"

@@ -2,11 +2,43 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"connectrpc.com/connect"
+	"github.com/cautem/cautem-driver/driver"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 )
+
+func TestControlAPISandboxSummaryJoinsObservedRuntimeStatus(t *testing.T) {
+	engine := &rpcTestEngine{list: []driver.Info{{ID: "runtime-1", Name: "demo", Status: "running"}}}
+	compute := newComputeRegistry(Options{ComputeDriverNames: []string{"docker"}})
+	compute.engines["docker"] = engine
+	api := &controlAPI{
+		opt:           Options{grpcRuntime: &grpcRuntime{compute: compute}},
+		runtimeStatus: make(map[string]runtimeDriverSnapshot),
+	}
+	record := store.Sandbox{Name: "demo", RuntimeID: "runtime-1", ComputeDriver: "docker", Status: "running"}
+
+	got := api.sandboxSummary(context.Background(), record)
+	if !got.GetRuntimeStatusAvailable() || got.GetRuntimeStatus() != "running" {
+		t.Fatalf("runtime observation = available:%v status:%q", got.GetRuntimeStatusAvailable(), got.GetRuntimeStatus())
+	}
+
+	engine.list = nil
+	api.invalidateRuntimeStatus()
+	got = api.sandboxSummary(context.Background(), record)
+	if !got.GetRuntimeStatusAvailable() || got.GetRuntimeStatus() != "missing" {
+		t.Fatalf("missing runtime observation = available:%v status:%q", got.GetRuntimeStatusAvailable(), got.GetRuntimeStatus())
+	}
+
+	engine.listErr = errors.New("backend unavailable")
+	api.invalidateRuntimeStatus()
+	got = api.sandboxSummary(context.Background(), record)
+	if got.GetRuntimeStatusAvailable() || got.GetRuntimeStatus() != "" {
+		t.Fatalf("unavailable backend observation = available:%v status:%q", got.GetRuntimeStatusAvailable(), got.GetRuntimeStatus())
+	}
+}
 
 func TestControlAPIWorkspaceAuthorization(t *testing.T) {
 	st, err := store.Open(t.TempDir(), "control-api-test")

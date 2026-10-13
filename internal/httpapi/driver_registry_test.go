@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,63 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/structpb"
 )
+
+func TestEngineConfigAddsPrivateCleanupManifestDirOnlyToLocalEngines(t *testing.T) {
+	manifestDir := filepath.Join("relative-gateway-state", "compute-driver-cleanup")
+	configured := map[string]any{"default_image": "sandbox:local"}
+	got, err := engineConfigWithCleanupManifestDir("docker", configured, manifestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	absoluteDir, err := filepath.Abs(manifestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["cautem_internal_cleanup_manifest_dir"] != filepath.Clean(absoluteDir) {
+		t.Fatalf("cleanup manifest dir = %v; want %q", got["cautem_internal_cleanup_manifest_dir"], filepath.Clean(absoluteDir))
+	}
+	if _, ok := configured["cautem_internal_cleanup_manifest_dir"]; ok {
+		t.Fatal("mutated operator driver config")
+	}
+	remote, err := engineConfigWithCleanupManifestDir("kubernetes", configured, manifestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := remote["cautem_internal_cleanup_manifest_dir"]; ok {
+		t.Fatal("injected Docker cleanup state into a non-Docker backend")
+	}
+}
+
+func TestEngineConfigAddsDurableGatewayIDOnlyToKubernetes(t *testing.T) {
+	configured := map[string]any{"kubeconfig": "/etc/cautem/kubeconfig"}
+	for _, kind := range []string{"kubernetes", "k8s"} {
+		got, err := engineConfigWithGatewayID(kind, configured, "gateway-stable-id")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got["cautem_internal_gateway_id"] != "gateway-stable-id" {
+			t.Fatalf("%s internal Gateway ID = %v; want gateway-stable-id", kind, got["cautem_internal_gateway_id"])
+		}
+		if _, ok := configured["cautem_internal_gateway_id"]; ok {
+			t.Fatal("mutated operator driver config")
+		}
+	}
+
+	other, err := engineConfigWithGatewayID("docker", configured, "gateway-stable-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := other["cautem_internal_gateway_id"]; ok {
+		t.Fatal("injected Kubernetes-only Gateway identity into Docker config")
+	}
+}
+
+func TestEngineConfigRejectsUserSuppliedInternalGatewayID(t *testing.T) {
+	_, err := engineConfigWithGatewayID("kubernetes", map[string]any{"cautem_internal_gateway_id": "attacker"}, "gateway-stable-id")
+	if err == nil || !strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("engineConfigWithGatewayID() error = %v; want reserved field rejection", err)
+	}
+}
 
 type registryComputeServer struct {
 	computev1.UnimplementedComputeDriverServer

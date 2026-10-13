@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
-	controlv1 "github.com/cautem/cautem-gateway/api/gen/cautem/control/v1"
 	"github.com/cautem/cautem-gateway/internal/service"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
+	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
 )
 
 func TestControlCatalogScopesAndRedacts(t *testing.T) {

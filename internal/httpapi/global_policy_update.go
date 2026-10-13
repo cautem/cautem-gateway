@@ -57,7 +57,7 @@ func applyGlobalPolicy(ctx context.Context, st *store.Store, runtime *grpcRuntim
 			continue
 		}
 		revision := sandboxRevisions[sandbox.Name]
-		if err := rpc.syncSandboxRuntimePolicy(sandbox.Name, revision); err != nil {
+		if err := rpc.syncSandboxRuntimePolicy(ctx, sandbox.Name, revision); err != nil {
 			_ = st.ReportPolicyStatus(sandbox.Name, revision, store.PolicyStatusFailed, "global policy delivery failed", time.Now().UTC())
 			syncFailed[sandbox.Name] = true
 			if firstErr == nil {
@@ -75,7 +75,15 @@ func applyGlobalPolicy(ctx context.Context, st *store.Store, runtime *grpcRuntim
 			continue
 		}
 		revision := sandboxRevisions[sandbox.Name]
-		if policyAckRequired(sandbox.Status) && (runtime.relay == nil || !runtime.relay.Connected(sandbox.Name)) {
+		connected := runtime.relay != nil && runtime.relay.Connected(sandbox.Name)
+		restartDelivery, deliveryErr := sandboxUsesRestartedPolicyDelivery(runtime, sandbox)
+		if deliveryErr != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("inspect policy delivery for sandbox %q: %w", sandbox.Name, deliveryErr)
+			}
+			continue
+		}
+		if policyAckRequired(sandbox.Status) && !connected && !restartDelivery {
 			_ = st.ReportPolicyStatus(sandbox.Name, revision, store.PolicyStatusFailed, "running sandbox supervisor is disconnected", time.Now().UTC())
 			if firstErr == nil {
 				firstErr = fmt.Errorf("global policy acknowledgement unavailable for running sandbox %q", sandbox.Name)
@@ -98,7 +106,7 @@ func applyGlobalPolicy(ctx context.Context, st *store.Store, runtime *grpcRuntim
 		}
 	}
 	if firstErr != nil {
-		if rollbackErr := rollbackGlobalPolicy(st, runtime, previousDocument, document, globalRevision, profileSources); rollbackErr != nil {
+		if rollbackErr := rollbackGlobalPolicy(ctx, st, runtime, previousDocument, document, globalRevision, profileSources); rollbackErr != nil {
 			return globalRevision, errors.Join(firstErr, fmt.Errorf("restore previous global policy: %w", rollbackErr))
 		}
 	}
@@ -119,7 +127,12 @@ func policyAckRequired(status string) bool {
 // compare-and-swap prevents this compensation from overwriting a newer admin
 // update that raced with the failed request.
 
-func rollbackGlobalPolicy(st *store.Store, runtime *grpcRuntime, previousDocument, failedDocument string, failedRevision uint64, profileSources []string) error {
+func rollbackGlobalPolicy(ctx context.Context, st *store.Store, runtime *grpcRuntime, previousDocument, failedDocument string, failedRevision uint64, profileSources []string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	recoveryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+	defer cancel()
 	currentDocument, currentRevision := st.GlobalPolicySnapshot()
 	if currentRevision != failedRevision || currentDocument != failedDocument {
 		return store.ErrResourceVersionConflict
@@ -159,19 +172,27 @@ func rollbackGlobalPolicy(st *store.Store, runtime *grpcRuntime, previousDocumen
 		if !ok {
 			continue
 		}
-		if runtime.relay == nil || !runtime.relay.Connected(sandbox.Name) {
+		connectedNow := runtime.relay != nil && runtime.relay.Connected(sandbox.Name)
+		restartDelivery, deliveryErr := sandboxUsesRestartedPolicyDelivery(runtime, sandbox)
+		if deliveryErr != nil {
+			failures = append(failures, fmt.Errorf("inspect policy delivery for sandbox %q during compensation: %w", sandbox.Name, deliveryErr))
+			continue
+		}
+		if !connectedNow && !restartDelivery {
 			if policyAckRequired(sandbox.Status) {
 				_ = st.ReportPolicyStatus(sandbox.Name, revision, store.PolicyStatusFailed, "running sandbox supervisor is disconnected during compensation", time.Now().UTC())
 				failures = append(failures, fmt.Errorf("running sandbox %q could not acknowledge restored policy", sandbox.Name))
 			}
 			continue
 		}
-		if err := rpc.syncSandboxRuntimePolicy(sandbox.Name, revision); err != nil {
+		if err := rpc.syncSandboxRuntimePolicy(recoveryCtx, sandbox.Name, revision); err != nil {
 			_ = st.ReportPolicyStatus(sandbox.Name, revision, store.PolicyStatusFailed, "compensating policy delivery failed", time.Now().UTC())
 			failures = append(failures, fmt.Errorf("write restored policy for sandbox %q: %w", sandbox.Name, err))
 			continue
 		}
-		connected[sandbox.Name] = revision
+		if connectedNow || (restartDelivery && policyAckRequired(sandbox.Status)) {
+			connected[sandbox.Name] = revision
+		}
 	}
 	acks := make(chan error, len(connected))
 	var waitGroup sync.WaitGroup
@@ -179,7 +200,7 @@ func rollbackGlobalPolicy(st *store.Store, runtime *grpcRuntime, previousDocumen
 		waitGroup.Add(1)
 		go func(name string, revision int) {
 			defer waitGroup.Done()
-			if err := rpc.waitSandboxPolicyApplied(context.Background(), name, revision); err != nil {
+			if err := rpc.waitSandboxPolicyApplied(recoveryCtx, name, revision); err != nil {
 				_ = st.ReportPolicyStatus(name, revision, store.PolicyStatusFailed, "compensating policy was not acknowledged", time.Now().UTC())
 				acks <- fmt.Errorf("runtime for sandbox %q did not acknowledge restored policy: %w", name, err)
 			}

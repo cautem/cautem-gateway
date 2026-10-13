@@ -33,7 +33,9 @@ func TestEdgeServiceName(t *testing.T) {
 }
 
 func TestEdgeRouterProxies(t *testing.T) {
+	forwardedCredentials := false
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwardedCredentials = r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != ""
 		_, _ = io.WriteString(w, "ok:"+r.URL.Path)
 	}))
 	t.Cleanup(backend.Close)
@@ -52,6 +54,7 @@ func TestEdgeRouterProxies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	token := prepareEdgeSandbox(t, st, "running")
 	if err := st.UpsertService(store.ServiceRecord{
 		Name: "web", Sandbox: "sb", Port: port, BackendHost: host, BackendPort: port,
 	}); err != nil {
@@ -62,17 +65,59 @@ func TestEdgeRouterProxies(t *testing.T) {
 	mux.HandleFunc("/v1/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	h := withEdgeRouter(mux, st)
+	h := withEdgeRouter(mux, st, AuthOptions{OIDCSettings: OIDCOptions{Issuer: "https://identity.example.test"}})
 
 	req := httptest.NewRequest(http.MethodGet, "http://web.openshell.localhost/hi", nil)
 	req.Host = "web.openshell.localhost"
 	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated edge status %d body %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "http://web.openshell.localhost/hi", nil)
+	req.Host = "web.openshell.localhost"
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Cookie", "user-session=private")
+	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != 200 {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
 	}
 	if got := rec.Body.String(); got != "ok:/hi" {
 		t.Fatalf("body %q", got)
+	}
+	if forwardedCredentials {
+		t.Fatal("user credentials were forwarded to the sandbox service")
+	}
+	local := withEdgeRouter(mux, st, AuthOptions{})
+	proxiedLocalRequest := httptest.NewRequest(http.MethodGet, "http://web.openshell.localhost/hi", nil)
+	proxiedLocalRequest.Host = "web.openshell.localhost"
+	proxiedLocalRequest.RemoteAddr = "127.0.0.1:12345"
+	proxiedLocalRequest.Header.Set("X-Forwarded-For", "203.0.113.10")
+	proxiedLocalRecorder := httptest.NewRecorder()
+	local.ServeHTTP(proxiedLocalRecorder, proxiedLocalRequest)
+	if proxiedLocalRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("forwarded local service URL status %d body %s", proxiedLocalRecorder.Code, proxiedLocalRecorder.Body.String())
+	}
+	localRequest := httptest.NewRequest(http.MethodGet, "http://web.openshell.localhost/hi", nil)
+	localRequest.Host = "web.openshell.localhost"
+	localRequest.RemoteAddr = "127.0.0.1:12345"
+	localRecorder := httptest.NewRecorder()
+	local.ServeHTTP(localRecorder, localRequest)
+	if localRecorder.Code != http.StatusOK {
+		t.Fatalf("local service URL status %d body %s", localRecorder.Code, localRecorder.Body.String())
+	}
+	if err := st.UpsertSandbox(store.Sandbox{Name: "sb", ID: "sb-id", Workspace: "default", Status: "stopped"}); err != nil {
+		t.Fatal(err)
+	}
+	stopped := httptest.NewRequest(http.MethodGet, "http://web.openshell.localhost/hi", nil)
+	stopped.Host = "web.openshell.localhost"
+	stopped.Header.Set("Authorization", "Bearer "+token)
+	stoppedRec := httptest.NewRecorder()
+	h.ServeHTTP(stoppedRec, stopped)
+	if stoppedRec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("stopped sandbox status %d body %s", stoppedRec.Code, stoppedRec.Body.String())
 	}
 
 	req2 := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/v1/healthz", nil)
@@ -117,14 +162,28 @@ func TestEdgeRouterRelaysExposedService(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h := withEdgeRouter(http.NotFoundHandler(), st, relay)
+	token := prepareEdgeSandbox(t, st, "running")
+	h := withEdgeRouter(http.NotFoundHandler(), st, AuthOptions{}, relay)
 	req := httptest.NewRequest(http.MethodGet, "http://web.openshell.localhost/relay", nil)
 	req.Host = "web.openshell.localhost"
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "relay:/relay" {
 		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
 	}
+}
+
+func prepareEdgeSandbox(t *testing.T, st *store.Store, sandboxStatus string) string {
+	t.Helper()
+	if err := st.UpsertSandbox(store.Sandbox{Name: "sb", ID: "sb-id", Workspace: "default", Status: sandboxStatus}); err != nil {
+		t.Fatal(err)
+	}
+	token, err := st.EnsureAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return token
 }
 
 func TestOAuth2TokenParseGrant(t *testing.T) {

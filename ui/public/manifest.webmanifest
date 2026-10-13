@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "Cautem Control",
+  "short_name": "Cautem",
+  "description": "Manage isolated Cautem sandboxes and workspaces.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#e8eeeb",
+  "theme_color": "#e8eeeb",
+  "icons": [
+    {
+      "src": "/icons/cautem-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/cautem-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

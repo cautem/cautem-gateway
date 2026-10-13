@@ -1,4029 +1,0 @@
-
-ª˘
-cautem/control/v1/console.protocautem.control.v1"
-GetGatewayInfoRequest"Ω
-GetGatewayInfoResponse
-
-gateway_id (	R	gatewayId#
-sandbox_count (RsandboxCount
-	auth_mode (	RauthModeO
-compute_drivers (2&.cautem.control.v1.ComputeDriverStatusRcomputeDrivers-
-credential_drivers (	RcredentialDrivers:
-default_credential_driver (	RdefaultCredentialDriver3
-allow_unauthenticated (RallowUnauthenticated
-oidc_issuer (	R
-oidcIssuer5
-ssh_session_ttl_seconds	 (RsshSessionTtlSeconds,
-secrets_kek_source
- (	RsecretsKekSource,
-secrets_kek_pinned (RsecretsKekPinned.
-secrets_kek_warning (	RsecretsKekWarning,
-secrets_kek_format (	RsecretsKekFormat?
-secrets_kek_migration_needed (RsecretsKekMigrationNeeded"?
-ComputeDriverStatus
-name (	Rname
-state (	Rstate"L
-GetManagedSandboxRequest
-	workspace (	R	workspace
-name (	Rname"≈
-GetManagedSandboxResponse
-name (	Rname
-
-runtime_id (	R	runtimeId
-image (	Rimage
-	workspace (	R	workspace
-network (	Rnetwork
-status (	RstatusP
-labels (28.cautem.control.v1.GetManagedSandboxResponse.LabelsEntryRlabels(
-base_policy_yaml (	RbasePolicyYaml-
-attached_providers	 (	RattachedProviders)
-resource_version
- (RresourceVersion9
-LabelsEntry
-key (	Rkey
-value (	Rvalue:8"ö
-SyncManagedSandboxRequest
-	workspace (	R	workspace
-name (	Rname
-
-runtime_id (	R	runtimeId
-image (	Rimage
-network (	Rnetwork
-status (	RstatusP
-labels (28.cautem.control.v1.SyncManagedSandboxRequest.LabelsEntryRlabels(
-base_policy_yaml (	RbasePolicyYaml-
-attached_providers	 (	RattachedProviders9
-LabelsEntry
-key (	Rkey
-value (	Rvalue:8"G
-SyncManagedSandboxResponse)
-resource_version (RresourceVersion"O
-DeleteManagedSandboxRequest
-	workspace (	R	workspace
-name (	Rname"8
-DeleteManagedSandboxResponse
-deleted (Rdeleted"S
-IssueManagedSandboxTokenRequest
-	workspace (	R	workspace
-name (	Rname"8
- IssueManagedSandboxTokenResponse
-token (	Rtoken"ì
-AppendSandboxLogsRequest
-	workspace (	R	workspace!
-sandbox_name (	RsandboxName6
-lines (2 .cautem.control.v1.ClientLogLineRlines"}
-ClientLogLine*
-timestamp_unix_ms (RtimestampUnixMs
-source (	Rsource
-level (	Rlevel
-text (	Rtext"7
-AppendSandboxLogsResponse
-accepted (Raccepted"
-GetInferenceRouteRequest"ô
-GetInferenceRouteResponse
-provider (	Rprovider
-model (	Rmodel
-timeout_sec (R
-timeoutSec)
-resource_version (RresourceVersion"¨
-UpdateInferenceRouteRequest
-provider (	Rprovider
-model (	Rmodel
-timeout_sec (R
-timeoutSec:
-expected_resource_version (RexpectedResourceVersion"I
-UpdateInferenceRouteResponse)
-resource_version (RresourceVersion"X
-ClearInferenceRouteRequest:
-expected_resource_version (RexpectedResourceVersion"7
-ClearInferenceRouteResponse
-cleared (Rcleared"
-GetGlobalPolicyRequest"e
-GetGlobalPolicyResponse
-policy_yaml (	R
-policyYaml)
-resource_version (RresourceVersion"é
-UpdateGlobalPolicyRequest
-policy_yaml (	R
-policyYaml:
-expected_resource_version (RexpectedResourceVersion
-clear (Rclear"G
-UpdateGlobalPolicyResponse)
-resource_version (RresourceVersion"n
-GetSandboxPolicyRequest
-	workspace (	R	workspace!
-sandbox_name (	RsandboxName
-view (	Rview"è
-GetSandboxPolicyResponse
-policy_yaml (	R
-policyYaml)
-resource_version (RresourceVersion'
-policy_revision (RpolicyRevision"¡
-UpdateSandboxPolicyRequest
-	workspace (	R	workspace!
-sandbox_name (	RsandboxName(
-base_policy_yaml (	RbasePolicyYaml8
-expected_policy_revision (RexpectedPolicyRevision"≤
-UpdateSandboxPolicyResponse2
-effective_policy_yaml (	ReffectivePolicyYaml6
-stripped_provider_rules (RstrippedProviderRules'
-policy_revision (RpolicyRevision"d
-!ListSandboxPolicyRevisionsRequest
-	workspace (	R	workspace!
-sandbox_name (	RsandboxName"l
-"ListSandboxPolicyRevisionsResponseF
-	revisions (2(.cautem.control.v1.PolicyRevisionSummaryR	revisions"~
-GetSandboxPolicyRevisionRequest
-	workspace (	R	workspace!
-sandbox_name (	RsandboxName
-revision (Rrevision"â
- GetSandboxPolicyRevisionResponse
-policy_yaml (	R
-policyYamlD
-revision (2(.cautem.control.v1.PolicyRevisionSummaryRrevision"é
-PolicyRevisionSummary
-revision (Rrevision+
-updated_at_unix_ms (RupdatedAtUnixMs
-bytes (Rbytes
-status (	Rstatus"ç
- UpdateProviderCredentialsRequest
-	workspace (	R	workspace#
-provider_name (	RproviderNamef
-credentials (2D.cautem.control.v1.UpdateProviderCredentialsRequest.CredentialsEntryRcredentials>
-CredentialsEntry
-key (	Rkey
-value (	Rvalue:8"F
-!UpdateProviderCredentialsResponse!
-updated_keys (	RupdatedKeys";
-ListProviderProfilesRequest
-	workspace (	R	workspace"ù
-ProviderProfileSummary
-id (	Rid
-category (	Rcategory
-source (	Rsource
-scope (	Rscope)
-resource_version (RresourceVersion"e
-ListProviderProfilesResponseE
-profiles (2).cautem.control.v1.ProviderProfileSummaryRprofiles"I
-GetProviderProfileRequest
-	workspace (	R	workspace
-id (	Rid"Ç
-GetProviderProfileResponse!
-profile_yaml (	RprofileYaml
-source (	Rsource)
-resource_version (RresourceVersion"o
-ImportProviderProfileRequest
-	workspace (	R	workspace!
-profile_yaml (	RprofileYaml
-id (	Rid"@
-ImportProviderProfileResponse
-imported_id (	R
-importedId"´
-UpdateProviderProfileRequest
-	workspace (	R	workspace
-id (	Rid:
-expected_resource_version (RexpectedResourceVersion!
-profile_yaml (	RprofileYaml"J
-UpdateProviderProfileResponse)
-resource_version (RresourceVersion"L
-DeleteProviderProfileRequest
-	workspace (	R	workspace
-id (	Rid"9
-DeleteProviderProfileResponse
-deleted (Rdeleted"
-GetViewerRequest"à
-GetViewerResponse
-subject (	Rsubject
-roles (	Rroles
-scopes (	Rscopes+
-identity_provider (	RidentityProvider"
-GetConsoleCapabilitiesRequest"¡
-GetConsoleCapabilitiesResponse>
-sandbox_lifecycle_available (RsandboxLifecycleAvailable6
-sandbox_watch_available (RsandboxWatchAvailable'
-compute_drivers (	RcomputeDrivers"2
-GetOverviewRequest
-	workspace (	R	workspace"ñ
-GetOverviewResponse
-
-gateway_id (	R	gatewayId
-	workspace (	R	workspace#
-sandbox_count (RsandboxCount4
-registry_running_count (RregistryRunningCount-
-snapshot_at_unix_ms (RsnapshotAtUnixMs8
-runtime_status_available (RruntimeStatusAvailable"È
-ListSandboxesRequest
-	workspace (	R	workspace
-	page_size (RpageSize
-
-page_token (	R	pageToken
-name_prefix (	R
-namePrefix'
-registry_status (	RregistryStatus%
-compute_driver (	RcomputeDriverK
-labels (23.cautem.control.v1.ListSandboxesRequest.LabelsEntryRlabels9
-LabelsEntry
-key (	Rkey
-value (	Rvalue:8"Ä
-ListSandboxesResponse?
-	sandboxes (2!.cautem.control.v1.SandboxSummaryR	sandboxes&
-next_page_token (	RnextPageToken"E
-GetSandboxRequest
-	workspace (	R	workspace
-name (	Rname"Q
-GetSandboxResponse;
-sandbox (2!.cautem.control.v1.SandboxSummaryRsandbox"5
-WatchSandboxesRequest
-	workspace (	R	workspace"é
-WatchSandboxesResponse<
-kind (2(.cautem.control.v1.SandboxWatchEventKindRkind'
-stream_sequence (RstreamSequence;
-sandbox (2!.cautem.control.v1.SandboxSummaryRsandbox!
-deleted_name (	RdeletedName-
-observed_at_unix_ms (RobservedAtUnixMs"±
-GetSandboxLogsRequest
-	workspace (	R	workspace
-name (	Rname
-limit (Rlimit"
-since_unix_ms (RsinceUnixMs
-source (	Rsource
-level (	Rlevel"i
-GetSandboxLogsResponse7
-lines (2!.cautem.control.v1.SandboxLogLineRlines
-cursor (Rcursor"Â
-WatchSandboxLogsRequest
-	workspace (	R	workspace
-name (	Rname#
-initial_limit (RinitialLimit!
-after_cursor (RafterCursor"
-since_unix_ms (RsinceUnixMs
-source (	Rsource
-level (	Rlevel"‘
-WatchSandboxLogsResponse:
-kind (2&.cautem.control.v1.SandboxLogWatchKindRkind5
-line (2!.cautem.control.v1.SandboxLogLineRline
-cursor (Rcursor-
-observed_at_unix_ms (RobservedAtUnixMs"¥
-SandboxLogLine
-cursor (Rcursor*
-timestamp_unix_ms (RtimestampUnixMs
-source (	Rsource
-level (	Rlevel
-target (	Rtarget
-message (	Rmessage"’
-CreateSandboxRequest
-	workspace (	R	workspace
-name (	Rname
-image (	Rimage4
-workload_template_name (	RworkloadTemplateName
-command (	Rcommand
-
-request_id (	R	requestIdK
-labels (23.cautem.control.v1.CreateSandboxRequest.LabelsEntryRlabels9
-LabelsEntry
-key (	Rkey
-value (	Rvalue:8"ï
-CreateSandboxResponse;
-sandbox (2!.cautem.control.v1.SandboxSummaryRsandbox
-	completed (R	completed!
-operation_id (	RoperationId"¢
-StartSandboxRequest
-	workspace (	R	workspace
-name (	Rname:
-expected_resource_version (RexpectedResourceVersion
-
-request_id (	R	requestId"î
-StartSandboxResponse;
-sandbox (2!.cautem.control.v1.SandboxSummaryRsandbox
-	completed (R	completed!
-operation_id (	RoperationId"°
-StopSandboxRequest
-	workspace (	R	workspace
-name (	Rname:
-expected_resource_version (RexpectedResourceVersion
-
-request_id (	R	requestId"ì
-StopSandboxResponse;
-sandbox (2!.cautem.control.v1.SandboxSummaryRsandbox
-	completed (R	completed!
-operation_id (	RoperationId"£
-DeleteSandboxRequest
-	workspace (	R	workspace
-name (	Rname:
-expected_resource_version (RexpectedResourceVersion
-
-request_id (	R	requestId"T
-DeleteSandboxResponse
-deleted (Rdeleted!
-operation_id (	RoperationId"R
-GetOperationRequest
-	workspace (	R	workspace
-
-request_id (	R	requestId"Y
-GetOperationResponseA
-	operation (2#.cautem.control.v1.OperationSummaryR	operation"n
-ListOperationsRequest
-	workspace (	R	workspace!
-after_number (RafterNumber
-limit (Rlimit"â
-ListOperationsResponseC
-
-operations (2#.cautem.control.v1.OperationSummaryR
-operations*
-next_after_number (RnextAfterNumber"g
-ListAuditEventsRequest
-	workspace (	R	workspace
-after_id (RafterId
-limit (Rlimit"{
-ListAuditEventsResponse<
-events (2$.cautem.control.v1.AuditEventSummaryRevents"
-next_after_id (RnextAfterId"º
-OperationSummary
-id (	Rid
-number (Rnumber
-
-request_id (	R	requestId
-actor (	Ractor
-	workspace (	R	workspace
-sandbox (	Rsandbox
-action (	Raction
-state (	Rstate
-
-error_code	 (	R	errorCode4
-result_registry_status
- (	RresultRegistryStatus6
-result_resource_version (RresultResourceVersion+
-created_at_unix_ms (RcreatedAtUnixMs+
-updated_at_unix_ms (RupdatedAtUnixMs"„
-AuditEventSummary
-id (Rid*
-timestamp_unix_ms (RtimestampUnixMs
-actor (	Ractor
-action (	Raction
-	workspace (	R	workspace
-sandbox (	Rsandbox
-outcome (	Routcome
-code (	Rcode"Ã
-SandboxSummary
-name (	Rname
-	workspace (	R	workspace'
-registry_status (	RregistryStatus%
-compute_driver (	RcomputeDriver)
-resource_version (RresourceVersion+
-updated_at_unix_ms (RupdatedAtUnixMs8
-runtime_status_available (RruntimeStatusAvailable
-id (	Rid
-image	 (	RimageE
-labels
- (2-.cautem.control.v1.SandboxSummary.LabelsEntryRlabels9
-LabelsEntry
-key (	Rkey
-value (	Rvalue:8"3
-ListServicesRequest
-	workspace (	R	workspace"U
-ListServicesResponse=
-services (2!.cautem.control.v1.ServiceSummaryRservices"à
-ServiceSummary
-name (	Rname!
-sandbox_name (	RsandboxName
-port (Rport+
-updated_at_unix_ms (RupdatedAtUnixMs"4
-ListTemplatesRequest
-	workspace (	R	workspace"Y
-ListTemplatesResponse@
-	templates (2".cautem.control.v1.TemplateSummaryR	templates"œ
-TemplateSummary
-name (	Rname
-	workspace (	R	workspace
-image (	Rimage
-	providers (	R	providers)
-resource_version (RresourceVersion+
-created_at_unix_ms (RcreatedAtUnixMs"
-ListWorkspacesRequest"]
-ListWorkspacesResponseC
-
-workspaces (2#.cautem.control.v1.WorkspaceSummaryR
-workspaces")
-GetWorkspaceRequest
-name (	Rname"Y
-GetWorkspaceResponseA
-	workspace (2#.cautem.control.v1.WorkspaceSummaryR	workspace"¬
-WorkspaceSummary
-name (	Rname
-caller_role (	R
-callerRole!
-member_count (RmemberCount)
-resource_version (RresourceVersion+
-updated_at_unix_ms (RupdatedAtUnixMs"≠
-ListPolicyProposalsRequest
-	workspace (	R	workspace!
-sandbox_name (	RsandboxName
-status (	Rstatus
-	page_size (RpageSize
-after_id (	RafterId"â
-ListPolicyProposalsResponseF
-	proposals (2(.cautem.control.v1.PolicyProposalSummaryR	proposals"
-next_after_id (	RnextAfterId"H
-GetPolicyProposalRequest
-	workspace (	R	workspace
-id (	Rid"a
-GetPolicyProposalResponseD
-proposal (2(.cautem.control.v1.PolicyProposalSummaryRproposal"e
-ApprovePolicyProposalResponseD
-proposal (2(.cautem.control.v1.PolicyProposalSummaryRproposal"d
-RejectPolicyProposalResponseD
-proposal (2(.cautem.control.v1.PolicyProposalSummaryRproposal"L
-ApprovePolicyProposalRequest
-	workspace (	R	workspace
-id (	Rid"c
-RejectPolicyProposalRequest
-	workspace (	R	workspace
-id (	Rid
-reason (	Rreason"õ
-PolicyProposalSummary
-id (	Rid!
-sandbox_name (	RsandboxName
-status (	Rstatus%
-intent_summary (	RintentSummary
-	rule_name (	RruleName
-	rule_yaml (	RruleYaml
-	rationale (	R	rationale%
-security_notes (	RsecurityNotes
-
-confidence	 (R
-confidence
-hosts
- (	Rhosts)
-rejection_reason (	RrejectionReason+
-validation_result (	RvalidationResult)
-security_flagged (RsecurityFlagged+
-created_at_unix_ms (RcreatedAtUnixMs+
-decided_at_unix_ms (RdecidedAtUnixMs*¸
-SandboxWatchEventKind(
-$SANDBOX_WATCH_EVENT_KIND_UNSPECIFIED "
-SANDBOX_WATCH_EVENT_KIND_RESET#
-SANDBOX_WATCH_EVENT_KIND_UPSERT#
-SANDBOX_WATCH_EVENT_KIND_DELETE#
-SANDBOX_WATCH_EVENT_KIND_SYNCED&
-"SANDBOX_WATCH_EVENT_KIND_HEARTBEAT*¶
-SandboxLogWatchKind&
-"SANDBOX_LOG_WATCH_KIND_UNSPECIFIED  
-SANDBOX_LOG_WATCH_KIND_RESET
-SANDBOX_LOG_WATCH_KIND_LINE$
- SANDBOX_LOG_WATCH_KIND_HEARTBEAT2≈
-ConsoleServiceV
-	GetViewer#.cautem.control.v1.GetViewerRequest$.cautem.control.v1.GetViewerResponse}
-GetConsoleCapabilities0.cautem.control.v1.GetConsoleCapabilitiesRequest1.cautem.control.v1.GetConsoleCapabilitiesResponse\
-GetOverview%.cautem.control.v1.GetOverviewRequest&.cautem.control.v1.GetOverviewResponse2|
-GatewayAdminServicee
-GetGatewayInfo(.cautem.control.v1.GetGatewayInfoRequest).cautem.control.v1.GetGatewayInfoResponse2Ö
-SandboxServiceb
-ListSandboxes'.cautem.control.v1.ListSandboxesRequest(.cautem.control.v1.ListSandboxesResponseY
-
-GetSandbox$.cautem.control.v1.GetSandboxRequest%.cautem.control.v1.GetSandboxResponseg
-WatchSandboxes(.cautem.control.v1.WatchSandboxesRequest).cautem.control.v1.WatchSandboxesResponse0e
-GetSandboxLogs(.cautem.control.v1.GetSandboxLogsRequest).cautem.control.v1.GetSandboxLogsResponsen
-AppendSandboxLogs+.cautem.control.v1.AppendSandboxLogsRequest,.cautem.control.v1.AppendSandboxLogsResponsem
-WatchSandboxLogs*.cautem.control.v1.WatchSandboxLogsRequest+.cautem.control.v1.WatchSandboxLogsResponse0b
-CreateSandbox'.cautem.control.v1.CreateSandboxRequest(.cautem.control.v1.CreateSandboxResponse_
-StartSandbox&.cautem.control.v1.StartSandboxRequest'.cautem.control.v1.StartSandboxResponse\
-StopSandbox%.cautem.control.v1.StopSandboxRequest&.cautem.control.v1.StopSandboxResponseb
-DeleteSandbox'.cautem.control.v1.DeleteSandboxRequest(.cautem.control.v1.DeleteSandboxResponse2˘
-ManagedSandboxServiceq
-SyncManagedSandbox,.cautem.control.v1.SyncManagedSandboxRequest-.cautem.control.v1.SyncManagedSandboxResponsen
-GetManagedSandbox+.cautem.control.v1.GetManagedSandboxRequest,.cautem.control.v1.GetManagedSandboxResponsew
-DeleteManagedSandbox..cautem.control.v1.DeleteManagedSandboxRequest/.cautem.control.v1.DeleteManagedSandboxResponseÉ
-IssueManagedSandboxToken2.cautem.control.v1.IssueManagedSandboxTokenRequest3.cautem.control.v1.IssueManagedSandboxTokenResponse2≈
-OperationsService_
-GetOperation&.cautem.control.v1.GetOperationRequest'.cautem.control.v1.GetOperationResponsee
-ListOperations(.cautem.control.v1.ListOperationsRequest).cautem.control.v1.ListOperationsResponseh
-ListAuditEvents).cautem.control.v1.ListAuditEventsRequest*.cautem.control.v1.ListAuditEventsResponse2ù
-CatalogService_
-ListServices&.cautem.control.v1.ListServicesRequest'.cautem.control.v1.ListServicesResponseb
-ListTemplates'.cautem.control.v1.ListTemplatesRequest(.cautem.control.v1.ListTemplatesResponsee
-ListWorkspaces(.cautem.control.v1.ListWorkspacesRequest).cautem.control.v1.ListWorkspacesResponse_
-GetWorkspace&.cautem.control.v1.GetWorkspaceRequest'.cautem.control.v1.GetWorkspaceResponse2Ò
-InferenceServicen
-GetInferenceRoute+.cautem.control.v1.GetInferenceRouteRequest,.cautem.control.v1.GetInferenceRouteResponsew
-UpdateInferenceRoute..cautem.control.v1.UpdateInferenceRouteRequest/.cautem.control.v1.UpdateInferenceRouteResponset
-ClearInferenceRoute-.cautem.control.v1.ClearInferenceRouteRequest..cautem.control.v1.ClearInferenceRouteResponse2º	
-PolicyServiceh
-GetGlobalPolicy).cautem.control.v1.GetGlobalPolicyRequest*.cautem.control.v1.GetGlobalPolicyResponseq
-UpdateGlobalPolicy,.cautem.control.v1.UpdateGlobalPolicyRequest-.cautem.control.v1.UpdateGlobalPolicyResponsek
-GetSandboxPolicy*.cautem.control.v1.GetSandboxPolicyRequest+.cautem.control.v1.GetSandboxPolicyResponset
-UpdateSandboxPolicy-.cautem.control.v1.UpdateSandboxPolicyRequest..cautem.control.v1.UpdateSandboxPolicyResponseâ
-ListSandboxPolicyRevisions4.cautem.control.v1.ListSandboxPolicyRevisionsRequest5.cautem.control.v1.ListSandboxPolicyRevisionsResponseÉ
-GetSandboxPolicyRevision2.cautem.control.v1.GetSandboxPolicyRevisionRequest3.cautem.control.v1.GetSandboxPolicyRevisionResponset
-ListPolicyProposals-.cautem.control.v1.ListPolicyProposalsRequest..cautem.control.v1.ListPolicyProposalsResponsen
-GetPolicyProposal+.cautem.control.v1.GetPolicyProposalRequest,.cautem.control.v1.GetPolicyProposalResponsez
-ApprovePolicyProposal/.cautem.control.v1.ApprovePolicyProposalRequest0.cautem.control.v1.ApprovePolicyProposalResponsew
-RejectPolicyProposal..cautem.control.v1.RejectPolicyProposalRequest/.cautem.control.v1.RejectPolicyProposalResponse2¯
-ProviderProfileServicew
-ListProviderProfiles..cautem.control.v1.ListProviderProfilesRequest/.cautem.control.v1.ListProviderProfilesResponseq
-GetProviderProfile,.cautem.control.v1.GetProviderProfileRequest-.cautem.control.v1.GetProviderProfileResponsez
-ImportProviderProfile/.cautem.control.v1.ImportProviderProfileRequest0.cautem.control.v1.ImportProviderProfileResponsez
-UpdateProviderProfile/.cautem.control.v1.UpdateProviderProfileRequest0.cautem.control.v1.UpdateProviderProfileResponsez
-DeleteProviderProfile/.cautem.control.v1.DeleteProviderProfileRequest0.cautem.control.v1.DeleteProviderProfileResponse2§
-ProviderCredentialServiceÜ
-UpdateProviderCredentials3.cautem.control.v1.UpdateProviderCredentialsRequest4.cautem.control.v1.UpdateProviderCredentialsResponseBFZDgithub.com/cautem/cautem-gateway/api/gen/cautem/control/v1;controlv1JÓ‹
-   
-
-  
-
- 
-
- [
-	
- [
-P
-  D ConsoleService provides safe, user-facing gateway summary methods.
-
-
-
- 
-V
-  	>I GetViewer returns the authenticated user without credentials or tokens.
-
-
-  	
-
-  	 
-
-  	+<
-Q
- eD GetConsoleCapabilities reports features available on this gateway.
-
-
- 
-
- :
-
- Ec
-K
- D> GetOverview returns an authorized summary for one workspace.
-
-
- 
-
- $
-
- /B
-T
- H GatewayAdminService exposes explicitly authorized gateway diagnostics.
-
-
-
-
-
- M
-
- 
-
- *
-
- 5K
-	
-   
-
-
- 
-
-
- &
-
-
-
-
- 
-
- 
-
- 	
-
- 
-
-
-
-
-
-	
-
-
-
-
-
-
-
-	
-
-
-
-3
-
-
-
-
-
-
-.
-
-12
-
-)
-
-
-
-
-
-
-$
-
-'(
-
-'
-
-
-
-	"
-
-%&
-
-!
-
-
-
-
-
- 
-
-
-
-
-
-	
-
-
-
- $
-
- 
-
- 
-
- "#
-
-	!!
-
-	!
-
-	!	
-
-	! 
-
-
-"
-
-
-"
-
-
-"
-
-
-"
-
-#"
-
-#
-
-#	
-
-#!
-
-$!
-
-$
-
-$	
-
-$ 
-
-%)
-
-%
-
-%#
-
-%&(
-	
-' B
-
-
-'
-
- '.
-
- '$
-
- '%)
-
- ',-
-
-'/@
-
-'/5
-
-'6;
-
-'>?
-L
-* B@ SandboxService provides user-facing sandbox inventory methods.
-
-
-
-*
-W
- ,JJ ListSandboxes returns a bounded page of one workspace's sandbox records.
-
-
- ,
-
- ,(
-
- ,3H
-K
-/A> GetSandbox returns one sandbox record visible to the caller.
-
-
-/
-
-/"
-
-/-?
-°
-3Tì WatchSandboxes begins with a full reset/snapshot and then sends changes.
- Reconnect by opening a new stream and replacing the prior client state.
-
-
-3
-
-3*
-
-35;
-
-3<R
-Y
-6ML GetSandboxLogs returns a bounded tail of one visible sandbox's log buffer.
-
-
-6
-
-6*
-
-65K
-]
-8VP Append bounded observations from an authorized user or matching sandbox token.
-
-
-8
-
-80
-
-8;T
-W
-;ZJ WatchSandboxLogs starts with a tail and then follows new buffered lines.
-
-
-;
-
-;.
-
-;9?
-
-;@X
-]
->JP These actions execute against the configured runtime, never the REST registry.
-
-
->
-
->(
-
->3H
-
-?G
-
-?
-
-?&
-
-?1E
-
-@D
-
-@
-
-@$
-
-@/B
-
-	AJ
-
-	A
-
-	A(
-
-	A3H
-û
-F Kë ManagedSandboxService records sandboxes whose runtime is controlled by the CLI.
- It never provisions or deletes the underlying compute runtime.
-
-
-
-F
-
- GY
-
- G
-
- G2
-
- G=W
-
-HV
-
-H
-
-H0
-
-H;T
-
-I_
-
-I
-
-I6
-
-IA]
-
-Jk
-
-J
-
-J>
-
-JIi
-	
-M K
-
-
-M 
-
- M#8
-
- M#)
-
- M*3
-
- M67
-
-M9I
-
-M9?
-
-M@D
-
-MGH
-
-
-N Y
-
-
-N!
-
- O
-
- O
-
- O	
-
- O
-
-P
-
-P
-
-P	
-
-P
-
-Q
-
-Q
-
-Q	
-
-Q
-
-R
-
-R
-
-R	
-
-R
-
-S
-
-S
-
-S	
-
-S
-
-T
-
-T
-
-T	
-
-T
-
-U!
-
-U
-
-U
-
-U 
-
-V
-
-V
-
-V	
-
-V
-
-W)
-
-W
-
-
-W
-
-W$
-
-W'(
-
-	X
-
-	X
-
-	X	
-
-	X
-
-
-[ e
-
-
-[!
-
- \
-
- \
-
- \	
-
- \
-
-]
-
-]
-
-]	
-
-]
-
-^
-
-^
-
-^	
-
-^
-
-_
-
-_
-
-_	
-
-_
-
-`
-
-`
-
-`	
-
-`
-
-a
-
-a
-
-a	
-
-a
-
-b!
-
-b
-
-b
-
-b 
-
-c
-
-c
-
-c	
-
-c
-
-d)
-
-d
-
-
-d
-
-d$
-
-d'(
-	
-f C
-
-
-f"
-
- f%A
-
- f%+
-
- f,<
-
- f?@
-	
-g N
-
-
-g#
-
- g&;
-
- g&,
-
- g-6
-
- g9:
-
-g<L
-
-g<B
-
-gCG
-
-gJK
-	
-h :
-
-
-h$
-
- h'8
-
- h'+
-
- h,3
-
- h67
-	
-	i R
-
-
-	i'
-
-	 i*?
-
-	 i*0
-
-	 i1:
-
-	 i=>
-
-	i@P
-
-	i@F
-
-	iGK
-
-	iNO
-	
-
-j >
-
-
-
-j(
-
-
- j+<
-
-
- j+1
-
-
- j27
-
-
- j:;
-
-
-l p
-
-
-l 
-
- m
-
- m
-
- m	
-
- m
-
-n
-
-n
-
-n	
-
-n
-
-o#
-
-o
-
-
-o
-
-o
-
-o!"
-
-
-q v
-
-
-q
-
- r
-
- r
-
- r
-
- r
-
-s
-
-s
-
-s	
-
-s
-
-t
-
-t
-
-t	
-
-t
-
-u
-
-u
-
-u	
-
-u
-	
-w :
-
-
-w!
-
- w$8
-
- w$*
-
- w+3
-
- w67
-W
-z ~K OperationsService lets a user reconcile a mutation after a lost response.
-
-
-
-z
-
- {G
-
- {
-
- {&
-
- {1E
-
-|M
-
-|
-
-|*
-
-|5K
-
-}P
-
-}
-
-},
-
-}7N
-W
-Å ÜI CatalogService exposes workspace-visible service and workload metadata.
-
-
-Å
-
- ÇG
-
- Ç
-
- Ç&
-
- Ç1E
-
-ÉJ
-
-É
-
-É(
-
-É3H
-
-ÑM
-
-Ñ
-
-Ñ*
-
-Ñ5K
-
-ÖG
-
-Ö
-
-Ö&
-
-Ö1E
-P
-â çB InferenceService manages the gateway-wide inference.local route.
-
-
-â
-
- äV
-
- ä
-
- ä0
-
- ä;T
-
-ã_
-
-ã
-
-ã6
-
-ãA]
-
-å\
-
-å
-
-å4
-
-å?Z
-
-
-è #
-
-è 
-
-ê ï
-
-ê!
-
- ë
-
- ë
-
- ë	
-
- ë
-
-í
-
-í
-
-í	
-
-í
-
-ì
-
-ì
-
-ì
-
-ì
-
-î
-
-î
-
-î	
-
-î
-
-ñ õ
-
-ñ#
-
- ó
-
- ó
-
- ó	
-
- ó
-
-ò
-
-ò
-
-ò	
-
-ò
-
-ô
-
-ô
-
-ô
-
-ô
-
-ö'
-
-ö
-
-ö	"
-
-ö%&
-
-ú û
-
-ú$
-
- ù
-
- ù
-
- ù	
-
- ù
-
-ü °
-
-ü"
-
- †'
-
- †
-
- †	"
-
- †%&
-
-¢ §
-
-¢#
-
- £
-
- £
-
- £
-
- £
-
-¶ ±
-
-¶
-
- ßP
-
- ß
-
- ß,
-
- ß7N
-
-®Y
-
-®
-
-®2
-
-®=W
-
-©S
-
-©
-
-©.
-
-©9Q
-
-™\
-
-™
-
-™4
-
-™?Z
-
-´q
-
-´ 
-
-´!B
-
-´Mo
-
-¨k
-
-¨
-
-¨>
-
-¨Ii
-
-≠\
-
-≠
-
-≠4
-
-≠?Z
-
-ÆV
-
-Æ
-
-Æ0
-
-Æ;T
-
-Øb
-
-Ø
-
-Ø8
-
-ØC`
-
-	∞_
-
-	∞
-
-	∞6
-
-	∞A]
-
-
-≥ !
-
-≥
-
-¥ ∑
-
-¥
-
- µ
-
- µ
-
- µ	
-
- µ
-
-∂
-
-∂
-
-∂	
-
-∂
-
-∏ º
-
-∏!
-
- π
-
- π
-
- π	
-
- π
-
-∫'
-
-∫
-
-∫	"
-
-∫%&
-
-ª
-
-ª
-
-ª
-
-ª
-
-Ω ø
-
-Ω"
-
- æ
-
- æ
-
- æ	
-
- æ
-
-¡ ∆
-
-¡
-
- ¬
-
- ¬
-
- ¬	
-
- ¬
-
-√
-
-√
-
-√	
-
-√
-V
-≈H "base" returns the editable layer; "full" returns the composed policy.
-
-
-≈
-
-≈	
-
-≈
-
-« À
-
-« 
-
- »
-
- »
-
- »	
-
- »
-
-…
-
-…
-
-…	
-
-…
-
- 
-
- 
-
- 	
-
- 
-
-Ã —
-
-Ã"
-
- Õ
-
- Õ
-
- Õ	
-
- Õ
-
-Œ
-
-Œ
-
-Œ	
-
-Œ
-
-œ
-
-œ
-
-œ	
-
-œ
-
-–&
-
-–
-
-–	!
-
-–$%
-
-“ ÷
-
-“#
-
- ”#
-
- ”
-
- ”	
-
- ”!"
-
-‘%
-
-‘
-
-‘	 
-
-‘#$
-
-’
-
-’
-
-’	
-
-’
-
-◊ ⁄
-
-◊)
-
- ÿ
-
- ÿ
-
- ÿ	
-
- ÿ
-
-Ÿ
-
-Ÿ
-
-Ÿ	
-
-Ÿ
-
-€ ›
-
-€*
-
- ‹/
-
- ‹
-
-
- ‹ 
-
- ‹!*
-
- ‹-.
-
-ﬁ ‚
-
-ﬁ'
-
- ﬂ
-
- ﬂ
-
- ﬂ	
-
- ﬂ
-
-‡
-
-‡
-
-‡	
-
-‡
-
-·
-
-·
-
-·	
-
-·
-
-„ Ê
-
-„(
-
- ‰
-
- ‰
-
- ‰	
-
- ‰
-
-Â%
-
-Â
-
-Â 
-
-Â#$
-
- Á Ï
-
- Á
-
-  Ë
-
-  Ë
-
-  Ë	
-
-  Ë
-
- È
-
- È
-
- È
-
- È
-
- Í
-
- Í
-
- Í	
-
- Í
-
- Î
-
- Î
-
- Î	
-
- Î
-ô
- ˆä ProviderProfileService preserves the full cautem profile document while
- keeping profile management inside the authenticated client API.
-
-
-
-
- Ò_
-
- Ò
-
- Ò6
-
- ÒA]
-
-ÚY
-
-Ú
-
-Ú2
-
-Ú=W
-
-Ûb
-
-Û
-
-Û8
-
-ÛC`
-
-Ùb
-
-Ù
-
-Ù8
-
-ÙC`
-
-ıb
-
-ı
-
-ı8
-
-ıC`
-’
-	˚ ˝∆ ProviderCredentialService handles cautem-only secret patch semantics.
- OpenShell Provider.Update replaces the full credential map, so partial
- updates stay behind this narrow authenticated method.
-
-
-	˚!
-
-	 ¸n
-
-	 ¸
-
-	 ¸ @
-
-	 ¸Kl
-
-!ˇ É
-
-!ˇ(
-
-! Ä
-
-! Ä
-
-! Ä	
-
-! Ä
-
-!Å
-
-!Å
-
-!Å	
-
-!Å
-
-!Ç&
-
-!Ç
-
-!Ç!
-
-!Ç$%
-
-"Ö á
-
-"Ö)
-
-" Ü#
-
-" Ü
-
-
-" Ü
-
-" Ü
-
-" Ü!"
-
-#â å
-
-#â#
-[
-# ãM Empty selects built-in and platform profiles; otherwise select a workspace.
-
-
-# ã
-
-# ã	
-
-# ã
-
-$é î
-
-$é
-
-$ è
-
-$ è
-
-$ è	
-
-$ è
-
-$ê
-
-$ê
-
-$ê	
-
-$ê
-
-$ë
-
-$ë
-
-$ë	
-
-$ë
-
-$í
-
-$í
-
-$í	
-
-$í
-
-$ì
-
-$ì
-
-$ì	
-
-$ì
-
-%ñ ò
-
-%ñ$
-
-% ó/
-
-% ó
-
-
-% ó!
-
-% ó"*
-
-% ó-.
-
-&ö ù
-
-&ö!
-
-& õ
-
-& õ
-
-& õ	
-
-& õ
-
-&ú
-
-&ú
-
-&ú	
-
-&ú
-
-'ü £
-
-'ü"
-
-' †
-
-' †
-
-' †	
-
-' †
-
-'°
-
-'°
-
-'°	
-
-'°
-
-'¢
-
-'¢
-
-'¢	
-
-'¢
-
-(• ©
-
-(•$
-
-( ¶
-
-( ¶
-
-( ¶	
-
-( ¶
-
-(ß
-
-(ß
-
-(ß	
-
-(ß
-
-(®
-
-(®
-
-(®	
-
-(®
-
-)´ ≠
-
-)´%
-
-) ¨
-
-) ¨
-
-) ¨	
-
-) ¨
-
-*Ø ¥
-
-*Ø$
-
-* ∞
-
-* ∞
-
-* ∞	
-
-* ∞
-
-*±
-
-*±
-
-*±	
-
-*±
-
-*≤'
-
-*≤
-
-*≤	"
-
-*≤%&
-
-*≥
-
-*≥
-
-*≥	
-
-*≥
-
-+∂ ∏
-
-+∂%
-
-+ ∑
-
-+ ∑
-
-+ ∑	
-
-+ ∑
-
-,∫ Ω
-
-,∫$
-
-, ª
-
-, ª
-
-, ª	
-
-, ª
-
-,º
-
-,º
-
-,º	
-
-,º
-
--ø ¡
-
--ø%
-
-- ¿
-
-- ¿
-
-- ¿
-
-- ¿
-
-
-.√ 
-
-.√
-
-/≈  
-
-/≈
-
-/ ∆
-
-/ ∆
-
-/ ∆	
-
-/ ∆
-
-/«
-
-/«
-
-
-/«
-
-/«
-
-/«
-
-/»
-
-/»
-
-
-/»
-
-/»
-
-/»
-
-/…
-
-/…
-
-/…	
-
-/…
-
-
-0Ã (
-
-0Ã%
-
-1Œ ”
-
-1Œ&
-P
-1 –'B These fields describe deployed features, not user authorization.
-
-
-1 –
-
-1 –"
-
-1 –%&
-
-1—#
-
-1—
-
-1—
-
-1—!"
-
-1“&
-
-1“
-
-
-1“
-
-1“!
-
-1“$%
-
-2’ ÿ
-
-2’
-4
-2 ◊& Empty selects the default workspace.
-
-
-2 ◊
-
-2 ◊	
-
-2 ◊
-
-3⁄ ‚
-
-3⁄
-
-3 €
-
-3 €
-
-3 €	
-
-3 €
-
-3‹
-
-3‹
-
-3‹	
-
-3‹
-
-3›
-
-3›
-
-3›	
-
-3›
-
-3ﬁ$
-
-3ﬁ
-
-3ﬁ	
-
-3ﬁ"#
-
-3ﬂ 
-
-3ﬂ
-
-3ﬂ
-
-3ﬂ
-F
-3·$8 False until runtime state is joined into the overview.
-
-
-3·
-
-3·
-
-3·"#
-
-4‰ Ô
-
-4‰
-X
-4 ÊJ Empty selects the default workspace. Cross-workspace lists are excluded.
-
-
-4 Ê
-
-4 Ê	
-
-4 Ê
-N
-4Ë@ Zero selects the server default. The server applies a maximum.
-
-
-4Ë
-
-4Ë	
-
-4Ë
-=
-4Í/ Opaque cursor returned by the preceding page.
-
-
-4Í
-
-4Í	
-
-4Í
-
-4Î
-
-4Î
-
-4Î	
-
-4Î
-
-4Ï
-
-4Ï
-
-4Ï	
-
-4Ï
-
-4Ì
-
-4Ì
-
-4Ì	
-
-4Ì
-
-4Ó!
-
-4Ó
-
-4Ó
-
-4Ó 
-
-5Ò Ù
-
-5Ò
-
-5 Ú(
-
-5 Ú
-
-
-5 Ú
-
-5 Ú#
-
-5 Ú&'
-
-5Û
-
-5Û
-
-5Û	
-
-5Û
-
-6ˆ ˙
-
-6ˆ
-4
-6 ¯& Empty selects the default workspace.
-
-
-6 ¯
-
-6 ¯	
-
-6 ¯
-
-6˘
-
-6˘
-
-6˘	
-
-6˘
-
-7¸ ˛
-
-7¸
-
-7 ˝
-
-7 ˝
-
-7 ˝
-
-7 ˝
-
-8Ä É
-
-8Ä
-4
-8 Ç& Empty selects the default workspace.
-
-
-8 Ç
-
-8 Ç	
-
-8 Ç
-
- Ö å
-
- Ö
-
-  Ü+
-
-  Ü&
-
-  Ü)*
-
- á%
-
- á 
-
- á#$
-
- à&
-
- à!
-
- à$%
-
- â&
-
- â!
-
- â$%
-
- ä&
-
- ä!
-
- ä$%
-
- ã)
-
- ã$
-
- ã'(
-
-9é ï
-
-9é
-
-9 è!
-
-9 è
-
-9 è
-
-9 è 
-Z
-9ëL Sequence numbers start at one for each stream and are not durable cursors.
-
-
-9ë
-
-9ë	
-
-9ë
-
-9í
-
-9í
-
-9í
-
-9í
-
-9ì
-
-9ì
-
-9ì	
-
-9ì
-
-9î 
-
-9î
-
-9î
-
-9î
-
-:ó ¢
-
-:ó
-
-: ò
-
-: ò
-
-: ò	
-
-: ò
-
-:ô
-
-:ô
-
-:ô	
-
-:ô
-I
-:õ; Zero selects 200 lines; the server caps requests at 1000.
-
-
-:õ
-
-:õ	
-
-:õ
-Y
-:ùK Return entries at or after this Unix timestamp. Zero disables the filter.
-
-
-:ù
-
-:ù
-
-:ù
-B
-:ü4 Exact source filter, such as "proxy" or "sandbox".
-
-
-:ü
-
-:ü	
-
-:ü
-Y
-:°K Level filter with the gateway log buffer's existing level matching rules.
-
-
-:°
-
-:°	
-
-:°
-
-;§ ®
-
-;§
-
-; •$
-
-; •
-
-
-; •
-
-; •
-
-; •"#
-V
-;ßH Latest buffered sequence; cursors are scoped to this in-memory buffer.
-
-
-;ß
-
-;ß	
-
-;ß
-
-<™ ∑
-
-<™
-
-< ´
-
-< ´
-
-< ´	
-
-< ´
-
-<¨
-
-<¨
-
-<¨	
-
-<¨
-I
-<Æ; Zero selects 200 lines; the server caps requests at 1000.
-
-
-<Æ
-
-<Æ	
-
-<Æ
-X
-<∞J Zero starts with a fresh tail. An expired or future cursor causes RESET.
-
-
-<∞
-
-<∞	
-
-<∞
-\
-<≤N Return only lines at or after this Unix timestamp. Zero disables the filter.
-
-
-<≤
-
-<≤
-
-<≤
--
-<¥ Optional exact source filter.
-
-
-<¥
-
-<¥	
-
-<¥
-R
-<∂D Optional level filter using the gateway's existing matching rules.
-
-
-<∂
-
-<∂	
-
-<∂
-
-π æ
-
-π
-
- ∫)
-
- ∫$
-
- ∫'(
-
-ª#
-
-ª
-
-ª!"
-
-º"
-
-º
-
-º !
-
-Ω'
-
-Ω"
-
-Ω%&
-
-=¿ ∆
-
-=¿ 
-
-= ¡
-
-= ¡
-
-= ¡
-
-= ¡
-
-=¬
-
-=¬
-
-=¬
-
-=¬
-U
-=ƒG Resume cursor at a reset or heartbeat. RESET precedes a bounded tail.
-
-
-=ƒ
-
-=ƒ	
-
-=ƒ
-
-=≈ 
-
-=≈
-
-=≈
-
-=≈
-±
->  —¢ Log text may contain application output. Only authorized workspace users may read it.
- Structured fields are omitted because they may carry credential material.
-
-
-> 
-
-> À
-
-> À
-
-> À	
-
-> À
-
->Ã
-
->Ã
-
->Ã
-
->Ã
-
->Õ
-
->Õ
-
->Õ	
-
->Õ
-
->Œ
-
->Œ
-
->Œ	
-
->Œ
-
->œ
-
->œ
-
->œ	
-
->œ
-
->–
-
->–
-
->–	
-
->–
-
-?” ﬁ
-
-?”
-
-? ‘
-
-? ‘
-
-? ‘	
-
-? ‘
-W
-?÷I Required, DNS label up to 19 bytes. This is a gateway-wide unique name.
-
-
-?÷
-
-?÷	
-
-?÷
-R
-?ÿD Choose either an image or an existing workspace workload template.
-
-
-?ÿ
-
-?ÿ	
-
-?ÿ
-
-?Ÿ$
-
-?Ÿ
-
-?Ÿ	
-
-?Ÿ"#
-
-?⁄
-
-?⁄
-
-
-?⁄
-
-?⁄
-
-?⁄
-J
-?‹< Required client-generated ID, reused verbatim for retries.
-
-
-?‹
-
-?‹	
-
-?‹
-
-?›!
-
-?›
-
-?›
-
-?› 
-
-@‡ Â
-
-@‡
-L
-@ ‚> Returned after the backend and registry transition complete.
-
-
-@ ‚
-
-@ ‚
-
-@ ‚
-
-@„
-
-@„
-
-@„
-
-@„
-
-@‰
-
-@‰
-
-@‰	
-
-@‰
-
-AÁ Ì
-
-AÁ
-
-A Ë
-
-A Ë
-
-A Ë	
-
-A Ë
-
-AÈ
-
-AÈ
-
-AÈ	
-
-AÈ
-P
-AÎ'B Required. Rejects a stale UI action before backend side effects.
-
-
-AÎ
-
-AÎ	"
-
-AÎ%&
-
-AÏ
-
-AÏ
-
-AÏ	
-
-AÏ
-
-BÔ Ù
-
-BÔ
-V
-B ÒH Returned only after the backend call and registry transition complete.
-
-
-B Ò
-
-B Ò
-
-B Ò
-
-BÚ
-
-BÚ
-
-BÚ
-
-BÚ
-
-BÛ
-
-BÛ
-
-BÛ	
-
-BÛ
-
-Cˆ ˚
-
-Cˆ
-
-C ˜
-
-C ˜
-
-C ˜	
-
-C ˜
-
-C¯
-
-C¯
-
-C¯	
-
-C¯
-
-C˘'
-
-C˘
-
-C˘	"
-
-C˘%&
-
-C˙
-
-C˙
-
-C˙	
-
-C˙
-
-D˝ Å
-
-D˝
-
-D ˛
-
-D ˛
-
-D ˛
-
-D ˛
-
-Dˇ
-
-Dˇ
-
-Dˇ
-
-Dˇ
-
-DÄ
-
-DÄ
-
-DÄ	
-
-DÄ
-
-EÉ à
-
-EÉ
-
-E Ñ
-
-E Ñ
-
-E Ñ	
-
-E Ñ
-
-EÖ
-
-EÖ
-
-EÖ	
-
-EÖ
-
-EÜ'
-
-EÜ
-
-EÜ	"
-
-EÜ%&
-
-Eá
-
-Eá
-
-Eá	
-
-Eá
-
-Fä é
-
-Fä
-J
-F å< True only after the backend and registry removal complete.
-
-
-F å
-
-F å
-
-F å
-
-Fç
-
-Fç
-
-Fç	
-
-Fç
-
-Gê î
-
-Gê
-
-G ë
-
-G ë
-
-G ë	
-
-G ë
-Z
-GìL Query by the client-generated ID even when the mutation response was lost.
-
-
-Gì
-
-Gì	
-
-Gì
-
-Hñ ò
-
-Hñ
-
-H ó!
-
-H ó
-
-H ó
-
-H ó 
-
-Iö û
-
-Iö
-
-I õ
-
-I õ
-
-I õ	
-
-I õ
-
-Iú
-
-Iú
-
-Iú	
-
-Iú
-
-Iù
-
-Iù
-
-Iù	
-
-Iù
-
-J† £
-
-J†
-
-J °+
-
-J °
-
-
-J °
-
-J °&
-
-J °)*
-
-J¢
-
-J¢
-
-J¢	
-
-J¢
-
-K• ©
-
-K•
-
-K ¶
-
-K ¶
-
-K ¶	
-
-K ¶
-
-Kß
-
-Kß
-
-Kß	
-
-Kß
-
-K®
-
-K®
-
-K®	
-
-K®
-
-L´ Æ
-
-L´
-
-L ¨(
-
-L ¨
-
-
-L ¨
-
-L ¨#
-
-L ¨&'
-
-L≠
-
-L≠
-
-L≠	
-
-L≠
-
-M∞ ø
-
-M∞
-
-M ±
-
-M ±
-
-M ±	
-
-M ±
-
-M≤
-
-M≤
-
-M≤	
-
-M≤
-
-M≥
-
-M≥
-
-M≥	
-
-M≥
-
-M¥
-
-M¥
-
-M¥	
-
-M¥
-
-Mµ
-
-Mµ
-
-Mµ	
-
-Mµ
-
-M∂
-
-M∂
-
-M∂	
-
-M∂
-
-M∑
-
-M∑
-
-M∑	
-
-M∑
-9
-Mπ+ running, succeeded, failed, or uncertain.
-
-
-Mπ
-
-Mπ	
-
-Mπ
-
-M∫
-
-M∫
-
-M∫	
-
-M∫
-
-M	ª%
-
-M	ª
-
-M	ª	
-
-M	ª"$
-
-M
-º&
-
-M
-º
-
-M
-º	 
-
-M
-º#%
-
-MΩ 
-
-MΩ
-
-MΩ
-
-MΩ
-
-Mæ 
-
-Mæ
-
-Mæ
-
-Mæ
-
-N¡  
-
-N¡
-
-N ¬
-
-N ¬
-
-N ¬	
-
-N ¬
-
-N√
-
-N√
-
-N√
-
-N√
-
-Nƒ
-
-Nƒ
-
-Nƒ	
-
-Nƒ
-
-N≈
-
-N≈
-
-N≈	
-
-N≈
-
-N∆
-
-N∆
-
-N∆	
-
-N∆
-
-N«
-
-N«
-
-N«	
-
-N«
-
-N»
-
-N»
-
-N»	
-
-N»
-
-N…
-
-N…
-
-N…	
-
-N…
-_
-OÕ ŸQ SandboxSummary intentionally excludes spec JSON, settings, secrets, and tokens.
-
-
-OÕ
-
-O Œ
-
-O Œ
-
-O Œ	
-
-O Œ
-
-Oœ
-
-Oœ
-
-Oœ	
-
-Oœ
-
-O–
-
-O–
-
-O–	
-
-O–
-
-O—
-
-O—
-
-O—	
-
-O—
-
-O“
-
-O“
-
-O“	
-
-O“
-
-O”
-
-O”
-
-O”
-
-O”
-R
-O’$D False until the runtime's observed state is joined into this view.
-
-
-O’
-
-O’
-
-O’"#
-
-O÷
-
-O÷
-
-O÷	
-
-O÷
-
-O◊
-
-O◊
-
-O◊	
-
-O◊
-
-O	ÿ"
-
-O	ÿ
-
-O	ÿ
-
-O	ÿ!
-
-P€ ›
-
-P€
-
-P ‹
-
-P ‹
-
-P ‹	
-
-P ‹
-
-Qﬂ ·
-
-Qﬂ
-
-Q ‡'
-
-Q ‡
-
-
-Q ‡
-
-Q ‡"
-
-Q ‡%&
-
-R„ Ë
-
-R„
-
-R ‰
-
-R ‰
-
-R ‰	
-
-R ‰
-
-RÂ
-
-RÂ
-
-RÂ	
-
-RÂ
-
-RÊ
-
-RÊ
-
-RÊ	
-
-RÊ
-
-RÁ
-
-RÁ
-
-RÁ
-
-RÁ
-
-SÍ Ï
-
-SÍ
-
-S Î
-
-S Î
-
-S Î	
-
-S Î
-
-TÓ 
-
-TÓ
-
-T Ô)
-
-T Ô
-
-
-T Ô
-
-T Ô$
-
-T Ô'(
-
-UÚ ˘
-
-UÚ
-
-U Û
-
-U Û
-
-U Û	
-
-U Û
-
-UÙ
-
-UÙ
-
-UÙ	
-
-UÙ
-
-Uı
-
-Uı
-
-Uı	
-
-Uı
-
-Uˆ 
-
-Uˆ
-
-
-Uˆ
-
-Uˆ
-
-Uˆ
-
-U˜
-
-U˜
-
-U˜	
-
-U˜
-
-U¯
-
-U¯
-
-U¯
-
-U¯
-
-
-V˚  
-
-V˚
-
-W˝ ˇ
-
-W˝
-
-W ˛+
-
-W ˛
-
-
-W ˛
-
-W ˛&
-
-W ˛)*
-
-XÅ É
-
-XÅ
-
-X Ç
-
-X Ç
-
-X Ç	
-
-X Ç
-
-YÖ á
-
-YÖ
-
-Y Ü!
-
-Y Ü
-
-Y Ü
-
-Y Ü 
-
-Zâ è
-
-Zâ
-
-Z ä
-
-Z ä
-
-Z ä	
-
-Z ä
-
-Zã
-
-Zã
-
-Zã	
-
-Zã
-
-Zå
-
-Zå
-
-Zå	
-
-Zå
-
-Zç
-
-Zç
-
-Zç	
-
-Zç
-
-Zé
-
-Zé
-
-Zé
-
-Zé
-
-[ë ó
-
-[ë"
-
-[ í
-
-[ í
-
-[ í	
-
-[ í
-
-[ì
-
-[ì
-
-[ì	
-
-[ì
-
-[î
-
-[î
-
-[î	
-
-[î
-
-[ï
-
-[ï
-
-[ï	
-
-[ï
-
-[ñ
-
-[ñ
-
-[ñ	
-
-[ñ
-
-\ô ú
-
-\ô#
-
-\ ö/
-
-\ ö
-
-
-\ ö 
-
-\ ö!*
-
-\ ö-.
-
-\õ
-
-\õ
-
-\õ	
-
-\õ
-
-]û °
-
-]û 
-
-] ü
-
-] ü
-
-] ü	
-
-] ü
-
-]†
-
-]†
-
-]†	
-
-]†
-
-^£ •
-
-^£!
-
-^ §%
-
-^ §
-
-^ § 
-
-^ §#$
-
-_ß ©
-
-_ß%
-
-_ ®%
-
-_ ®
-
-_ ® 
-
-_ ®#$
-
-`´ ≠
-
-`´$
-
-` ¨%
-
-` ¨
-
-` ¨ 
-
-` ¨#$
-
-aØ ≤
-
-aØ$
-
-a ∞
-
-a ∞
-
-a ∞	
-
-a ∞
-
-a±
-
-a±
-
-a±	
-
-a±
-
-b¥ ∏
-
-b¥#
-
-b µ
-
-b µ
-
-b µ	
-
-b µ
-
-b∂
-
-b∂
-
-b∂	
-
-b∂
-
-b∑
-
-b∑
-
-b∑	
-
-b∑
-
-c∫  
-
-c∫
-
-c ª
-
-c ª
-
-c ª	
-
-c ª
-
-cº
-
-cº
-
-cº	
-
-cº
-
-cΩ
-
-cΩ
-
-cΩ	
-
-cΩ
-
-cæ
-
-cæ
-
-cæ	
-
-cæ
-
-cø
-
-cø
-
-cø	
-
-cø
-
-c¿
-
-c¿
-
-c¿	
-
-c¿
-
-c¡
-
-c¡
-
-c¡	
-
-c¡
-
-c¬
-
-c¬
-
-c¬	
-
-c¬
-
-c√
-
-c√
-
-c√
-
-c√
-
-c	ƒ
-
-c	ƒ
-
-
-c	ƒ
-
-c	ƒ
-
-c	ƒ
-
-c
-≈
-
-c
-≈
-
-c
-≈	
-
-c
-≈
-
-c∆ 
-
-c∆
-
-c∆	
-
-c∆
-
-c«
-
-c«
-
-c«
-
-c«
-
-c» 
-
-c»
-
-c»
-
-c»
-
-c… 
-
-c…
-
-c…
-
-c…bproto3“ˆ  

@@ -16,10 +16,10 @@ import (
 
 	"connectrpc.com/connect"
 	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	controlv1 "github.com/cautem/cautem-gateway/api/gen/cautem/control/v1"
-	"github.com/cautem/cautem-gateway/api/gen/cautem/control/v1/controlv1connect"
 	"github.com/cautem/cautem-gateway/internal/httpapi"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
+	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
+	"github.com/cautem/cautem-proto/gen/go/cautem/control/v1/controlv1connect"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -37,6 +37,7 @@ type testHTTPServer struct{ URL string }
 
 func newTestGateway(t *testing.T, opt httpapi.Options) *testGateway {
 	t.Helper()
+	opt.DataDir = filepath.Join(t.TempDir(), "gw")
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -45,10 +46,20 @@ func newTestGateway(t *testing.T, opt httpapi.Options) *testGateway {
 	_ = listener.Close()
 	opt.Listen = addr
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	opt.DataDir = filepath.Join(t.TempDir(), "gw")
 	server := testHTTPServer{URL: "http://" + addr}
-	go func() { _ = httpapi.Serve(ctx, opt) }()
+	serveDone := make(chan struct{})
+	go func() {
+		defer close(serveDone)
+		_ = httpapi.Serve(ctx, opt)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-serveDone:
+		case <-time.After(15 * time.Second):
+			t.Error("gateway server did not stop before test cleanup")
+		}
+	})
 	readyBy := time.Now().Add(5 * time.Second)
 	for {
 		response, probeErr := http.Get(server.URL + "/healthz")
