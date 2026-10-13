@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"io"
 	"testing"
 
@@ -12,21 +13,42 @@ import (
 )
 
 type recoveryEngine struct {
-	rows    []driver.Info
-	deleted []core.ID
+	rows      []driver.Info
+	deleted   []core.ID
+	stopped   []core.ID
+	deleteErr error
 }
 
 func (e *recoveryEngine) Create(context.Context, driver.Spec) (driver.Handle, error) {
 	return driver.Handle{}, nil
 }
 func (e *recoveryEngine) Start(context.Context, core.ID) error { return nil }
-func (e *recoveryEngine) Stop(context.Context, core.ID) error  { return nil }
+func (e *recoveryEngine) Stop(_ context.Context, id core.ID) error {
+	e.stopped = append(e.stopped, id)
+	return nil
+}
 func (e *recoveryEngine) Exec(context.Context, core.ID, driver.ExecRequest) (driver.ExecResult, error) {
 	return driver.ExecResult{}, nil
 }
 func (e *recoveryEngine) Delete(_ context.Context, id core.ID) error {
 	e.deleted = append(e.deleted, id)
-	return nil
+	return e.deleteErr
+}
+
+func TestReconcileRuntimeStateRetriesFailedOrphanCleanup(t *testing.T) {
+	st, err := store.Open(t.TempDir(), "recovery-retry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := &recoveryEngine{rows: []driver.Info{{ID: "runtime-orphan", Name: "orphan"}}, deleteErr: errors.New("daemon unavailable")}
+	registry := &computeRegistry{configured: map[string]map[string]any{"docker": {}}, engines: map[string]driver.Engine{"docker": engine}}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	reconcileRuntimeState(context.Background(), st, registry, log)
+	reconcileRuntimeState(context.Background(), st, registry, log)
+	if len(engine.stopped) != 2 || len(engine.deleted) != 2 {
+		t.Fatalf("orphan cleanup attempts: stopped=%v deleted=%v; want retry on next reconciliation", engine.stopped, engine.deleted)
+	}
 }
 func (e *recoveryEngine) List(context.Context) ([]driver.Info, error) {
 	return append([]driver.Info(nil), e.rows...), nil

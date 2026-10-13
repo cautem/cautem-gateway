@@ -73,6 +73,14 @@ type AuthOptions struct {
 // publicRoutes never require a bearer. /v1/ssh/connect authenticates with the
 // SSH session token inside its handler; /v1/auth/login is loopback-only.
 func isPublicRoute(path string) bool {
+	if isBrowserTerminalPath(path) {
+		// The terminal authenticates the WebSocket's first frame before exec.
+		return true
+	}
+	if isBrowserServiceProxyPath(path) {
+		// The service proxy authenticates an opaque, path-scoped cookie session.
+		return true
+	}
 	switch path {
 	case "/healthz", "/v1/healthz", "/v1/auth/oidc", "/v1/auth/login", relayproto.PathSSHConnect,
 		"/openshell.v1.OpenShell/Health", "/grpc.health.v1.Health/Check":
@@ -281,6 +289,9 @@ func oidcRouteAuthorized(principal Principal, method string, target *url.URL, se
 	admin := containsString(principal.Roles, settings.AdminRole)
 	user := containsString(principal.Roles, settings.UserRole) || admin
 	adminOnly := method != http.MethodGet && method != http.MethodHead
+	if isBrowserServiceSessionPath(target.Path) {
+		adminOnly = false
+	}
 	// Workspace member writes are authorized by workspace membership in the
 	// RPC handler; requiring the gateway-wide admin role here would over-restrict
 	// OpenShell's workspace-admin grant.
@@ -309,6 +320,8 @@ func oidcRouteAuthorized(principal Principal, method string, target *url.URL, se
 func oidcRouteScope(method, path string) string {
 	read := method == http.MethodGet || method == http.MethodHead
 	switch {
+	case isBrowserServiceSessionPath(path):
+		return "sandbox:read"
 	case path == "/v1/workspaces/read":
 		return "workspace:read"
 	case path == "/v1/workspaces/write":
@@ -375,6 +388,10 @@ func sandboxRouteAllowed(method string, u *url.URL, sandbox string) bool {
 // isLoopbackRequest is true only for direct loopback peers (no proxy hops)
 // addressed by a loopback Host, which defeats DNS-rebinding pages.
 func isLoopbackRequest(r *http.Request) bool {
+	return isDirectLoopbackPeer(r) && isLoopbackHostHeader(r.Host)
+}
+
+func isDirectLoopbackPeer(r *http.Request) bool {
 	if r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("Forwarded") != "" {
 		return false
 	}
@@ -386,7 +403,7 @@ func isLoopbackRequest(r *http.Request) bool {
 	if ip == nil || !ip.IsLoopback() {
 		return false
 	}
-	return isLoopbackHostHeader(r.Host)
+	return true
 }
 
 func isLoopbackHostHeader(h string) bool {

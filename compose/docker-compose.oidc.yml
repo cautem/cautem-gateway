@@ -14,6 +14,10 @@ services:
       CAUTEM_OIDC_CLIENT_ID: ${CAUTEM_OIDC_CLIENT_ID:-cautem-cli}
       CAUTEM_OIDC_ALLOW_INSECURE_HTTP: ${CAUTEM_OIDC_ALLOW_INSECURE_HTTP:-true}
 
+  cautem-console:
+    environment:
+      CAUTEM_GATEWAY_UPSTREAM: ${CAUTEM_GATEWAY_UPSTREAM:-host.docker.internal:${CAUTEM_GATEWAY_PORT:-7443}}
+
   dex:
     network_mode: host
     networks: !reset null

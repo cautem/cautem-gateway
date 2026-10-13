@@ -144,7 +144,7 @@ func TestPendingGlobalPolicySurvivesRestartAndCanBeAcknowledged(t *testing.T) {
 		t.Fatalf("persisted revision=%+v error=%v", latest, err)
 	}
 	restarted := &openShellRPC{runtime: &grpcRuntime{st: reopened, relay: sshrelay.NewHub(), opt: Options{DataDir: runtimeData}}}
-	if err := restarted.syncSandboxRuntimePolicy("demo", sandbox.PolicyRev); err != nil {
+	if err := restarted.syncSandboxRuntimePolicy(context.Background(), "demo", sandbox.PolicyRev); err != nil {
 		t.Fatal(err)
 	}
 	if err := reopened.ReportPolicyStatus("demo", sandbox.PolicyRev, store.PolicyStatusLoaded, "", time.Now().UTC()); err != nil {

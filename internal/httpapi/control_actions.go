@@ -10,8 +10,8 @@ import (
 	"connectrpc.com/connect"
 	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
-	controlv1 "github.com/cautem/cautem-gateway/api/gen/cautem/control/v1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
+	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -57,6 +57,7 @@ func (a *controlAPI) beginSandboxOperation(ctx context.Context, action, workspac
 }
 
 func (a *controlAPI) finishSandboxOperation(ctx context.Context, operation store.Operation, actionErr error) error {
+	a.invalidateRuntimeStatus()
 	state, code := store.OperationSucceeded, "ok"
 	if actionErr != nil {
 		state, code = store.OperationFailed, connect.CodeOf(actionErr).String()
@@ -190,7 +191,8 @@ func (a *controlAPI) CreateSandbox(ctx context.Context, req *connect.Request[con
 	if !ok {
 		return nil, connect.NewError(connect.CodeInternal, errors.New("sandbox state unavailable after create"))
 	}
-	return connect.NewResponse(&controlv1.CreateSandboxResponse{Sandbox: sandboxSummary(record), Completed: true, OperationId: operation.ID}), nil
+	a.invalidateRuntimeStatus()
+	return connect.NewResponse(&controlv1.CreateSandboxResponse{Sandbox: a.sandboxSummary(ctx, record), Completed: true, OperationId: operation.ID}), nil
 }
 
 func (a *controlAPI) StartSandbox(ctx context.Context, req *connect.Request[controlv1.StartSandboxRequest]) (response *connect.Response[controlv1.StartSandboxResponse], resultErr error) {
@@ -227,7 +229,8 @@ func (a *controlAPI) StartSandbox(ctx context.Context, req *connect.Request[cont
 	if !ok {
 		return nil, connect.NewError(connect.CodeInternal, errors.New("sandbox state unavailable after start"))
 	}
-	return connect.NewResponse(&controlv1.StartSandboxResponse{Sandbox: sandboxSummary(record), Completed: true, OperationId: operation.ID}), nil
+	a.invalidateRuntimeStatus()
+	return connect.NewResponse(&controlv1.StartSandboxResponse{Sandbox: a.sandboxSummary(ctx, record), Completed: true, OperationId: operation.ID}), nil
 }
 
 func (a *controlAPI) StopSandbox(ctx context.Context, req *connect.Request[controlv1.StopSandboxRequest]) (response *connect.Response[controlv1.StopSandboxResponse], resultErr error) {
@@ -264,7 +267,8 @@ func (a *controlAPI) StopSandbox(ctx context.Context, req *connect.Request[contr
 	if !ok {
 		return nil, connect.NewError(connect.CodeInternal, errors.New("sandbox state unavailable after stop"))
 	}
-	return connect.NewResponse(&controlv1.StopSandboxResponse{Sandbox: sandboxSummary(record), Completed: true, OperationId: operation.ID}), nil
+	a.invalidateRuntimeStatus()
+	return connect.NewResponse(&controlv1.StopSandboxResponse{Sandbox: a.sandboxSummary(ctx, record), Completed: true, OperationId: operation.ID}), nil
 }
 
 func (a *controlAPI) DeleteSandbox(ctx context.Context, req *connect.Request[controlv1.DeleteSandboxRequest]) (response *connect.Response[controlv1.DeleteSandboxResponse], resultErr error) {

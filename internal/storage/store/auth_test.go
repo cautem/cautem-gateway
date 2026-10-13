@@ -118,6 +118,70 @@ func TestSandboxTokenRefreshSurvivesGatewayReopen(t *testing.T) {
 	}
 }
 
+func TestRevokeSandboxTokenInvalidatesCurrentAndPreviousBearer(t *testing.T) {
+	st := openTest(t)
+	previous, err := st.IssueSandboxToken("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := st.IssueSandboxToken("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RevokeSandboxToken("demo"); err != nil {
+		t.Fatalf("RevokeSandboxToken() error = %v", err)
+	}
+	for _, token := range []string{previous, current} {
+		if _, ok := st.SandboxForToken(token); ok {
+			t.Fatal("revoked sandbox token remained valid")
+		}
+		if _, ok := st.SandboxForRefreshToken(token); ok {
+			t.Fatal("revoked sandbox token remained refreshable")
+		}
+	}
+	if err := st.RevokeSandboxToken("demo"); err != nil {
+		t.Fatalf("second RevokeSandboxToken() error = %v", err)
+	}
+	if _, err := st.IssueSandboxToken("demo"); err != nil {
+		t.Fatalf("IssueSandboxToken() after revocation error = %v", err)
+	}
+}
+
+func TestSandboxBearerAuthFailsClosedDuringStopAndAfterStop(t *testing.T) {
+	st := openTest(t)
+	record, _ := st.GetSandbox("demo")
+	record.Status = "running"
+	if err := st.UpsertSandbox(record); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := st.IssueSandboxToken("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := st.IssueSandboxToken("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []string{"stopping", "stopped"} {
+		record, _ = st.GetSandbox("demo")
+		record.Status = status
+		if err := st.UpsertSandbox(record); err != nil {
+			t.Fatal(err)
+		}
+		for _, token := range []string{previous, current} {
+			if _, ok := st.SandboxForToken(token); ok {
+				t.Fatalf("sandbox bearer authenticated while status=%q", status)
+			}
+			if _, ok := st.SandboxForRefreshToken(token); ok {
+				t.Fatalf("sandbox bearer remained refreshable while status=%q", status)
+			}
+			if _, ok := st.RefreshSandboxToken("demo", token); ok {
+				t.Fatalf("RefreshSandboxToken accepted bearer while status=%q", status)
+			}
+		}
+	}
+}
+
 func TestSSHSessionLifecycle(t *testing.T) {
 	st := openTest(t)
 	if err := st.UpsertSandbox(Sandbox{Name: "other"}); err != nil {

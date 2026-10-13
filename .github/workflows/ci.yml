@@ -32,6 +32,12 @@ jobs:
         with:
           path: cautem-gateway
           fetch-depth: 0
+      - name: Checkout cautem-proto
+        uses: actions/checkout@v4
+        with:
+          repository: cautem/cautem-proto
+          path: cautem-proto
+          ref: 35501bd8a5e06cf5fe1a948cec2cabb86827b8d5
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -40,46 +46,48 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27.2"
-          cache-dependency-path: cautem-gateway/go.sum
+          cache-dependency-path: |
+            cautem-gateway/go.sum
+            cautem-proto/go.sum
       - name: Install pinned Buf CLI
         run: go install github.com/bufbuild/buf/cmd/buf@v1.66.0
       - name: Lint and regenerate Control API
+        working-directory: cautem-proto
         run: |
           buf lint
-          buf breaking --against api/schema/control-5e20fa2f6943.binpb
-          buf generate
-          if [[ -n "$(git status --porcelain -- api/gen)" ]]; then
+          buf breaking --against schema/control-5e20fa2f6943.binpb
+          buf generate --template buf.gen.yaml
+          if [[ -n "$(git status --porcelain -- gen/go)" ]]; then
             echo "generated Control API code is stale"
-            git status --short -- api/gen
+            git status --short -- gen/go
             exit 1
           fi
       - name: Build generated TypeScript client
         run: |
-          npm ci --prefix api/typescript
-          npm run check --prefix api/typescript
-          if [[ -n "$(git status --porcelain -- api/typescript/src/gen)" ]]; then
+          npm ci --prefix ../cautem-proto/typescript
+          npm run check --prefix ../cautem-proto/typescript
+          if [[ -n "$(git -C ../cautem-proto status --porcelain -- typescript/src/gen)" ]]; then
             echo "generated TypeScript client is stale"
-            git status --short -- api/typescript/src/gen
+            git -C ../cautem-proto status --short -- typescript/src/gen
             exit 1
           fi
       - name: Build management UI
         run: |
           npm ci --prefix ui
           npm run build --prefix ui
-      - name: Check Control API compatibility
-        if: github.event_name == 'pull_request'
+      - name: Install browser for UI smoke tests
+        working-directory: cautem-gateway/ui
+        run: npx playwright install --with-deps chromium webkit
+      - name: Test browser console
+        run: npm run test:e2e --prefix ui
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.3.0
+      - name: Validate Kubernetes deployment chart
         run: |
-          git fetch origin main:refs/heads/main
-          if git cat-file -e main:buf.yaml 2>/dev/null; then
-            if git cat-file -e main:api/proto/cauteum/control/v1/console.proto 2>/dev/null && \
-              git cat-file -e HEAD:api/proto/cautem/control/v1/console.proto 2>/dev/null && \
-              ! git cat-file -e HEAD:api/proto/cauteum/control/v1/console.proto 2>/dev/null; then
-              echo "Skipping the old namespace compatibility check for the intentional cautem contract migration."
-            else
-              buf breaking --against '.git#branch=main'
-            fi
-          fi
-
+          helm lint packaging/helm/cautem
+          helm template shared-server packaging/helm/cautem \
+            --set database.existingSecret=shared-postgres-credentials >/dev/null
   formatting:
     name: Formatting
     runs-on: ubuntu-latest
@@ -93,47 +101,54 @@ jobs:
         with:
           path: cautem-gateway
 
+      - name: Checkout cautem-proto
+        uses: actions/checkout@v4
+        with:
+          repository: cautem/cautem-proto
+          path: cautem-proto
+          ref: 35501bd8a5e06cf5fe1a948cec2cabb86827b8d5
+
       - name: Checkout cautem-cli
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-cli
           path: cautem-cli
-          ref: 3f79f643568668def6d7ddd2229bf4ade0a6910d
+          ref: 9ac0a69c307dec1a07bd774cb0a1e10857e26643
 
       - name: Checkout cautem-core
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-core
           path: cautem-core
-          ref: 91a83675f9cf80887fdc652b6031ee863bbd7f55
+          ref: 3e8578194f94048a5c2619d2e1411eac546de985
 
       - name: Checkout cautem-providers
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-providers
           path: cautem-providers
-          ref: 13b51fcd238cb1a0c4c199ece23cff065a4fcc81
+          ref: 82bc5955ced022937e1f84912197d7688d7f7551
 
       - name: Checkout cautem-runtime
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-runtime
           path: cautem-runtime
-          ref: eab70d72c3871fa6f7135408edec1e4cf6b3325f
+          ref: 6652bfadef356683b43d4013d675721b9787d84f
 
       - name: Checkout cautem-driver
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-driver
           path: cautem-driver
-          ref: a19243085df51ab403f7de3df5d10892d91e22f3
+          ref: 89a88e2fe3782144e6f41991e1b7aea56c1d516c
 
       - name: Checkout cautem-proxy
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-proxy
           path: cautem-proxy
-          ref: 0d2705ef5361109fe3979059574111ca03c4d90a
+          ref: dda81bc1d7cf13e403ccbdbd67717d08eb69f98a
 
       - name: Checkout slogx
         uses: actions/checkout@v4
@@ -163,6 +178,7 @@ jobs:
                 echo "  github.com/cautem/${d} v0.1.0-alpha.2 => ./$d"
                 echo "  github.com/cautem/${d} v0.1.0-beta.1 => ./$d"
                 echo "  github.com/cautem/${d} v0.1.0-beta.2 => ./$d"
+                echo "  github.com/cautem/${d} v0.1.0 => ./$d"
                 echo "  github.com/cautem/${d} v0.1.6 => ./$d"
               fi
             done
@@ -208,47 +224,54 @@ jobs:
         with:
           path: cautem-gateway
 
+      - name: Checkout cautem-proto
+        uses: actions/checkout@v4
+        with:
+          repository: cautem/cautem-proto
+          path: cautem-proto
+          ref: 35501bd8a5e06cf5fe1a948cec2cabb86827b8d5
+
       - name: Checkout cautem-cli
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-cli
           path: cautem-cli
-          ref: 3f79f643568668def6d7ddd2229bf4ade0a6910d
+          ref: 9ac0a69c307dec1a07bd774cb0a1e10857e26643
 
       - name: Checkout cautem-core
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-core
           path: cautem-core
-          ref: 91a83675f9cf80887fdc652b6031ee863bbd7f55
+          ref: 3e8578194f94048a5c2619d2e1411eac546de985
 
       - name: Checkout cautem-providers
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-providers
           path: cautem-providers
-          ref: 13b51fcd238cb1a0c4c199ece23cff065a4fcc81
+          ref: 82bc5955ced022937e1f84912197d7688d7f7551
 
       - name: Checkout cautem-runtime
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-runtime
           path: cautem-runtime
-          ref: eab70d72c3871fa6f7135408edec1e4cf6b3325f
+          ref: 6652bfadef356683b43d4013d675721b9787d84f
 
       - name: Checkout cautem-driver
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-driver
           path: cautem-driver
-          ref: a19243085df51ab403f7de3df5d10892d91e22f3
+          ref: 89a88e2fe3782144e6f41991e1b7aea56c1d516c
 
       - name: Checkout cautem-proxy
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-proxy
           path: cautem-proxy
-          ref: 0d2705ef5361109fe3979059574111ca03c4d90a
+          ref: dda81bc1d7cf13e403ccbdbd67717d08eb69f98a
 
       - name: Checkout slogx
         uses: actions/checkout@v4
@@ -323,47 +346,54 @@ jobs:
         with:
           path: cautem-gateway
 
+      - name: Checkout cautem-proto
+        uses: actions/checkout@v4
+        with:
+          repository: cautem/cautem-proto
+          path: cautem-proto
+          ref: 35501bd8a5e06cf5fe1a948cec2cabb86827b8d5
+
       - name: Checkout cautem-cli
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-cli
           path: cautem-cli
-          ref: 3f79f643568668def6d7ddd2229bf4ade0a6910d
+          ref: 9ac0a69c307dec1a07bd774cb0a1e10857e26643
 
       - name: Checkout cautem-core
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-core
           path: cautem-core
-          ref: 91a83675f9cf80887fdc652b6031ee863bbd7f55
+          ref: 3e8578194f94048a5c2619d2e1411eac546de985
 
       - name: Checkout cautem-providers
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-providers
           path: cautem-providers
-          ref: 13b51fcd238cb1a0c4c199ece23cff065a4fcc81
+          ref: 82bc5955ced022937e1f84912197d7688d7f7551
 
       - name: Checkout cautem-runtime
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-runtime
           path: cautem-runtime
-          ref: eab70d72c3871fa6f7135408edec1e4cf6b3325f
+          ref: 6652bfadef356683b43d4013d675721b9787d84f
 
       - name: Checkout cautem-driver
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-driver
           path: cautem-driver
-          ref: a19243085df51ab403f7de3df5d10892d91e22f3
+          ref: 89a88e2fe3782144e6f41991e1b7aea56c1d516c
 
       - name: Checkout cautem-proxy
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-proxy
           path: cautem-proxy
-          ref: 0d2705ef5361109fe3979059574111ca03c4d90a
+          ref: dda81bc1d7cf13e403ccbdbd67717d08eb69f98a
 
       - name: Checkout slogx
         uses: actions/checkout@v4
@@ -436,47 +466,54 @@ jobs:
         with:
           path: cautem-gateway
 
+      - name: Checkout cautem-proto
+        uses: actions/checkout@v4
+        with:
+          repository: cautem/cautem-proto
+          path: cautem-proto
+          ref: 35501bd8a5e06cf5fe1a948cec2cabb86827b8d5
+
       - name: Checkout cautem-cli
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-cli
           path: cautem-cli
-          ref: 3f79f643568668def6d7ddd2229bf4ade0a6910d
+          ref: 9ac0a69c307dec1a07bd774cb0a1e10857e26643
 
       - name: Checkout cautem-core
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-core
           path: cautem-core
-          ref: 91a83675f9cf80887fdc652b6031ee863bbd7f55
+          ref: 3e8578194f94048a5c2619d2e1411eac546de985
 
       - name: Checkout cautem-providers
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-providers
           path: cautem-providers
-          ref: 13b51fcd238cb1a0c4c199ece23cff065a4fcc81
+          ref: 82bc5955ced022937e1f84912197d7688d7f7551
 
       - name: Checkout cautem-runtime
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-runtime
           path: cautem-runtime
-          ref: eab70d72c3871fa6f7135408edec1e4cf6b3325f
+          ref: 6652bfadef356683b43d4013d675721b9787d84f
 
       - name: Checkout cautem-driver
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-driver
           path: cautem-driver
-          ref: a19243085df51ab403f7de3df5d10892d91e22f3
+          ref: 89a88e2fe3782144e6f41991e1b7aea56c1d516c
 
       - name: Checkout cautem-proxy
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-proxy
           path: cautem-proxy
-          ref: 0d2705ef5361109fe3979059574111ca03c4d90a
+          ref: dda81bc1d7cf13e403ccbdbd67717d08eb69f98a
 
       - name: Checkout slogx
         uses: actions/checkout@v4
@@ -529,6 +566,30 @@ jobs:
             slogx/go.sum
       - name: Download modules
         run: go mod download
+      - name: PostgreSQL registry integration
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        env:
+          CAUTEM_TEST_POSTGRES_URL: postgres://postgres:cautem-ci@127.0.0.1:55432/cautem_test?sslmode=disable
+        run: |
+          set -euo pipefail
+          container="cautem-gateway-postgres-${GITHUB_RUN_ID}"
+          docker run --detach --rm --name "$container" \
+            --publish 127.0.0.1:55432:5432 \
+            --env POSTGRES_USER=postgres \
+            --env POSTGRES_PASSWORD=cautem-ci \
+            --env POSTGRES_DB=cautem_test \
+            mirror.gcr.io/library/postgres:17.10-alpine3.23@sha256:979c4379dd698aba0b890599a6104e082035f98ef31d9b9291ec22f2b13059ca
+          trap 'docker rm --force "$container" >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 60); do
+            if docker exec "$container" pg_isready --username=postgres --dbname=cautem_test >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec "$container" pg_isready --username=postgres --dbname=cautem_test
+          CGO_ENABLED=1 go test -race -count=1 ./internal/storage/store ./internal/httpapi \
+            -run '^(TestOpenPostgresImportsPersistsAndLocksInstallation|TestNewHandlerReleasesPostgresLockOnContextCancel)$'
       - name: Vet
         if: matrix.os == 'ubuntu-latest'
         run: go vet ./...

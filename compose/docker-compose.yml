@@ -22,12 +22,13 @@ services:
       dockerfile: cautem-gateway/Dockerfile
     image: cautem-gateway:local
     ports:
-      - "127.0.0.1:7443:7443"
+      - "${CAUTEM_GATEWAY_BIND_IP:-127.0.0.1}:${CAUTEM_GATEWAY_PORT:-7443}:7443"
     volumes:
       - cautem-gateway-data:/var/lib/cautem-gateway
     environment:
       CAUTEM_GATEWAY_DATA: /var/lib/cautem-gateway
       CAUTEM_SECRETS_KEK: ${CAUTEM_SECRETS_KEK:-}
+      OPENSHELL_DB_URL: ${OPENSHELL_DB_URL:-}
       CAUTEM_OIDC_ISSUER: ${CAUTEM_OIDC_ISSUER:-}
       CAUTEM_OIDC_CLIENT_ID: ${CAUTEM_OIDC_CLIENT_ID:-}
       CAUTEM_OIDC_AUDIENCE: ${CAUTEM_OIDC_AUDIENCE:-}
@@ -39,6 +40,23 @@ services:
       - "host.docker.internal:host-gateway"
     networks: [cautem]
     # HEALTHCHECK is optional; image may not ship wget — CLI uses /healthz via doctor.
+  # Installable browser console served from the same origin as gateway APIs.
+  cautem-console:
+    profiles: ["ui"]
+    build:
+      context: ../..
+      dockerfile: cautem-gateway/ui/Dockerfile
+    image: cautem-console:local
+    ports:
+      - "127.0.0.1:${CAUTEM_CONSOLE_PORT:-7444}:8080"
+    environment:
+      CAUTEM_GATEWAY_UPSTREAM: ${CAUTEM_GATEWAY_UPSTREAM:-cautem-gateway:7443}
+    depends_on:
+      - cautem-gateway
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [cautem]
+    restart: unless-stopped
   # Optional IdP for local OIDC login (profile: oidc).
   dex:
     profiles: ["oidc"]
@@ -50,6 +68,16 @@ services:
       - ./dex/config.yaml:/etc/dex/config.yaml:ro
     networks: [cautem]
     restart: unless-stopped
+  postgres-tools:
+    profiles: ["maintenance"]
+    image: mirror.gcr.io/library/postgres:17.10-alpine3.23@sha256:979c4379dd698aba0b890599a6104e082035f98ef31d9b9291ec22f2b13059ca
+    entrypoint: ["/usr/local/bin/postgres-backup-client.sh"]
+    environment:
+      OPENSHELL_DB_URL: ${OPENSHELL_DB_URL:-}
+    volumes:
+      - ./postgres-backup-client.sh:/usr/local/bin/postgres-backup-client.sh:ro
+    networks: [cautem]
+    restart: "no"
 
 networks:
   cautem:

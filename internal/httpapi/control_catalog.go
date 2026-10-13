@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
-	controlv1 "github.com/cautem/cautem-gateway/api/gen/cautem/control/v1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
+	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
 )
 
 func (a *controlAPI) ListServices(ctx context.Context, req *connect.Request[controlv1.ListServicesRequest]) (*connect.Response[controlv1.ListServicesResponse], error) {
@@ -65,7 +65,8 @@ func (a *controlAPI) ListWorkspaces(ctx context.Context, _ *connect.Request[cont
 		if !showAll && role == "" {
 			continue
 		}
-		out.Workspaces = append(out.Workspaces, workspaceSummary(item, role))
+		canManage := p.IDP == "local" || p.IDP == "local_dev" || isConfigAdmin(p, a.opt.OIDC.AdminRole) || role == "admin" || role == "owner"
+		out.Workspaces = append(out.Workspaces, a.workspaceSummary(item, role, canManage))
 	}
 	if showAll {
 		foundDefault := false
@@ -73,7 +74,7 @@ func (a *controlAPI) ListWorkspaces(ctx context.Context, _ *connect.Request[cont
 			foundDefault = foundDefault || item.GetName() == "default"
 		}
 		if !foundDefault {
-			out.Workspaces = append(out.Workspaces, &controlv1.WorkspaceSummary{Name: "default"})
+			out.Workspaces = append(out.Workspaces, a.workspaceSummary(store.WorkspaceRecord{Name: "default"}, "", true))
 		}
 	}
 	sort.Slice(out.Workspaces, func(i, j int) bool { return out.Workspaces[i].GetName() < out.Workspaces[j].GetName() })
@@ -105,12 +106,6 @@ func (a *controlAPI) GetWorkspace(ctx context.Context, req *connect.Request[cont
 			break
 		}
 	}
-	return connect.NewResponse(&controlv1.GetWorkspaceResponse{Workspace: workspaceSummary(item, role)}), nil
-}
-
-func workspaceSummary(item store.WorkspaceRecord, callerRole string) *controlv1.WorkspaceSummary {
-	return &controlv1.WorkspaceSummary{
-		Name: item.Name, CallerRole: callerRole, MemberCount: uint32(len(item.Members)),
-		ResourceVersion: item.ResourceVersion, UpdatedAtUnixMs: item.UpdatedAt.UnixMilli(),
-	}
+	canManage := privileged || role == "admin" || role == "owner"
+	return connect.NewResponse(&controlv1.GetWorkspaceResponse{Workspace: a.workspaceSummary(item, role, canManage)}), nil
 }

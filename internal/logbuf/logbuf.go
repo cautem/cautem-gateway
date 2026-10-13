@@ -3,6 +3,7 @@
 package logbuf
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -17,7 +18,7 @@ const (
 
 // Line is one observation log entry.
 type Line struct {
-	Sequence uint64            `json:"-"`
+	Sequence uint64            `json:"sequence"`
 	TS       time.Time         `json:"ts"`
 	Source   string            `json:"source"` // proxy | sandbox | proc | gateway
 	Level    string            `json:"level"`  // INFO | MED | HIGH | OCSF | …
@@ -39,11 +40,13 @@ type Buffer struct {
 
 // Hub maps sandbox name → Buffer.
 type Hub struct {
-	mu      sync.Mutex
-	max     int
-	buffers map[string]*Buffer
-	clock   uint64
-	used    map[string]uint64
+	mu       sync.Mutex
+	appendMu sync.Mutex
+	max      int
+	buffers  map[string]*Buffer
+	clock    uint64
+	used     map[string]uint64
+	archive  *archiveStore
 }
 
 // NewHub creates a hub with per-sandbox capacity max (default 4096).
@@ -54,34 +57,25 @@ func NewHub(max int) *Hub {
 	return &Hub{max: max, buffers: map[string]*Buffer{}, used: map[string]uint64{}}
 }
 
+// NewPersistentHub creates a bounded live log hub with an on-disk archive for
+// deleted managed sandboxes. Archives are retained separately from the live
+// ring so sandbox cleanup does not erase the operator's final log tail.
+func NewPersistentHub(max int, archiveDir string) (*Hub, error) {
+	h := NewHub(max)
+	archive, err := openArchiveStore(archiveDir)
+	if err != nil {
+		return nil, err
+	}
+	h.archive = archive
+	return h, nil
+}
+
 func (h *Hub) buf(name string) *Buffer {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	b, ok := h.buffers[name]
 	if !ok {
-		if len(h.buffers) >= maxResidentBuffers {
-			var oldest string
-			var oldestAt uint64
-			foundOldest := false
-			for candidate, at := range h.used {
-				if !foundOldest || at < oldestAt {
-					oldest, oldestAt = candidate, at
-					foundOldest = true
-				}
-			}
-			if evicted := h.buffers[oldest]; evicted != nil {
-				evicted.mu.Lock()
-				for ch := range evicted.watchers {
-					select {
-					case ch <- struct{}{}:
-					default:
-					}
-				}
-				evicted.mu.Unlock()
-			}
-			delete(h.buffers, oldest)
-			delete(h.used, oldest)
-		}
+		h.evictOldestLocked()
 		b = &Buffer{max: h.max, watchers: map[chan struct{}]struct{}{}}
 		h.buffers[name] = b
 	}
@@ -90,13 +84,127 @@ func (h *Hub) buf(name string) *Buffer {
 	return b
 }
 
+// evictOldestLocked bounds resident rings. Call with h.mu held.
+func (h *Hub) evictOldestLocked() {
+	if len(h.buffers) < maxResidentBuffers {
+		return
+	}
+	var oldest string
+	var oldestAt uint64
+	foundOldest := false
+	for candidate, at := range h.used {
+		if !foundOldest || at < oldestAt {
+			oldest, oldestAt = candidate, at
+			foundOldest = true
+		}
+	}
+	if evicted := h.buffers[oldest]; evicted != nil {
+		evicted.mu.Lock()
+		for ch := range evicted.watchers {
+			select {
+			case ch <- struct{}{}:
+			default:
+			}
+		}
+		evicted.mu.Unlock()
+	}
+	delete(h.buffers, oldest)
+	delete(h.used, oldest)
+}
+
 // Append adds lines for a sandbox.
 func (h *Hub) Append(sandbox string, lines []Line) {
 	if sandbox == "" || len(lines) == 0 {
 		return
 	}
+	h.appendMu.Lock()
+	defer h.appendMu.Unlock()
 	b := h.buf(sandbox)
 	b.append(lines)
+}
+
+// Retain archives the latest bounded log tail before a sandbox registry entry
+// is deleted, then releases the live ring from memory.
+func (h *Hub) Retain(sandbox, workspace string) error {
+	if h == nil || h.archive == nil || sandbox == "" || workspace == "" {
+		return fmt.Errorf("sandbox log archive is unavailable")
+	}
+	h.appendMu.Lock()
+	defer h.appendMu.Unlock()
+	h.mu.Lock()
+	b := h.buffers[sandbox]
+	h.mu.Unlock()
+	var lines []Line
+	if b != nil {
+		lines, _ = b.tail(0)
+	} else {
+		previous, ok, err := h.archive.Load(sandbox)
+		if err != nil {
+			return err
+		}
+		if ok {
+			if previous.Workspace != workspace {
+				return fmt.Errorf("sandbox log archive belongs to another workspace")
+			}
+			h.Remove(sandbox)
+			return nil
+		}
+	}
+	if err := h.archive.Save(sandbox, workspace, lines); err != nil {
+		return err
+	}
+	h.Remove(sandbox)
+	return nil
+}
+
+// RestoreArchive loads retained logs into the live ring and returns their
+// owning workspace. The caller must still authorize that workspace.
+func (h *Hub) RestoreArchive(sandbox string) (string, bool, error) {
+	if h == nil || h.archive == nil || sandbox == "" {
+		return "", false, nil
+	}
+	h.appendMu.Lock()
+	defer h.appendMu.Unlock()
+	h.mu.Lock()
+	if h.buffers[sandbox] != nil {
+		h.mu.Unlock()
+		workspace, ok, err := h.archive.Workspace(sandbox)
+		return workspace, ok, err
+	}
+	h.mu.Unlock()
+	archived, ok, err := h.archive.Load(sandbox)
+	if err != nil || !ok {
+		return "", ok, err
+	}
+	b := &Buffer{max: h.max, watchers: map[chan struct{}]struct{}{}}
+	b.restore(archived.Lines)
+	h.mu.Lock()
+	if h.buffers[sandbox] == nil {
+		h.evictOldestLocked()
+		h.buffers[sandbox] = b
+		h.clock++
+		h.used[sandbox] = h.clock
+	}
+	h.mu.Unlock()
+	return archived.Workspace, true, nil
+}
+
+// ClearArchive drops an old sandbox-name archive before the name is reused.
+func (h *Hub) ClearArchive(sandbox string) error {
+	if h == nil || sandbox == "" {
+		return nil
+	}
+	h.appendMu.Lock()
+	defer h.appendMu.Unlock()
+	if h.archive == nil {
+		h.Remove(sandbox)
+		return nil
+	}
+	if err := h.archive.Remove(sandbox); err != nil {
+		return err
+	}
+	h.Remove(sandbox)
+	return nil
 }
 
 // Snapshot returns a copy of recent lines (optionally filtered).
@@ -213,6 +321,30 @@ func (b *Buffer) append(lines []Line) {
 		case ch <- struct{}{}:
 		default:
 		}
+	}
+}
+
+func (b *Buffer) restore(lines []Line) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, line := range lines {
+		line = boundLine(line)
+		if line.Sequence == 0 {
+			b.sequence++
+			line.Sequence = b.sequence
+		} else if line.Sequence > b.sequence {
+			b.sequence = line.Sequence
+		}
+		if line.TS.IsZero() {
+			line.TS = time.Now().UTC()
+		}
+		b.lines = append(b.lines, line)
+		b.retained += lineSize(line)
+	}
+	for len(b.lines) > b.max || b.retained > maxRetainedBytes {
+		b.retained -= lineSize(b.lines[0])
+		b.lines[0] = Line{}
+		b.lines = b.lines[1:]
 	}
 }
 

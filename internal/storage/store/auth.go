@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -64,6 +65,16 @@ func hashEqual(a, b string) bool {
 	return len(a) == len(b) && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
+func sandboxTokenStatusAllowsAuth(sandbox Sandbox) bool {
+	switch strings.ToLower(strings.TrimSpace(sandbox.Status)) {
+	case "stopping", "stopped", "deleting", "error", "failed":
+		return false
+	default:
+		// Empty status is retained for old local stores and unit fixtures.
+		return true
+	}
+}
+
 // WriteAuthTokenFile ensures the local-dev token exists and mirrors it to
 // DataDir/auth_token (0600) so a local CLI can authenticate without a
 // network login round-trip.
@@ -102,6 +113,25 @@ func (s *Store) IssueSandboxToken(name string) (string, error) {
 	return tok, nil
 }
 
+// RevokeSandboxToken invalidates the current and immediately previous
+// supervisor bearer. It is safe to call more than once and is used after a
+// token-aware runtime has been stopped.
+func (s *Store) RevokeSandboxToken(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("sandbox name is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.state.Sandboxes[name]; !ok {
+		return fmt.Errorf("sandbox %q not found", name)
+	}
+	if _, ok := s.state.SandboxTokens[name]; !ok {
+		return nil
+	}
+	delete(s.state.SandboxTokens, name)
+	return s.flushLocked()
+}
+
 // RefreshSandboxToken returns the current token to a supervisor. The current
 // token is returned unchanged, which makes refresh survive a gateway restart
 // without persisting bearer plaintext. The immediately preceding token is also
@@ -118,7 +148,8 @@ func (s *Store) RefreshSandboxToken(name, token string) (string, bool) {
 		(record.PreviousHash == "" || !hashEqual(record.PreviousHash, HashToken(token)) || record.plaintext == "") {
 		return "", false
 	}
-	if _, ok := s.state.Sandboxes[name]; !ok {
+	sandbox, ok := s.state.Sandboxes[name]
+	if !ok || !sandboxTokenStatusAllowsAuth(sandbox) {
 		return "", false
 	}
 	if hashEqual(record.Hash, HashToken(token)) {
@@ -140,7 +171,8 @@ func (s *Store) CurrentSandboxToken(name string) (string, bool) {
 	if !ok || record.plaintext == "" {
 		return "", false
 	}
-	if _, ok := s.state.Sandboxes[name]; !ok {
+	sandbox, ok := s.state.Sandboxes[name]
+	if !ok || !sandboxTokenStatusAllowsAuth(sandbox) {
 		return "", false
 	}
 	return record.plaintext, true
@@ -157,7 +189,7 @@ func (s *Store) SandboxForRefreshToken(tok string) (string, bool) {
 	defer s.mu.Unlock()
 	for name, record := range s.state.SandboxTokens {
 		if hashEqual(record.PreviousHash, h) {
-			if _, ok := s.state.Sandboxes[name]; ok {
+			if sandbox, ok := s.state.Sandboxes[name]; ok && sandboxTokenStatusAllowsAuth(sandbox) {
 				return name, true
 			}
 		}
@@ -175,7 +207,7 @@ func (s *Store) SandboxForToken(tok string) (string, bool) {
 	defer s.mu.Unlock()
 	for name, rec := range s.state.SandboxTokens {
 		if hashEqual(rec.Hash, h) {
-			if _, ok := s.state.Sandboxes[name]; !ok {
+			if sandbox, ok := s.state.Sandboxes[name]; !ok || !sandboxTokenStatusAllowsAuth(sandbox) {
 				return "", false
 			}
 			return name, true

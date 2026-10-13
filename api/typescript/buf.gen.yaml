@@ -1,6 +1,0 @@
-version: v2
-plugins:
-  - local: api/typescript/node_modules/.bin/protoc-gen-es
-    out: api/typescript/src/gen
-    opt:
-      - target=ts

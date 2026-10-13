@@ -15,6 +15,7 @@ import (
 var ErrWorkspaceNotEmpty = errors.New("workspace still contains resources")
 var ErrWorkspaceConflict = errors.New("workspace changed during deletion")
 var ErrWorkspaceNotFound = errors.New("workspace not found")
+var ErrWorkspaceQuotaConflict = errors.New("workspace quota resource version conflict")
 var ErrInferenceRouteConflict = errors.New("inference route resource version conflict")
 
 func randomRecordID() string {
@@ -50,10 +51,20 @@ type WorkspaceRecord struct {
 	ID                string            `json:"id,omitempty"`
 	Labels            map[string]string `json:"labels,omitempty"`
 	Members           []WorkspaceMember `json:"members,omitempty"`
+	Quota             WorkspaceQuota    `json:"quota,omitempty"`
 	ResourceVersion   uint64            `json:"resource_version,omitempty"`
 	DeletionTimestamp time.Time         `json:"deletion_timestamp,omitempty"`
 	CreatedAt         time.Time         `json:"created_at"`
 	UpdatedAt         time.Time         `json:"updated_at"`
+}
+
+// WorkspaceQuota caps aggregate allocations. Zero means unlimited.
+type WorkspaceQuota struct {
+	CPUMilliCores         uint64 `json:"cpu_millicores,omitempty"`
+	MemoryBytes           uint64 `json:"memory_bytes,omitempty"`
+	GPUCount              uint32 `json:"gpu_count,omitempty"`
+	ConcurrentSandboxes   uint32 `json:"concurrent_sandboxes,omitempty"`
+	ConcurrentGUISessions uint32 `json:"concurrent_gui_sessions,omitempty"`
 }
 
 // CreateWorkspace inserts a workspace without replacing an existing record.
@@ -169,6 +180,48 @@ func (s *Store) GetWorkspace(name string) (WorkspaceRecord, bool) {
 	defer s.mu.Unlock()
 	ws, ok := s.state.Workspaces[name]
 	return cloneWorkspace(ws), ok
+}
+
+// UpdateWorkspaceQuota updates a workspace quota under its current resource version.
+func (s *Store) UpdateWorkspaceQuota(name string, expectedResourceVersion uint64, quota WorkspaceQuota) (WorkspaceRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ws, ok := s.state.Workspaces[name]
+	if !ok {
+		if name == "default" && expectedResourceVersion == 0 {
+			now := time.Now().UTC()
+			ws = WorkspaceRecord{Name: name, ID: randomRecordID(), Quota: quota, ResourceVersion: 1, CreatedAt: now, UpdatedAt: now}
+			if s.state.Workspaces == nil {
+				s.state.Workspaces = map[string]WorkspaceRecord{}
+			}
+			s.state.Workspaces[name] = ws
+			if err := s.flushLocked(); err != nil {
+				delete(s.state.Workspaces, name)
+				return WorkspaceRecord{}, err
+			}
+			return cloneWorkspace(ws), nil
+		}
+		return WorkspaceRecord{}, ErrWorkspaceNotFound
+	}
+	if expectedResourceVersion == 0 || ws.ResourceVersion != expectedResourceVersion {
+		return WorkspaceRecord{}, ErrWorkspaceQuotaConflict
+	}
+	if ws.Quota == quota {
+		return cloneWorkspace(ws), nil
+	}
+	if ws.ResourceVersion == ^uint64(0) {
+		return WorkspaceRecord{}, fmt.Errorf("workspace resource version overflow")
+	}
+	previous := ws
+	ws.Quota = quota
+	ws.ResourceVersion++
+	ws.UpdatedAt = time.Now().UTC()
+	s.state.Workspaces[name] = ws
+	if err := s.flushLocked(); err != nil {
+		s.state.Workspaces[name] = previous
+		return WorkspaceRecord{}, err
+	}
+	return cloneWorkspace(ws), nil
 }
 
 // DeleteWorkspace removes a workspace.

@@ -69,28 +69,49 @@ It covers health and bootstrap flows; management operations use the generated
 Control RPC or the pinned OpenShell RPC contract. No REST compatibility layer
 is maintained for beta clients.
 
-The separate `cautem.control.v1` Connect API serves authenticated UI and
-SDK clients on the gateway listener. Its generated Proto source and private
-TypeScript client are under [`api/`](./api/). Lifecycle mutations require a
-client-generated `request_id`; reuse the same ID when retrying, then call
-`GetOperation` with that ID to reconcile a lost response. An operation left
-running across a gateway restart is reported as `uncertain` because the server
-cannot infer whether the backend completed the side effect. The control API
-also exposes workspace-filtered service/template summaries and admin operation
-and audit history. These summaries omit backend routing addresses and template
-environment values.
+The separate `cautem.control.v1` Connect API serves authenticated UI and SDK
+clients on the gateway listener. Its source schema and generated Go/Connect/
+TypeScript clients are maintained in the independent
+[`cautem-proto`](https://github.com/cautem/cautem-proto) module and consumed as
+dependencies here. Lifecycle mutations require a client-generated
+`request_id`; reuse the same ID when retrying, then call `GetOperation` with that
+ID to reconcile a lost response. An operation left running across a gateway
+restart is reported as `uncertain` because the server cannot infer whether the
+backend completed the side effect. The control API also exposes workspace-
+filtered service/template summaries and admin operation and audit history.
+These summaries omit backend routing addresses and template environment values.
 
 Provider profile reads and writes use `cautem.control.v1`; the service
 preserves the full cautem YAML profile and uses resource-version checks for
 updates. Global profiles require platform admin access, and workspace profiles
 require provider scopes plus workspace membership.
 
-The first read-only browser console is in [`ui/`](./ui/). It uses the generated
-TypeScript Connect client and OIDC authorization-code flow with PKCE. See its
-README for local setup and the current deployment boundary; production static
-hosting is not yet wired into the gateway.
+The browser console is in [`ui/`](./ui/). It uses the generated TypeScript
+Connect client and OIDC authorization-code flow with PKCE. The same-origin
+Compose Console serves the production static bundle and supports sandbox
+lifecycle actions, workspace policy/provider management, terminal, bounded
+workspace file transfer, and authenticated HTTP/WebSocket service access
+including noVNC. See the [UI README](./ui/README.md) for its security and
+runtime limits and the [shared-server guide](./compose/SHARED-SERVER.md) for
+single-instance OIDC deployment.
 
-Durable state: `$XDG_STATE_HOME/cautem/gateway/state.json`.
+Durable registry state defaults to `$XDG_STATE_HOME/cautem/gateway/state.json`.
+For PostgreSQL, set `OPENSHELL_DB_URL` or pass `--db-url`; the URL is rejected
+from TOML. The first PostgreSQL start imports an existing `state.json` and
+keeps a timestamped `.migrated-*` copy. A stable Gateway `--name` selects its
+database row and advisory lock. Store PostgreSQL registry data and its backups
+as sensitive because they include
+local auth material and credential refresh metadata. Workspace files, encrypted
+credential blobs, and archived logs still live in `DataDir`; active relay and
+browser service sessions live in memory. Keep one Gateway replica and back up
+the database and data volume together. The Compose backup/restore scripts
+snapshot and restore both stores while the Gateway is stopped. Workspace admins
+can set aggregate CPU, memory, GPU, sandbox-count, and connected GUI-session
+quotas; see the [shared-server guide](./compose/SHARED-SERVER.md) for limits and
+operations. CLI-managed sandbox log tails
+are retained for up to 7 days, with a limit of 64 archived sandboxes and 1 MiB
+per sandbox. Archived logs are workspace-scoped and can be read with
+`cautem logs <name>` after deletion; they cannot be followed live.
 
 ---
 

@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [v0.2.0] - 2026-10-13
+
+### Added
+
+- Add a same-origin React browser console with OIDC login, sandbox lifecycle, terminal, files, services, and noVNC display sessions.
+- Add shared-server workspace quotas, PostgreSQL state storage, backup/restore tooling, and an experimental Agent Sandbox Kubernetes compute path.
+
+### Changed
+
+- Move first-party Control API schemas and generated clients to the published `cautem-proto` module.
+- Deliver Kubernetes policy changes by switching immutable runtime Secret generations and waiting for the supervisor to reconnect.
+- Check running Kubernetes runtimes daily and rotate bridge credentials before their 90-day certificates expire.
+- Split Gateway RPC, storage, and server handlers into focused source files.
+
 ## [v0.1.7] - 2026-10-11
 
 ### Changed

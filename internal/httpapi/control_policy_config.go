@@ -7,8 +7,8 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/cautem/cautem-core/policy"
-	controlv1 "github.com/cautem/cautem-gateway/api/gen/cautem/control/v1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
+	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
 	"gopkg.in/yaml.v3"
 )
 
@@ -137,7 +137,7 @@ func (a *controlAPI) UpdateSandboxPolicy(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("sandbox policy is invalid or cannot be composed"))
 	}
 	policyRPC := &openShellRPC{options: a.opt, runtime: a.opt.grpcRuntime}
-	if err := policyRPC.syncSandboxRuntimePolicy(sandbox.Name, revision); err != nil {
+	if err := policyRPC.syncSandboxRuntimePolicy(ctx, sandbox.Name, revision); err != nil {
 		_ = a.auditPolicyMutation(ctx, "policy.sandbox.update", workspace, sandbox.Name, "failed", "runtime_sync")
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("sandbox policy was stored but could not be delivered to the runtime"))
 	}

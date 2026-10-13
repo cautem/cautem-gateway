@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	controlv1 "github.com/cautem/cautem-gateway/api/gen/cautem/control/v1"
 	"github.com/cautem/cautem-gateway/internal/logbuf"
+	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
 )
 
 const maxConsoleLogLines = 1000
@@ -49,6 +49,10 @@ func (a *controlAPI) AppendSandboxLogs(ctx context.Context, req *connect.Request
 	default:
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("unsupported principal"))
 	}
+	// Serialize the registry check and append with managed-sandbox deletion so
+	// a final batch cannot arrive after its archive has been written.
+	unlockLifecycle := a.lockLogLifecycle()
+	defer unlockLifecycle()
 	record, exists := a.store.GetSandbox(name)
 	if !exists || principal.Kind == PrincipalUser && record.Workspace != "" && record.Workspace != workspace {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("sandbox not found"))
@@ -90,7 +94,18 @@ func (a *controlAPI) logTarget(ctx context.Context, workspace, name string) (str
 	if name == "" {
 		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("sandbox name required"))
 	}
-	if _, ok := a.reader.GetWorkspace(workspace, name); !ok {
+	_, live := a.reader.GetWorkspace(workspace, name)
+	archivedWorkspace, archived, archiveErr := a.logs.RestoreArchive(name)
+	if archiveErr != nil {
+		return "", connect.NewError(connect.CodeInternal, errors.New("sandbox log archive is unavailable"))
+	}
+	if live {
+		if archived && archivedWorkspace != workspace {
+			return "", connect.NewError(connect.CodeInternal, errors.New("sandbox log archive workspace mismatch"))
+		}
+		return workspace, nil
+	}
+	if !archived || archivedWorkspace != workspace {
 		return "", connect.NewError(connect.CodeNotFound, errors.New("sandbox not found"))
 	}
 	return workspace, nil
@@ -130,6 +145,8 @@ func boundedLogText(value string, maxBytes int) string {
 }
 
 func (a *controlAPI) GetSandboxLogs(ctx context.Context, req *connect.Request[controlv1.GetSandboxLogsRequest]) (*connect.Response[controlv1.GetSandboxLogsResponse], error) {
+	unlockLifecycle := a.lockLogLifecycle()
+	defer unlockLifecycle()
 	if _, err := a.logTarget(ctx, req.Msg.GetWorkspace(), req.Msg.GetName()); err != nil {
 		return nil, err
 	}
@@ -154,6 +171,9 @@ func (a *controlAPI) WatchSandboxLogs(ctx context.Context, req *connect.Request[
 	workspace, err := a.logTarget(ctx, req.Msg.GetWorkspace(), req.Msg.GetName())
 	if err != nil {
 		return err
+	}
+	if _, live := a.reader.GetWorkspace(workspace, strings.TrimSpace(req.Msg.GetName())); !live {
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("archived sandbox logs cannot be followed"))
 	}
 	if req.Msg.GetSinceUnixMs() < 0 || len(req.Msg.GetSource()) > 64 || len(req.Msg.GetLevel()) > 64 {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("invalid log filter"))
@@ -250,6 +270,9 @@ func (a *controlAPI) WatchSandboxLogs(ctx context.Context, req *connect.Request[
 			if _, err := a.logTarget(ctx, workspace, name); err != nil {
 				return err
 			}
+			if _, live := a.reader.GetWorkspace(workspace, name); !live {
+				return connect.NewError(connect.CodeFailedPrecondition, errors.New("sandbox logs are no longer live"))
+			}
 			if err := send(controlv1.SandboxLogWatchKind_SANDBOX_LOG_WATCH_KIND_HEARTBEAT, nil, cursor); err != nil {
 				return err
 			}
@@ -257,6 +280,9 @@ func (a *controlAPI) WatchSandboxLogs(ctx context.Context, req *connect.Request[
 		}
 		if _, err := a.logTarget(ctx, workspace, name); err != nil {
 			return err
+		}
+		if _, live := a.reader.GetWorkspace(workspace, name); !live {
+			return connect.NewError(connect.CodeFailedPrecondition, errors.New("sandbox logs are no longer live"))
 		}
 		fresh, latest, expired := a.logs.ReadAfter(name, cursor)
 		if expired || len(fresh) > maxConsoleLogLines {

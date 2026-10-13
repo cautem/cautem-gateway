@@ -16,10 +16,10 @@ import (
 
 	"connectrpc.com/connect"
 	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	controlv1 "github.com/cautem/cautem-gateway/api/gen/cautem/control/v1"
-	"github.com/cautem/cautem-gateway/api/gen/cautem/control/v1/controlv1connect"
 	"github.com/cautem/cautem-gateway/internal/httpapi"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
+	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
+	"github.com/cautem/cautem-proto/gen/go/cautem/control/v1/controlv1connect"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"

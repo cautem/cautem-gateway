@@ -1,4 +1,4 @@
-import { InMemoryWebStorage, UserManager, WebStorageStateStore, type User } from "oidc-client-ts";
+import { UserManager, WebStorageStateStore, type User } from "oidc-client-ts";
 
 export interface OIDCMetadata {
   issuer: string;
@@ -29,7 +29,7 @@ export async function getAuthManager(): Promise<UserManager> {
     response_type: "code",
     scope: "openid profile",
     automaticSilentRenew: false,
-    userStore: new WebStorageStateStore({ store: new InMemoryWebStorage() }),
+    userStore: new WebStorageStateStore({ store: window.sessionStorage }),
   });
   return manager;
 }

@@ -1,0 +1,9 @@
+# Dedicated Linux host Docker compute overlay. This grants the Gateway control
+# of the host Docker daemon; use only on a dedicated sandbox host.
+services:
+  cautem-gateway:
+    environment:
+      OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./gateway.shared-docker.toml:/etc/openshell/gateway.toml:ro

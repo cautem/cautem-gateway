@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,25 +39,33 @@ func (s *openShellRPC) recreateMissingSandboxRuntime(ctx context.Context, rec st
 	if _, err := s.runtime.st.BeginSandboxStart(rec.Name); err != nil {
 		return rec, fmt.Errorf("could not enter starting state")
 	}
-	started := false
 	var handle driver.Handle
-	cleanup := func() {
-		if !started || handle.ID == "" {
-			return
-		}
-		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		defer cancel()
-		_ = engine.Stop(cleanupCtx, handle.ID)
-		_ = engine.Delete(cleanupCtx, handle.ID)
-	}
 	fail := func(err error) (store.Sandbox, error) {
-		cleanup()
-		failed, _ := s.runtime.st.GetSandbox(rec.Name)
-		failed.RuntimeID = ""
+		backendDeleted := true
+		var cleanupErr error
+		if handle.ID != "" {
+			backendDeleted, cleanupErr = cleanupEngineSandbox(ctx, engine, handle.ID, true)
+		}
+		failed, ok := s.runtime.st.GetSandbox(rec.Name)
+		if !ok {
+			failed = rec
+		}
+		if backendDeleted {
+			failed.RuntimeID = ""
+		} else {
+			failed.RuntimeID = string(handle.ID)
+			failed.Network = handle.Network
+		}
 		failed.Status = "error"
 		failed.UpdatedAt = time.Now().UTC()
-		_ = s.runtime.st.UpsertSandbox(failed)
-		return failed, err
+		persistErr := s.runtime.st.UpsertSandbox(failed)
+		if cleanupErr != nil {
+			cleanupErr = fmt.Errorf("rollback cleanup failed: %w", cleanupErr)
+		}
+		if persistErr != nil {
+			persistErr = fmt.Errorf("persist failed sandbox state: %w", persistErr)
+		}
+		return failed, errors.Join(err, cleanupErr, persistErr)
 	}
 
 	inputs, err := s.prepareSandboxRuntime(req, driverName, rec.Name, rec.Workspace)
@@ -83,7 +92,7 @@ func (s *openShellRPC) recreateMissingSandboxRuntime(ctx context.Context, rec st
 	if err != nil {
 		return fail(fmt.Errorf("sandbox resource settings are invalid: %w", err))
 	}
-	driverSpec.Labels = cloneStringMap(rec.Labels)
+	driverSpec.Labels = driverLabels(rec.Labels, rec.Workspace, inputs.gatewayID)
 	token, err := s.runtime.st.IssueSandboxToken(rec.Name)
 	if err != nil {
 		return fail(fmt.Errorf("sandbox supervisor token could not be issued"))
@@ -97,7 +106,15 @@ func (s *openShellRPC) recreateMissingSandboxRuntime(ctx context.Context, rec st
 	if err != nil {
 		return fail(fmt.Errorf("sandbox create failed: %w", err))
 	}
-	started = true
+	if persisted, ok := s.runtime.st.GetSandbox(rec.Name); ok {
+		rec = persisted
+	}
+	rec.RuntimeID = string(handle.ID)
+	rec.Network = handle.Network
+	rec.UpdatedAt = time.Now().UTC()
+	if err := s.runtime.st.UpsertSandbox(rec); err != nil {
+		return fail(fmt.Errorf("sandbox runtime identity could not be persisted: %w", err))
+	}
 	if err := engine.Start(ctx, handle.ID); err != nil {
 		return fail(fmt.Errorf("sandbox start failed: %w", err))
 	}

@@ -1,0 +1,8 @@
+{{- if .Values.sandbox.createNamespace }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.sandbox.namespace }}
+  labels:
+    app.kubernetes.io/part-of: cautem
+{{- end }}
