@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -36,6 +37,9 @@ func TestValidateBrowserFilePath(t *testing.T) {
 }
 
 func TestBrowserFileScriptsTransferFilesWithoutFollowingSymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sandbox file scripts use Linux dir_fd/openat APIs")
+	}
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "nested"), 0o700); err != nil {
 		t.Fatal(err)
