@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
 	"time"
 
+	core "github.com/cautem/cautem-core"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc"
 )
@@ -68,6 +70,22 @@ func (r *E2ERuntime) SetSSHSessionTTL(ttl time.Duration) {
 
 func (r *E2ERuntime) Sandbox(name string) (store.Sandbox, bool) {
 	return r.inner.st.GetSandbox(name)
+}
+
+func (r *E2ERuntime) EngineLogs(ctx context.Context, sandbox string) (string, error) {
+	record, ok := r.inner.st.GetSandbox(sandbox)
+	if !ok || record.RuntimeID == "" {
+		return "", fmt.Errorf("sandbox %q has no runtime", sandbox)
+	}
+	engine, err := r.inner.compute.engine(record.ComputeDriver)
+	if err != nil {
+		return "", err
+	}
+	var output bytes.Buffer
+	if err := engine.Logs(ctx, core.ID(record.RuntimeID), false, &output); err != nil {
+		return output.String(), err
+	}
+	return output.String(), nil
 }
 
 func ServeE2E(ctx context.Context, opt Options, handler http.Handler) error {

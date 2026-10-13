@@ -8,6 +8,7 @@ import (
 	"github.com/cautem/cautem-gateway/internal/sshrelay"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -113,5 +114,45 @@ func TestMainProcessFinalizeSurvivesRelayDisconnectAfterReport(t *testing.T) {
 	}
 	if rec, _ := st.GetSandbox("demo"); !rec.MainProcessFinalized || rec.MainProcessExitCode == nil || *rec.MainProcessExitCode != 7 {
 		t.Fatalf("relay-loss finalize was not persisted: %+v", rec)
+	}
+}
+
+func TestMainProcessFinalizeAuthAllowsOnlyReportedCurrentSandboxToken(t *testing.T) {
+	st, err := store.Open(t.TempDir(), "gw-main-process-finalize-auth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertSandbox(store.Sandbox{Name: "demo", ID: "sandbox-id", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	token, err := st.IssueSandboxToken("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	opt := Options{grpcRuntime: &grpcRuntime{st: st}}
+	authContext := func(method, bearer string) (context.Context, error) {
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+bearer))
+		return authenticateGRPC(ctx, method, opt)
+	}
+	finalizeMethod := "/openshell.v1.OpenShell/FinalizeMainProcessExit"
+	reportMethod := "/openshell.v1.OpenShell/ReportMainProcessExit"
+	if _, err := authContext(finalizeMethod, token); err != nil {
+		t.Fatalf("active sandbox token should authenticate before process report: %v", err)
+	}
+	if _, err := st.RecordMainProcessExit("demo", "instance-1", 7); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := authContext(finalizeMethod, token)
+	if err != nil {
+		t.Fatalf("finalize after report: %v", err)
+	}
+	if principal := PrincipalFrom(ctx); principal.Kind != PrincipalSandbox || principal.Sandbox != "demo" {
+		t.Fatalf("finalize principal=%+v; want sandbox demo", principal)
+	}
+	if _, err := authContext(reportMethod, token); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("terminal token authenticated for ordinary report RPC: %v", err)
+	}
+	if _, err := authContext(finalizeMethod, "wrong-token"); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("wrong finalize token error=%v; want Unauthenticated", err)
 	}
 }

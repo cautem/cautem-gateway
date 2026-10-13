@@ -197,6 +197,30 @@ func (s *Store) SandboxForRefreshToken(tok string) (string, bool) {
 	return "", false
 }
 
+// SandboxForFinalizeToken resolves a current supervisor token only after that
+// sandbox has durably reported a main-process result. Terminal statuses block
+// ordinary sandbox RPCs, but the supervisor still needs this one idempotent
+// RPC to confirm delivery of the result.
+func (s *Store) SandboxForFinalizeToken(tok string) (string, bool) {
+	if tok == "" {
+		return "", false
+	}
+	h := HashToken(tok)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for name, record := range s.state.SandboxTokens {
+		if !hashEqual(record.Hash, h) {
+			continue
+		}
+		sandbox, ok := s.state.Sandboxes[name]
+		if !ok || sandbox.MainProcessExitCode == nil || sandbox.MainProcessInstanceID == "" {
+			return "", false
+		}
+		return name, true
+	}
+	return "", false
+}
+
 // SandboxForToken resolves a supervisor token to its sandbox name.
 func (s *Store) SandboxForToken(tok string) (string, bool) {
 	if tok == "" {

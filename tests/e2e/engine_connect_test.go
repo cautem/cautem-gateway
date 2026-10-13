@@ -801,18 +801,23 @@ func TestEngineGatewayConnectE2E(t *testing.T) {
 	exitCtx, exitCancel := context.WithTimeout(userCtx, 30*time.Second)
 	defer exitCancel()
 	var exited *openshellv1.Sandbox
+	finalized := false
 	for {
 		response, getErr := grpcClient.GetSandbox(exitCtx, &openshellv1.GetSandboxRequest{Name: exitName, Workspace: "default"})
 		if getErr == nil {
 			exited = response.GetSandbox()
 			phase := exited.GetStatus().GetPhase()
 			if phase == openshellv1.SandboxPhase_SANDBOX_PHASE_COMPLETED || phase == openshellv1.SandboxPhase_SANDBOX_PHASE_ERROR {
-				break
+				if record, ok := runtime.Sandbox(exitName); ok && record.MainProcessFinalized {
+					finalized = true
+					break
+				}
 			}
 		}
 		select {
 		case <-exitCtx.Done():
-			t.Fatalf("short-lived sandbox did not report completed main process: sandbox=%v getErr=%v: %v", exited, getErr, exitCtx.Err())
+			logs, logsErr := runtime.EngineLogs(context.Background(), exitName)
+			t.Fatalf("short-lived sandbox did not finalize main process: sandbox=%v getErr=%v logs=%q logsErr=%v: %v", exited, getErr, logs, logsErr, exitCtx.Err())
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
@@ -820,7 +825,7 @@ func TestEngineGatewayConnectE2E(t *testing.T) {
 		t.Fatalf("completed main-process exit code=%v; want 7", code)
 	}
 	record, ok := runtime.Sandbox(exitName)
-	if !ok || !record.MainProcessFinalized {
+	if !finalized || !ok || !record.MainProcessFinalized {
 		t.Fatalf("main-process exit was not finalized in gateway store: record=%+v found=%v", record, ok)
 	}
 	// Preserve the active supervisor bearer across the gateway restart below.
