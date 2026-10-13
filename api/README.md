@@ -68,7 +68,7 @@ full snapshot and use per-stream
 sequence numbers; reconnecting clients replace their state from the new
 snapshot.
 
-The initial read-only browser console lives in [`../ui/`](../ui/). It uses OIDC
+The browser console lives in the separate [`cautem-ui`](https://github.com/cautem/cautem-ui) repository. It uses OIDC
 authorization code with PKCE and keeps the access token in memory. It currently
 shows the authorized inventory and bounded log tail. Production static hosting
 and same-origin proxy wiring remain deployment work; the UI README documents
