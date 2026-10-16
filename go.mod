@@ -15,7 +15,7 @@ require (
 	github.com/cautem/quarshell-driver v0.3.1-0.20261016180809-ff63d197d183
 	github.com/cautem/quarshell-proto v0.2.1-0.20261016152658-94146822ca96
 	github.com/cautem/quarshell-providers v0.1.9-0.20261016154254-54b4eb5cb183
-	github.com/cautem/quarshell-runtime v0.3.1-0.20261016181152-338d855de8d8
+	github.com/cautem/quarshell-runtime v0.3.1-0.20261016182820-7a6e8ac72370
 	github.com/cautem/quarshell-slogx v0.1.4-0.20261016153436-5ec8e199a72f
 	github.com/coder/websocket v1.8.15
 	github.com/go-jose/go-jose/v4 v4.1.5
@@ -44,7 +44,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.4 // indirect
 	github.com/aws/smithy-go v1.28.5 // indirect
 	github.com/cautem/quarshell-proxy v0.3.1-0.20261016181953-cca79d795127 // indirect
-	github.com/cautem/slogx v0.1.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
