@@ -9,9 +9,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/cautem/cautem-core/relayproto"
-	"github.com/cautem/cautem-runtime/idp"
+	"github.com/cautem/quarshell-core/relayproto"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-runtime/idp"
 )
 
 // PrincipalKind distinguishes operators from sandbox supervisors.

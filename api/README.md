@@ -68,7 +68,7 @@ full snapshot and use per-stream
 sequence numbers; reconnecting clients replace their state from the new
 snapshot.
 
-The browser console lives in the separate [`cautem-ui`](https://github.com/cautem/cautem-ui) repository. It uses OIDC
+The browser console lives in the separate [`cautem-ui`](https://github.com/cautem/quarshell-ui) repository. It uses OIDC
 authorization code with PKCE and keeps the access token in memory. It currently
 shows the authorized inventory and bounded log tail. Production static hosting
 and same-origin proxy wiring remain deployment work; the UI README documents
@@ -98,7 +98,7 @@ proposal review data without the review token. Catalog and policy reads check
 workspace authorization on every call.
 
 The Go Proto, native gRPC, and Connect clients are imported from
-`github.com/cautem/cautem-proto`; the Gateway does not generate copies of the
+`github.com/cautem/quarshell-proto`; the Gateway does not generate copies of the
 contract. Generate and validate clients in the protocol module:
 
 ```bash

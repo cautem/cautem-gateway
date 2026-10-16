@@ -13,9 +13,9 @@ import (
 	"time"
 
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	_ "github.com/cautem/cautem-driver/driver/all"
-	"github.com/cautem/cautem-providers/provider"
+	_ "github.com/cautem/quarshell-driver/driver/all"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-providers/provider"
 	"github.com/spiffe/go-spiffe/v2/svid/jwtsvid"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"google.golang.org/grpc/codes"

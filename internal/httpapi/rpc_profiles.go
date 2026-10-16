@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	"github.com/cautem/cautem-providers/provider"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-providers/provider"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"

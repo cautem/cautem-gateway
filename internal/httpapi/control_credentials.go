@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
-	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
+	controlv1 "github.com/cautem/quarshell-proto/gen/go/cautem/control/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

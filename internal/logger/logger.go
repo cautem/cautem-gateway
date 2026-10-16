@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cautem/slogx"
+	"github.com/cautem/quarshell-slogx"
 )
 
 const (

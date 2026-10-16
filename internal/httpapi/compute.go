@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cautem/cautem-driver/driver"
-	_ "github.com/cautem/cautem-driver/driver/all"
+	"github.com/cautem/quarshell-driver/driver"
+	_ "github.com/cautem/quarshell-driver/driver/all"
 )
 
 // compatRPCAdapter exposes the pinned OpenShell protobuf service. Backend-specific

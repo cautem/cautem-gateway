@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cautem/quarshell-gateway/internal/logger"
-	"github.com/cautem/slogx"
+	"github.com/cautem/quarshell-slogx"
 )
 
 // DriverConfigs maps a driver name to its decoded configuration table.

@@ -5,7 +5,7 @@ import (
 
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
-	"github.com/cautem/cautem-core/policy"
+	"github.com/cautem/quarshell-core/policy"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 

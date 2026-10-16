@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	core "github.com/cautem/cautem-core"
-	"github.com/cautem/cautem-driver/driver"
+	core "github.com/cautem/quarshell-core"
+	"github.com/cautem/quarshell-driver/driver"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"google.golang.org/grpc"
 )

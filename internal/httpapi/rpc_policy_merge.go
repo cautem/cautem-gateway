@@ -13,7 +13,7 @@ import (
 
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
-	corepolicy "github.com/cautem/cautem-core/policy"
+	corepolicy "github.com/cautem/quarshell-core/policy"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

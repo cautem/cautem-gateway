@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cautem/cautem-runtime/idp"
+	"github.com/cautem/quarshell-runtime/idp"
 )
 
 // OIDCOptions configure issuer-backed JWT auth (optional).

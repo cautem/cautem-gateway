@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cautem/cautem-core/defaults"
+	"github.com/cautem/quarshell-core/defaults"
 	"github.com/cautem/quarshell-gateway/internal/gatewayconfig"
 )
 

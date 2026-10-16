@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cautem/cautem-core/relayproto"
+	"github.com/cautem/quarshell-core/relayproto"
 	"github.com/cautem/quarshell-gateway/internal/sshrelay"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
-	"github.com/cautem/slogx"
+	"github.com/cautem/quarshell-slogx"
 )
 
 // DefaultSSHSessionTTL matches OpenShell ssh_session_ttl_secs (24h).

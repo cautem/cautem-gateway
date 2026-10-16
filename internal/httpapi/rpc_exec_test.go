@@ -10,8 +10,8 @@ import (
 	"time"
 
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	core "github.com/cautem/cautem-core"
-	"github.com/cautem/cautem-driver/driver"
+	core "github.com/cautem/quarshell-core"
+	"github.com/cautem/quarshell-driver/driver"
 	"github.com/cautem/quarshell-gateway/internal/sshrelay"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"google.golang.org/grpc"
