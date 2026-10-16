@@ -44,8 +44,8 @@ github.com/cautem/quarshell-proto v0.2.1-0.20261016152658-94146822ca96 h1:HBb/8U
 github.com/cautem/quarshell-proto v0.2.1-0.20261016152658-94146822ca96/go.mod h1:rA/IaFHct/Y8TzZvGH74D3dY9B5iptb8AEi1iNMcFxM=
 github.com/cautem/quarshell-providers v0.1.9-0.20261016154254-54b4eb5cb183 h1:2h7SWezb2OWZKsVW45RLXzfy16oyjXw18bmObcGUDN8=
 github.com/cautem/quarshell-providers v0.1.9-0.20261016154254-54b4eb5cb183/go.mod h1:33mxsqvlKKyiwRK2tXrye9oMm9E7HzLQH1qgNL5ix8w=
-github.com/cautem/quarshell-proxy v0.3.1-0.20261016154341-8e22505d3706 h1:q5UZidsBMwrxj0QIlZcv6YFQ4yKsCV7aypLbwWoqpJg=
-github.com/cautem/quarshell-proxy v0.3.1-0.20261016154341-8e22505d3706/go.mod h1:igIL0WLsO3VEZoELek9nPp5wMdl0G8u5C90yeCmWFWw=
+github.com/cautem/quarshell-proxy v0.3.1-0.20261016181953-cca79d795127 h1:gJw5R5cCr07wewFa1KmxykjIh/Osm9I20jvhhBPWNRw=
+github.com/cautem/quarshell-proxy v0.3.1-0.20261016181953-cca79d795127/go.mod h1:SSrTwceHavGYFp721C3C+1b4yARcOVcvRg2zllnZDtw=
 github.com/cautem/quarshell-runtime v0.3.1-0.20261016181152-338d855de8d8 h1:v0Cn289FEfmrZTKNXyL5Ia7HGbeqwsLAv8umqXCrnhM=
 github.com/cautem/quarshell-runtime v0.3.1-0.20261016181152-338d855de8d8/go.mod h1:LeFsooxIbAan0O73/ESDCyeHAmAmXyYAFaM0bXljnNI=
 github.com/cautem/quarshell-slogx v0.1.4-0.20261016153436-5ec8e199a72f h1:d4yR7Ty2cabEoLsRwDkKEachnWDDPa7ONKgKqqsGXjk=

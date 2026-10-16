@@ -43,6 +43,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.38.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.4 // indirect
 	github.com/aws/smithy-go v1.28.5 // indirect
+	github.com/cautem/quarshell-proxy v0.3.1-0.20261016181953-cca79d795127 // indirect
 	github.com/cautem/slogx v0.1.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
