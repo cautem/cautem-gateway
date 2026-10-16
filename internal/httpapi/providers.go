@@ -372,7 +372,7 @@ func effectivePolicyWithGlobalPolicy(st *store.Store, builtinDir, sandbox string
 	return effective, nil
 }
 
-// BuiltinProvidersDir tries to locate cautem-cli/providers next to the module.
+// BuiltinProvidersDir resolves the provider-module profile catalog or packaged catalog.
 func BuiltinProvidersDir() string {
 	return provider.FindBuiltinDir()
 }

@@ -150,7 +150,7 @@ func installConfigTestProfile(t *testing.T, st *store.Store, workspace, id strin
 		t.Fatal("resolve config test source")
 	}
 	root := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(source))))
-	profile, err := os.ReadFile(filepath.Join(root, "cautem-cli", "providers", id+".yaml"))
+	profile, err := os.ReadFile(filepath.Join(root, "cautem-providers", "profiles", id+".yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}

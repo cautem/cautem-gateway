@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/cautem-gateway /usr/local/bin/cautem-gateway
 COPY --from=build /out/helpers/ /usr/local/lib/cautem/
-COPY --from=build /src/cautem-cli/providers/ /usr/local/providers/
+COPY --from=build /src/cautem-providers/profiles/ /usr/local/providers/
 COPY --from=build /src/cautem-gateway/LICENSE /src/cautem-gateway/NOTICE /usr/share/licenses/cautem-gateway/
 COPY --from=build /src/cautem-cli/LICENSE /src/cautem-cli/NOTICE /usr/share/licenses/cautem-cli/
 COPY --from=build /src/cautem-runtime/LICENSE /src/cautem-runtime/NOTICE /usr/share/licenses/cautem-runtime/
