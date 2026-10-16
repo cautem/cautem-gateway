@@ -146,7 +146,11 @@ func (e *remoteComputeEngine) Create(ctx context.Context, spec driver.Spec) (dri
 		return driver.Handle{}, err
 	}
 	if restartPolicy != "never" {
-		return driver.Handle{}, fmt.Errorf("remote compute driver %q does not advertise main process restart policy support", e.name)
+		return driver.Handle{}, &driver.UnsupportedError{
+			Backend:    driver.CanonicalBackendID(e.name),
+			Capability: driver.Capability("main-process-restart-policy"),
+			Operation:  "set main-process restart policy to " + restartPolicy,
+		}
 	}
 	template := &computev1.DriverSandboxTemplate{
 		Image:       spec.Image,
