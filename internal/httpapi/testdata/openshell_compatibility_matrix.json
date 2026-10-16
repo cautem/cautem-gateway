@@ -105,7 +105,7 @@
       ],
       "evidence_status": "local_test",
       "gate_result": "pass",
-      "scope": "Supported Podman 5.8.7 modes pass with exact runner capability skips; ownership acceptance on dedicated Linux hosts remains open."
+      "scope": "Supported Podman 5.8.7 modes pass with exact runner capability skips. Driver v0.3.0 CI also passes Podman 6.1.3 rootless auto/host/keep-id/no-map modes in Fedora 45 on ubuntu-latest; full ownership acceptance on native Linux hosts remains open."
     },
     {
       "id": "P4-CREDENTIAL-LIFECYCLE",
@@ -288,8 +288,8 @@
         "Taskfile.yml"
       ],
       "evidence_status": "local_test",
-      "gate_result": "fail",
-      "scope": "The gate was executed after publishing core v0.3.0, proto v0.2.0, providers v0.1.8, proxy v0.3.0 and runtime v0.3.0. CLI remains pinned to runtime v0.2.1 (missing heartbeat/log fields) and SDK v0.2.0 (old provider/service APIs); Gateway remains pinned to driver v0.2.0 (no Backend SPI) and proto v0.1.0 (no AttachMainProcess/current control fields). SDK v0.3.0 release PR is merged pending its tag; driver v0.3.0 remains pending. The published consumer gate therefore still fails."
+      "gate_result": "pass",
+      "scope": "GOWORK=off task release:standalone and task release:published pass for all modules using published module tags, readonly go.mod files and no local replace directives. SDK v0.3.0 is published at 26cf723; CLI and Gateway resolve their current published SDK, runtime, driver, proto, provider and proxy dependencies."
     },
     {
       "id": "P4-LIVE-POLICY",
@@ -331,7 +331,7 @@
       ],
       "evidence_status": "local_test",
       "gate_result": "partial",
-      "scope": "Podman 5.8.7 rejects proxy-backed create because blackhole route support is absent. Nested Podman 6.1.3 checks pass lifecycle, service recovery, pull policy, digest pinning, and rootless service recovery; its complete nested user-namespace matrix is blocked by missing host cgroup memory.max, and the rootless Gateway relay lane remains open. Rootful/rootless host-gateway enforcement still requires a dedicated Linux host runner. The installed Podman 6.1.4 macOS VM failed before usable API/SSH forwarding, so it is not target-host acceptance."
+      "scope": "Podman 5.8.7 rejects proxy-backed create because blackhole route support is absent. Driver v0.3.0 CI on ubuntu-latest passes Podman 6.1.3 rootful lifecycle/recovery/pull-policy/digest tests and rootless lifecycle/recovery/userns tests, but it does not run the proxy-backed host-gateway or Gateway relay probes. Nested Podman 6.1.3 on Docker Desktop lacks host cgroup memory.max; the Podman 6.1.4 macOS VM failed before usable API/SSH forwarding. Rootful/rootless host-gateway enforcement still needs a target Linux host lane."
     },
     {
       "id": "P2-HOST-BOUNDARIES",
