@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cautem/cautem-core/policy"
-	"github.com/cautem/cautem-providers/provider"
-	"github.com/cautem/cautem-runtime/secrets"
+	"github.com/cautem/quarshell-core/policy"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-providers/provider"
+	"github.com/cautem/quarshell-runtime/secrets"
 	"gopkg.in/yaml.v3"
 )
 

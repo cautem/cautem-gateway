@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cautem/cautem-driver/driver"
+	"github.com/cautem/quarshell-driver/driver"
 	computev1 "github.com/cautem/quarshell-gateway/internal/upstreamproto/computev1"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"

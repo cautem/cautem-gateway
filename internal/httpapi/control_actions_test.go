@@ -12,12 +12,12 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
-	"github.com/cautem/cautem-driver/driver"
-	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
-	"github.com/cautem/cautem-proto/gen/go/cautem/control/v1/controlv1connect"
+	"github.com/cautem/quarshell-driver/driver"
 	"github.com/cautem/quarshell-gateway/internal/logbuf"
 	"github.com/cautem/quarshell-gateway/internal/service"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
+	controlv1 "github.com/cautem/quarshell-proto/gen/go/cautem/control/v1"
+	"github.com/cautem/quarshell-proto/gen/go/cautem/control/v1/controlv1connect"
 )
 
 func TestControlActionsUseRuntimeAndResourceVersions(t *testing.T) {

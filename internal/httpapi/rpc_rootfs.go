@@ -13,7 +13,7 @@ import (
 	"time"
 
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	"github.com/cautem/cautem-driver/driver"
+	"github.com/cautem/quarshell-driver/driver"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"

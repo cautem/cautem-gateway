@@ -12,9 +12,9 @@ import (
 
 	datamodelv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	core "github.com/cautem/cautem-core"
-	"github.com/cautem/cautem-driver/driver"
-	_ "github.com/cautem/cautem-driver/driver/all"
+	core "github.com/cautem/quarshell-core"
+	"github.com/cautem/quarshell-driver/driver"
+	_ "github.com/cautem/quarshell-driver/driver/all"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

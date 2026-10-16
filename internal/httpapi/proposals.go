@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cautem/cautem-core/policy"
+	"github.com/cautem/quarshell-core/policy"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"gopkg.in/yaml.v3"
 )

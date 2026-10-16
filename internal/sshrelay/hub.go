@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cautem/cautem-core/relayproto"
-	"github.com/cautem/slogx"
+	"github.com/cautem/quarshell-core/relayproto"
+	"github.com/cautem/quarshell-slogx"
 )
 
 // ErrNotConnected means the sandbox supervisor has no live control stream.

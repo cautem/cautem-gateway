@@ -73,7 +73,7 @@ No general REST compatibility layer is maintained for beta clients.
 The separate `cautem.control.v1` Connect API serves authenticated UI and SDK
 clients on the gateway listener. Its source schema and generated Go/Connect/
 TypeScript clients are maintained in the independent
-[`cautem-proto`](https://github.com/cautem/cautem-proto) module and consumed as
+[`cautem-proto`](https://github.com/cautem/quarshell-proto) module and consumed as
 dependencies here. Lifecycle mutations require a client-generated
 `request_id`; reuse the same ID when retrying, then call `GetOperation` with that
 ID to reconcile a lost response. An operation left running across a gateway
@@ -87,12 +87,12 @@ preserves the full cautem YAML profile and uses resource-version checks for
 updates. Global profiles require platform admin access, and workspace profiles
 require provider scopes plus workspace membership.
 
-The browser console is in the separate [`cautem-ui`](https://github.com/cautem/cautem-ui) module. It uses the generated TypeScript
+The browser console is in the separate [`cautem-ui`](https://github.com/cautem/quarshell-ui) module. It uses the generated TypeScript
 Connect client and OIDC authorization-code flow with PKCE. The same-origin
 Compose Console serves the production static bundle and supports sandbox
 lifecycle actions, workspace policy/provider management, terminal, bounded
 workspace file transfer, and authenticated HTTP/WebSocket service access
-including noVNC. See the [UI README](https://github.com/cautem/cautem-ui/blob/main/README.md) for its security and
+including noVNC. See the [UI README](https://github.com/cautem/quarshell-ui/blob/main/README.md) for its security and
 runtime limits and the [shared-server guide](./compose/SHARED-SERVER.md) for
 single-instance OIDC deployment.
 

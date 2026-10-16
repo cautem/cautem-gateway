@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cautem/cautem-driver/driver"
+	"github.com/cautem/quarshell-driver/driver"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
-	"github.com/cautem/slogx"
+	"github.com/cautem/quarshell-slogx"
 )
 
 // reconcileRuntimeState repairs the durable gateway view after a gateway or

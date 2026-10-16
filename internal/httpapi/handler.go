@@ -10,12 +10,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cautem/cautem-runtime/secrets"
 	"github.com/cautem/quarshell-gateway/internal/logbuf"
 	"github.com/cautem/quarshell-gateway/internal/logger"
 	"github.com/cautem/quarshell-gateway/internal/sshrelay"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
-	"github.com/cautem/slogx"
+	"github.com/cautem/quarshell-runtime/secrets"
+	"github.com/cautem/quarshell-slogx"
 )
 
 // DriverConfigs maps a driver name to its decoded configuration table.

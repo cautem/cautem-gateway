@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	core "github.com/cautem/cautem-core"
-	"github.com/cautem/cautem-driver/driver"
+	core "github.com/cautem/quarshell-core"
+	"github.com/cautem/quarshell-driver/driver"
 	computev1 "github.com/cautem/quarshell-gateway/internal/upstreamproto/computev1"
 	"google.golang.org/protobuf/types/known/structpb"
 )

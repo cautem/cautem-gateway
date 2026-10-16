@@ -7,9 +7,9 @@ import (
 	"time"
 
 	datamodelv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
-	"github.com/cautem/cautem-runtime/secrets"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	credentialsv1 "github.com/cautem/quarshell-gateway/internal/upstreamproto/credentialsv1"
+	"github.com/cautem/quarshell-runtime/secrets"
 )
 
 // driverRegistry is the typed boundary for configured built-in and external

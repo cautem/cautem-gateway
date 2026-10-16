@@ -8,8 +8,8 @@ import (
 	"os"
 
 	"connectrpc.com/connect"
-	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
-	"github.com/cautem/cautem-runtime/secrets"
+	controlv1 "github.com/cautem/quarshell-proto/gen/go/cautem/control/v1"
+	"github.com/cautem/quarshell-runtime/secrets"
 )
 
 func (a *controlAPI) GetGatewayInfo(ctx context.Context, _ *connect.Request[controlv1.GetGatewayInfoRequest]) (*connect.Response[controlv1.GetGatewayInfoResponse], error) {

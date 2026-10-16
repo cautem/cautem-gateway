@@ -10,7 +10,7 @@ import (
 	"time"
 
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	"github.com/cautem/cautem-core/relayproto"
+	"github.com/cautem/quarshell-core/relayproto"
 	"github.com/cautem/quarshell-gateway/internal/sshrelay"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"google.golang.org/grpc"

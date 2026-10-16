@@ -10,9 +10,9 @@ import (
 
 	"connectrpc.com/connect"
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	core "github.com/cautem/cautem-core"
-	"github.com/cautem/cautem-driver/driver"
-	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
+	core "github.com/cautem/quarshell-core"
+	"github.com/cautem/quarshell-driver/driver"
+	controlv1 "github.com/cautem/quarshell-proto/gen/go/cautem/control/v1"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 )

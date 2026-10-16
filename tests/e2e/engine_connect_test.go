@@ -20,7 +20,7 @@ import (
 	datamodelv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
-	"github.com/cautem/cautem-core/relayproto"
+	"github.com/cautem/quarshell-core/relayproto"
 	"github.com/cautem/quarshell-gateway/internal/httpapi"
 	credentialsv1 "github.com/cautem/quarshell-gateway/internal/upstreamproto/credentialsv1"
 	"golang.org/x/crypto/ssh"

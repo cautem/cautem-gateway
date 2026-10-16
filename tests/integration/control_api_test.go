@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
-	"github.com/cautem/cautem-proto/gen/go/cautem/control/v1/controlv1connect"
 	"github.com/cautem/quarshell-gateway/internal/httpapi"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
+	controlv1 "github.com/cautem/quarshell-proto/gen/go/cautem/control/v1"
+	"github.com/cautem/quarshell-proto/gen/go/cautem/control/v1/controlv1connect"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 

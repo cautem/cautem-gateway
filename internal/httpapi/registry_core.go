@@ -10,7 +10,7 @@ import (
 	"time"
 
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
-	"github.com/cautem/cautem-driver/driver"
+	"github.com/cautem/quarshell-driver/driver"
 	computev1 "github.com/cautem/quarshell-gateway/internal/upstreamproto/computev1"
 	credentialsv1 "github.com/cautem/quarshell-gateway/internal/upstreamproto/credentialsv1"
 	interceptorv1 "github.com/cautem/quarshell-gateway/internal/upstreamproto/interceptorv1"

@@ -11,9 +11,9 @@ import (
 
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
-	"github.com/cautem/cautem-runtime/secrets"
 	"github.com/cautem/quarshell-gateway/internal/sshrelay"
 	"github.com/cautem/quarshell-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-runtime/secrets"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"

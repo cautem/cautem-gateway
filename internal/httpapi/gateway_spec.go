@@ -15,8 +15,8 @@ import (
 	"strings"
 
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	core "github.com/cautem/cautem-core"
-	"github.com/cautem/cautem-driver/driver"
+	core "github.com/cautem/quarshell-core"
+	"github.com/cautem/quarshell-driver/driver"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
