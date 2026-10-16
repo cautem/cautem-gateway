@@ -136,7 +136,7 @@
       "backend": "gateway,driver,runtime,cli",
       "owner": "gateway,driver,runtime,cli",
       "status": "open",
-      "evidence": "Local Docker/Podman/Kubernetes paths and macOS ARM64 VM on-failure restart are tested; remote-driver and broad foreground attach/recovery corpus remain open. Tests/evidence: cautem-gateway/internal/httpapi/rpc_main_process_test.go, cautem-cli/internal/app/cli/sandbox_restart_policy_test.go, cautem-driver/internal/vm/live_acceptance_test.go."
+      "evidence": "Local Docker/Podman/Kubernetes paths and macOS ARM64 VM on-failure restart are tested. The remote ComputeDriver adapter does not advertise main-process restart policy and now returns typed Unsupported before validate/create RPCs for on-failure/always; default never remains supported. Broad foreground attach/recovery and remote lifecycle evidence remain open. Tests/evidence: cautem-gateway/internal/httpapi/rpc_main_process_test.go, cautem-gateway/internal/httpapi/remote_compute_engine_test.go, cautem-cli/internal/app/cli/sandbox_restart_policy_test.go, cautem-driver/internal/vm/live_acceptance_test.go."
     },
     {
       "id": "P0-OPERATOR-CREDENTIAL-EXPORT",

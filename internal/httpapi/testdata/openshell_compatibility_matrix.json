@@ -372,12 +372,13 @@
       ],
       "test_refs": [
         "cautem-gateway/internal/httpapi/rpc_main_process_test.go",
+        "cautem-gateway/internal/httpapi/remote_compute_engine_test.go",
         "cautem-cli/internal/app/cli/sandbox_restart_policy_test.go",
         "cautem-driver/internal/vm/live_acceptance_test.go"
       ],
       "evidence_status": "target_host_test",
       "gate_result": "partial",
-      "scope": "Local Docker/Podman/Kubernetes paths and macOS ARM64 VM on-failure restart are tested; remote-driver and broad foreground attach/recovery corpus remain open."
+      "scope": "Local Docker/Podman/Kubernetes paths and macOS ARM64 VM on-failure restart are tested. Remote ComputeDriver does not advertise main-process restart policy and rejects on-failure/always with typed Unsupported before validation or create RPCs; the default never policy is covered. Broad foreground attach/recovery and remote lifecycle corpus remain open."
     },
     {
       "id": "P0-OPERATOR-CREDENTIAL-EXPORT",
