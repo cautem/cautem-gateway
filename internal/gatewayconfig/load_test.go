@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestPinnedOpenShellGatewayFiles(t *testing.T) {
+func TestLegacyGatewayConfigFixtures(t *testing.T) {
 	paths, err := filepath.Glob("testdata/openshell/*.toml")
 	if err != nil || len(paths) != 4 {
 		t.Fatalf("fixtures=%v err=%v", paths, err)
@@ -21,12 +21,29 @@ func TestPinnedOpenShellGatewayFiles(t *testing.T) {
 	}
 }
 
+func TestPinnedV014GatewayConfigFixtures(t *testing.T) {
+	for _, backend := range []string{"docker", "podman"} {
+		path := filepath.Join("testdata", "openshell-v0.1.4", backend+".toml")
+		t.Run(backend, func(t *testing.T) {
+			file, err := Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			g := file.Compatibility.Gateway
+			if file.Compatibility.Version == nil || *file.Compatibility.Version != 2 || g.ComputeDriver == nil || *g.ComputeDriver != backend {
+				t.Fatalf("pinned v0.1.4 selector lost: version=%v gateway=%+v", file.Compatibility.Version, g)
+			}
+		})
+	}
+}
+
 func TestGatewayTOMLContractAndBounds(t *testing.T) {
 	for name, input := range map[string]string{
 		"unknown-root":             "[unrecognized]\npassword='do-not-print'",
 		"unknown-nested":           "[openshell.gateway.auth]\nunknown='do-not-print'",
 		"duplicate":                "[openshell.gateway]\nname='one'\nname='do-not-print'",
-		"version":                  "[openshell]\nversion=2",
+		"future-version":           "[openshell]\nversion=3",
+		"zero-version":             "[openshell]\nversion=0",
 		"negative-version":         "[openshell]\nversion=-1",
 		"secret-in-file":           "[openshell.gateway]\ndatabase_url='postgres://do-not-print'",
 		"empty-credential-driver":  "[openshell.gateway]\ncredential_drivers=[]",
@@ -49,9 +66,17 @@ func TestGatewayTOMLContractAndBounds(t *testing.T) {
 			}
 		})
 	}
-	for _, input := range []string{"", "[openshell]\nversion=0", "[openshell.gateway]\ncompute_drivers=[]"} {
+	for _, input := range []string{"", "[openshell]\nversion=1", "[openshell]\nversion=2", "[openshell.gateway]\ncompute_drivers=[]", "[openshell.gateway]\ncompute_driver='docker'"} {
 		if _, err := Parse([]byte(input)); err != nil {
 			t.Fatalf("pinned-valid config failed: %v", err)
+		}
+	}
+	for _, input := range []string{
+		"[openshell.gateway]\ncompute_driver=''",
+		"[openshell.gateway]\ncompute_driver='docker'\ncompute_drivers=['docker']",
+	} {
+		if _, err := Parse([]byte(input)); err == nil {
+			t.Fatalf("invalid compute driver selector was accepted: %q", input)
 		}
 	}
 }
@@ -69,7 +94,7 @@ default_image="driver-image"
 	if err != nil {
 		t.Fatal(err)
 	}
-	oidc := file.OpenShell.Gateway.OIDC
+	oidc := file.Compatibility.Gateway.OIDC
 	if *oidc.JWKSTTLSecs != 3600 || *oidc.RolesClaim != "realm_access.roles" || *oidc.AdminRole != "openshell-admin" {
 		t.Fatalf("OIDC defaults=%+v", oidc)
 	}

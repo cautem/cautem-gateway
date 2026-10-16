@@ -341,9 +341,6 @@ func effectivePolicyWithGlobalPolicy(st *store.Store, builtinDir, sandbox string
 	}
 	var layers []provider.Layer
 	for _, name := range sb.AttachedProviders {
-		if !hasSandboxPolicy {
-			break
-		}
 		inst, ok := st.GetProvider(name)
 		if !ok {
 			continue

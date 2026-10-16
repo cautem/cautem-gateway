@@ -7,23 +7,25 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func (s *openShellRPC) CreateSshSession(ctx context.Context, req *openshellv1.CreateSshSessionRequest) (*openshellv1.CreateSshSessionResponse, error) {
+func (s *compatRPCAdapter) CreateSshSession(ctx context.Context, req *compatv1.CreateSshSessionRequest) (*compatv1.CreateSshSessionResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil || s.runtime.relay == nil {
 		return nil, status.Error(codes.Unavailable, "SSH session service is not initialized")
 	}
-	if req == nil || strings.TrimSpace(req.GetSandboxId()) == "" {
-		return nil, status.Error(codes.InvalidArgument, "sandbox_id is required")
+	if req == nil || strings.TrimSpace(req.GetSandbox()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "sandbox is required")
 	}
-	sandbox, ok := s.runtime.st.GetSandbox(req.GetSandboxId())
+	sandbox, ok := s.runtime.st.GetSandbox(req.GetSandbox())
 	if !ok {
 		for _, candidate := range s.runtime.st.ListSandboxes() {
-			if candidate.ID == req.GetSandboxId() {
+			if candidate.ID == req.GetSandbox() {
 				sandbox, ok = candidate, true
 				break
 			}
@@ -61,13 +63,13 @@ func (s *openShellRPC) CreateSshSession(ctx context.Context, req *openshellv1.Cr
 	if err != nil {
 		return nil, status.Error(codes.Internal, "failed to create SSH session")
 	}
-	return &openshellv1.CreateSshSessionResponse{
+	return &compatv1.CreateSshSessionResponse{
 		SandboxId: sandbox.Name, Token: token, GatewayHost: host,
-		GatewayPort: uint32(port), GatewayScheme: scheme, ExpiresAtMs: session.ExpiresAtMS,
+		GatewayPort: uint32(port), GatewayScheme: scheme, ExpirationTime: sshExpiration(session.ExpiresAtMS),
 	}, nil
 }
 
-func (s *openShellRPC) RevokeSshSession(ctx context.Context, req *openshellv1.RevokeSshSessionRequest) (*openshellv1.RevokeSshSessionResponse, error) {
+func (s *compatRPCAdapter) RevokeSshSession(ctx context.Context, req *compatv1.RevokeSshSessionRequest) (*compatv1.RevokeSshSessionResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return nil, status.Error(codes.Unavailable, "SSH session service is not initialized")
 	}
@@ -76,11 +78,11 @@ func (s *openShellRPC) RevokeSshSession(ctx context.Context, req *openshellv1.Re
 	}
 	session, exists := s.runtime.st.FindSSHSessionByToken(req.GetToken())
 	if !exists {
-		return &openshellv1.RevokeSshSessionResponse{Revoked: false}, nil
+		return &compatv1.RevokeSshSessionResponse{Outcome: compatv1.DeletionOutcome_DELETION_OUTCOME_ALREADY_ABSENT}, nil
 	}
 	sandbox, ok := s.runtime.st.GetSandbox(session.Sandbox)
 	if !ok {
-		return &openshellv1.RevokeSshSessionResponse{Revoked: false}, nil
+		return &compatv1.RevokeSshSessionResponse{Outcome: compatv1.DeletionOutcome_DELETION_OUTCOME_ALREADY_ABSENT}, nil
 	}
 	workspace := strings.TrimSpace(sandbox.Workspace)
 	if workspace == "" {
@@ -93,16 +95,16 @@ func (s *openShellRPC) RevokeSshSession(ctx context.Context, req *openshellv1.Re
 		return nil, err
 	}
 	if session.Revoked {
-		return &openshellv1.RevokeSshSessionResponse{Revoked: false}, nil
+		return &compatv1.RevokeSshSessionResponse{Outcome: compatv1.DeletionOutcome_DELETION_OUTCOME_ALREADY_ABSENT}, nil
 	}
 	_, revoked, err := s.runtime.st.RevokeSSHSessionByToken(req.GetToken())
 	if err != nil {
 		return nil, status.Error(codes.Internal, "failed to revoke SSH session")
 	}
-	return &openshellv1.RevokeSshSessionResponse{Revoked: revoked}, nil
+	return revokeSSHResponse(revoked), nil
 }
 
-func (s *openShellRPC) sshGatewayEndpoint(driverName string) (host string, port int, scheme string, err error) {
+func (s *compatRPCAdapter) sshGatewayEndpoint(driverName string) (host string, port int, scheme string, err error) {
 	// The explicit public URL wins. Driver grpc_endpoint is the gateway address
 	// advertised to the sandbox and is the closest equivalent when no separate
 	// user-facing address is configured.
@@ -191,4 +193,19 @@ func parsedPort(u *url.URL) int {
 		return 443
 	}
 	return 80
+}
+
+func sshExpiration(expiresAtMS int64) *timestamppb.Timestamp {
+	if expiresAtMS <= 0 {
+		return nil
+	}
+	return timestamppb.New(time.UnixMilli(expiresAtMS))
+}
+
+func revokeSSHResponse(revoked bool) *compatv1.RevokeSshSessionResponse {
+	outcome := compatv1.DeletionOutcome_DELETION_OUTCOME_ALREADY_ABSENT
+	if revoked {
+		outcome = compatv1.DeletionOutcome_DELETION_OUTCOME_COMPLETED
+	}
+	return &compatv1.RevokeSshSessionResponse{Outcome: outcome}
 }

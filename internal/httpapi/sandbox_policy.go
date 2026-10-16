@@ -107,7 +107,7 @@ type sandboxTokenGrantOverride struct {
 	Scopes   []string `json:"scopes"`
 }
 
-func parseOpenShellSandboxPolicy(src *sandboxv1.SandboxPolicy) (policy.Document, error) {
+func parseSandboxPolicy(src *sandboxv1.SandboxPolicy) (policy.Document, error) {
 	if src == nil || src.GetVersion() == 0 {
 		return policy.Document{}, fmt.Errorf("sandbox policy version is required")
 	}

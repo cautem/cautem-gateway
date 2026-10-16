@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -18,16 +18,16 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
-// TestOpenShellRPCDispatchCorpus invokes every method in the pinned public
+// TestCompatRPCDispatchCorpus invokes every method in the pinned public
 // descriptor through a real gRPC transport. The requests are intentionally
 // empty: this is a dispatch/conformance probe, not a second happy-path suite.
 // A malformed request may be rejected by the handler, but it must never fall
 // through to grpc's generated UNIMPLEMENTED response. Streaming methods are
 // also exercised with a bounded context so cancellation is part of the probe.
-func TestOpenShellRPCDispatchCorpus(t *testing.T) {
+func TestCompatRPCDispatchCorpus(t *testing.T) {
 	opt := Options{AllowUnauthenticated: true}
 	server := grpc.NewServer(grpcAuthServerOptions(opt)...)
-	registerOpenShellRPCWithOptions(server, opt)
+	registerCompatRPCWithOptions(server, opt)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +45,7 @@ func TestOpenShellRPCDispatchCorpus(t *testing.T) {
 	}
 	defer conn.Close()
 
-	service := openshellv1.File_openshell_proto.Services().ByName("OpenShell")
+	service := compatv1.File_openshell_proto.Services().ByName("OpenShell")
 	for i := 0; i < service.Methods().Len(); i++ {
 		method := service.Methods().Get(i)
 		name := string(method.Name())
@@ -97,12 +97,12 @@ func TestOpenShellRPCDispatchCorpus(t *testing.T) {
 	}
 }
 
-// TestOpenShellRPCAuthAndDeadlineCorpus verifies the two transport-wide
+// TestCompatRPCAuthAndDeadlineCorpus verifies the two transport-wide
 // invariants that are easy to regress when adding a handler: protected methods
 // reject missing metadata, an operator bearer reaches the handler (even when
 // the empty fixture is semantically invalid), and no method falls back to
 // generated UNIMPLEMENTED or hangs past its bounded deadline.
-func TestOpenShellRPCAuthAndDeadlineCorpus(t *testing.T) {
+func TestCompatRPCAuthAndDeadlineCorpus(t *testing.T) {
 	state, err := store.Open(t.TempDir(), "rpc-auth-corpus")
 	if err != nil {
 		t.Fatal(err)
@@ -113,7 +113,7 @@ func TestOpenShellRPCAuthAndDeadlineCorpus(t *testing.T) {
 	}
 	opt := Options{grpcRuntime: &grpcRuntime{st: state}}
 	server := grpc.NewServer(grpcAuthServerOptions(opt)...)
-	registerOpenShellRPCWithOptions(server, opt)
+	registerCompatRPCWithOptions(server, opt)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -131,7 +131,7 @@ func TestOpenShellRPCAuthAndDeadlineCorpus(t *testing.T) {
 	}
 	defer conn.Close()
 
-	service := openshellv1.File_openshell_proto.Services().ByName("OpenShell")
+	service := compatv1.File_openshell_proto.Services().ByName("OpenShell")
 	for i := 0; i < service.Methods().Len(); i++ {
 		method := service.Methods().Get(i)
 		name := string(method.Name())
@@ -139,7 +139,7 @@ func TestOpenShellRPCAuthAndDeadlineCorpus(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			timeout := 100 * time.Millisecond
 			unauthCtx, cancel := context.WithTimeout(context.Background(), timeout)
-			unauthErr := invokeOpenShellDynamic(unauthCtx, conn, method)
+			unauthErr := invokeRPCMethod(unauthCtx, conn, method)
 			cancel()
 			if status.Code(unauthErr) == codes.Unimplemented {
 				t.Fatalf("unauthenticated %s returned UNIMPLEMENTED", fullMethod)
@@ -149,10 +149,16 @@ func TestOpenShellRPCAuthAndDeadlineCorpus(t *testing.T) {
 			}
 
 			authCtx, authCancel := context.WithTimeout(metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer "+operatorToken), timeout)
-			authErr := invokeOpenShellDynamic(authCtx, conn, method)
+			authErr := invokeRPCMethod(authCtx, conn, method)
 			authCancel()
 			if status.Code(authErr) == codes.Unimplemented {
 				t.Fatalf("authenticated %s returned UNIMPLEMENTED", fullMethod)
+			}
+			if name == "GetProviderCredentials" {
+				if status.Code(authErr) != codes.Unauthenticated {
+					t.Fatalf("bearer-authenticated %s code=%s err=%v; want mTLS-only rejection", fullMethod, status.Code(authErr), authErr)
+				}
+				return
 			}
 			if status.Code(authErr) == codes.Unauthenticated {
 				t.Fatalf("authenticated %s was rejected by auth middleware: %v", fullMethod, authErr)
@@ -161,7 +167,7 @@ func TestOpenShellRPCAuthAndDeadlineCorpus(t *testing.T) {
 	}
 }
 
-func invokeOpenShellDynamic(ctx context.Context, conn *grpc.ClientConn, method protoreflect.MethodDescriptor) error {
+func invokeRPCMethod(ctx context.Context, conn *grpc.ClientConn, method protoreflect.MethodDescriptor) error {
 	requestType, err := protoregistry.GlobalTypes.FindMessageByName(method.Input().FullName())
 	if err != nil {
 		return err

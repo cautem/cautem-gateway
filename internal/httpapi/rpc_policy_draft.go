@@ -8,19 +8,20 @@ import (
 	"sort"
 	"strings"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func (s *openShellRPC) SubmitPolicyAnalysis(ctx context.Context, req *openshellv1.SubmitPolicyAnalysisRequest) (*openshellv1.SubmitPolicyAnalysisResponse, error) {
+func (s *compatRPCAdapter) SubmitPolicyAnalysis(ctx context.Context, req *compatv1.SubmitPolicyAnalysisRequest) (*compatv1.SubmitPolicyAnalysisResponse, error) {
 	if req == nil || strings.TrimSpace(req.GetName()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
-	if err := s.authorizeDraftSubmit(ctx, req.GetName(), req.GetWorkspace()); err != nil {
+	if err := s.authorizeDraftSubmit(ctx, req.GetName(), requestWorkspace(req.GetWorkspaceScope())); err != nil {
 		return nil, err
 	}
 	accepted := uint32(0)
@@ -60,31 +61,31 @@ func (s *openShellRPC) SubmitPolicyAnalysis(ctx context.Context, req *openshellv
 		accepted++
 		ids = append(ids, chunk.GetId())
 	}
-	return &openshellv1.SubmitPolicyAnalysisResponse{AcceptedChunks: accepted, RejectedChunks: rejected, RejectionReasons: reasons, AcceptedChunkIds: ids}, nil
+	return &compatv1.SubmitPolicyAnalysisResponse{AcceptedChunks: accepted, RejectedChunks: rejected, RejectionReasons: reasons, AcceptedChunkIds: ids}, nil
 }
 
-func (s *openShellRPC) GetDraftPolicy(ctx context.Context, req *openshellv1.GetDraftPolicyRequest) (*openshellv1.GetDraftPolicyResponse, error) {
-	if req == nil || strings.TrimSpace(req.GetName()) == "" {
+func (s *compatRPCAdapter) GetDraftPolicy(ctx context.Context, req *compatv1.GetDraftPolicyRequest) (*compatv1.GetDraftPolicyResponse, error) {
+	if req == nil || strings.TrimSpace(req.GetSandbox()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
-	sandbox, err := s.authorizeDraftRead(ctx, req.GetName(), req.GetWorkspace())
+	sandbox, err := s.authorizeDraftRead(ctx, req.GetSandbox(), requestWorkspace(req.GetWorkspaceScope()))
 	if err != nil {
 		return nil, err
 	}
 	proposals := s.runtime.st.ListProposals(sandbox.Name, req.GetStatusFilter())
 	sort.Slice(proposals, func(i, j int) bool { return proposals[i].CreatedAt.Before(proposals[j].CreatedAt) })
-	response := &openshellv1.GetDraftPolicyResponse{Chunks: make([]*openshellv1.PolicyChunk, 0, len(proposals)), DraftVersion: uint64(len(proposals))}
+	response := &compatv1.GetDraftPolicyResponse{Chunks: make([]*compatv1.PolicyChunk, 0, len(proposals)), DraftVersion: uint64(len(proposals))}
 	for _, proposal := range proposals {
 		response.Chunks = append(response.Chunks, proposalToPolicyChunk(proposal))
-		if proposal.CreatedAt.UnixMilli() > response.LastAnalyzedAtMs {
-			response.LastAnalyzedAtMs = proposal.CreatedAt.UnixMilli()
+		if response.LastAnalyzedTime == nil || proposal.CreatedAt.After(response.LastAnalyzedTime.AsTime()) {
+			response.LastAnalyzedTime = timestamppb.New(proposal.CreatedAt)
 		}
 	}
 	return response, nil
 }
 
-func (s *openShellRPC) ApproveDraftChunk(ctx context.Context, req *openshellv1.ApproveDraftChunkRequest) (*openshellv1.ApproveDraftChunkResponse, error) {
-	proposal, err := s.authorizeDraftMutation(ctx, req.GetName(), req.GetWorkspace(), req.GetChunkId(), req.GetReviewToken())
+func (s *compatRPCAdapter) ApproveDraftChunk(ctx context.Context, req *compatv1.ApproveDraftChunkRequest) (*compatv1.ApproveDraftChunkResponse, error) {
+	proposal, err := s.authorizeDraftMutation(ctx, req.GetSandbox(), requestWorkspace(req.GetWorkspaceScope()), req.GetChunkId(), req.GetReviewToken())
 	if err != nil {
 		return nil, err
 	}
@@ -94,24 +95,24 @@ func (s *openShellRPC) ApproveDraftChunk(ctx context.Context, req *openshellv1.A
 	return s.policyMutationResponse(proposal.Sandbox), nil
 }
 
-func (s *openShellRPC) RejectDraftChunk(ctx context.Context, req *openshellv1.RejectDraftChunkRequest) (*openshellv1.RejectDraftChunkResponse, error) {
-	if _, err := s.authorizeDraftMutation(ctx, req.GetName(), req.GetWorkspace(), req.GetChunkId(), ""); err != nil {
+func (s *compatRPCAdapter) RejectDraftChunk(ctx context.Context, req *compatv1.RejectDraftChunkRequest) (*compatv1.RejectDraftChunkResponse, error) {
+	if _, err := s.authorizeDraftMutation(ctx, req.GetSandbox(), requestWorkspace(req.GetWorkspaceScope()), req.GetChunkId(), ""); err != nil {
 		return nil, err
 	}
 	if _, err := s.runtime.st.DecideProposal(req.GetChunkId(), "rejected", req.GetReason()); err != nil {
 		return nil, status.Error(codes.NotFound, "draft chunk not found")
 	}
-	return &openshellv1.RejectDraftChunkResponse{}, nil
+	return &compatv1.RejectDraftChunkResponse{}, nil
 }
 
-func (s *openShellRPC) ApproveAllDraftChunks(ctx context.Context, req *openshellv1.ApproveAllDraftChunksRequest) (*openshellv1.ApproveAllDraftChunksResponse, error) {
-	if req == nil || strings.TrimSpace(req.GetName()) == "" {
+func (s *compatRPCAdapter) ApproveAllDraftChunks(ctx context.Context, req *compatv1.ApproveAllDraftChunksRequest) (*compatv1.ApproveAllDraftChunksResponse, error) {
+	if req == nil || strings.TrimSpace(req.GetSandbox()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
-	if err := s.requireSandboxWrite(ctx, defaultWorkspace(req.GetWorkspace())); err != nil {
+	if err := s.requireSandboxWrite(ctx, defaultWorkspace(requestWorkspace(req.GetWorkspaceScope()))); err != nil {
 		return nil, err
 	}
-	proposals := s.runtime.st.ListProposals(req.GetName(), "pending")
+	proposals := s.runtime.st.ListProposals(req.GetSandbox(), "pending")
 	approvalTokens := map[string]string{}
 	for _, item := range req.GetApprovals() {
 		if item != nil {
@@ -132,14 +133,14 @@ func (s *openShellRPC) ApproveAllDraftChunks(ctx context.Context, req *openshell
 		}
 		approved++
 	}
-	result := &openshellv1.ApproveAllDraftChunksResponse{ChunksApproved: approved, ChunksSkipped: skipped}
-	mutation := s.policyMutationResponse(req.GetName())
+	result := &compatv1.ApproveAllDraftChunksResponse{ChunksApproved: approved, ChunksSkipped: skipped}
+	mutation := s.policyMutationResponse(req.GetSandbox())
 	result.PolicyVersion, result.PolicyHash = mutation.PolicyVersion, mutation.PolicyHash
 	return result, nil
 }
 
-func (s *openShellRPC) EditDraftChunk(ctx context.Context, req *openshellv1.EditDraftChunkRequest) (*openshellv1.EditDraftChunkResponse, error) {
-	proposal, err := s.authorizeDraftMutation(ctx, req.GetName(), req.GetWorkspace(), req.GetChunkId(), "")
+func (s *compatRPCAdapter) EditDraftChunk(ctx context.Context, req *compatv1.EditDraftChunkRequest) (*compatv1.EditDraftChunkResponse, error) {
+	proposal, err := s.authorizeDraftMutation(ctx, req.GetSandbox(), requestWorkspace(req.GetWorkspaceScope()), req.GetChunkId(), "")
 	if err != nil {
 		return nil, err
 	}
@@ -157,58 +158,60 @@ func (s *openShellRPC) EditDraftChunk(ctx context.Context, req *openshellv1.Edit
 	if err := s.runtime.st.PutProposal(proposal); err != nil {
 		return nil, status.Error(codes.Internal, "could not update draft chunk")
 	}
-	return &openshellv1.EditDraftChunkResponse{}, nil
+	return &compatv1.EditDraftChunkResponse{}, nil
 }
 
-func (s *openShellRPC) UndoDraftChunk(ctx context.Context, req *openshellv1.UndoDraftChunkRequest) (*openshellv1.UndoDraftChunkResponse, error) {
-	proposal, err := s.authorizeDraftMutation(ctx, req.GetName(), req.GetWorkspace(), req.GetChunkId(), "")
+func (s *compatRPCAdapter) UndoDraftChunk(ctx context.Context, req *compatv1.UndoDraftChunkRequest) (*compatv1.UndoDraftChunkResponse, error) {
+	proposal, err := s.authorizeDraftMutation(ctx, req.GetSandbox(), requestWorkspace(req.GetWorkspaceScope()), req.GetChunkId(), "")
 	if err != nil {
 		return nil, err
 	}
 	if err := s.runtime.st.DeleteProposal(proposal.ID); err != nil {
 		return nil, status.Error(codes.Internal, "could not undo draft chunk")
 	}
-	return &openshellv1.UndoDraftChunkResponse{}, nil
+	return &compatv1.UndoDraftChunkResponse{}, nil
 }
 
-func (s *openShellRPC) ClearDraftChunks(ctx context.Context, req *openshellv1.ClearDraftChunksRequest) (*openshellv1.ClearDraftChunksResponse, error) {
-	if req == nil || strings.TrimSpace(req.GetName()) == "" {
+func (s *compatRPCAdapter) ClearDraftChunks(ctx context.Context, req *compatv1.ClearDraftChunksRequest) (*compatv1.ClearDraftChunksResponse, error) {
+	if req == nil || strings.TrimSpace(req.GetSandbox()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
-	if err := s.requireSandboxWrite(ctx, defaultWorkspace(req.GetWorkspace())); err != nil {
+	if err := s.requireSandboxWrite(ctx, defaultWorkspace(requestWorkspace(req.GetWorkspaceScope()))); err != nil {
 		return nil, err
 	}
-	proposals := s.runtime.st.ListProposals(req.GetName(), "pending")
+	proposals := s.runtime.st.ListProposals(req.GetSandbox(), "pending")
 	for _, proposal := range proposals {
 		if err := s.runtime.st.DeleteProposal(proposal.ID); err != nil {
 			return nil, status.Error(codes.Internal, "could not clear draft chunks")
 		}
 	}
-	return &openshellv1.ClearDraftChunksResponse{ChunksCleared: uint32(len(proposals))}, nil
+	return &compatv1.ClearDraftChunksResponse{ChunksCleared: uint32(len(proposals))}, nil
 }
 
-func (s *openShellRPC) GetDraftHistory(ctx context.Context, req *openshellv1.GetDraftHistoryRequest) (*openshellv1.GetDraftHistoryResponse, error) {
-	if req == nil || strings.TrimSpace(req.GetName()) == "" {
+func (s *compatRPCAdapter) GetDraftHistory(ctx context.Context, req *compatv1.GetDraftHistoryRequest) (*compatv1.GetDraftHistoryResponse, error) {
+	if req == nil || strings.TrimSpace(req.GetSandbox()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
-	sandbox, err := s.authorizeDraftRead(ctx, req.GetName(), req.GetWorkspace())
+	sandbox, err := s.authorizeDraftRead(ctx, req.GetSandbox(), requestWorkspace(req.GetWorkspaceScope()))
 	if err != nil {
 		return nil, err
 	}
 	proposals := s.runtime.st.ListProposals(sandbox.Name, "")
-	entries := make([]*openshellv1.DraftHistoryEntry, 0, len(proposals))
+	entries := make([]*compatv1.DraftHistoryEntry, 0, len(proposals))
 	for _, proposal := range proposals {
 		event := "denial_detected"
 		if proposal.Status == "approved" || proposal.Status == "rejected" {
 			event = proposal.Status
 		}
-		entries = append(entries, &openshellv1.DraftHistoryEntry{TimestampMs: proposal.CreatedAt.UnixMilli(), EventType: event, Description: proposal.IntentSummary, ChunkId: proposal.ID})
+		entries = append(entries, &compatv1.DraftHistoryEntry{EventTime: timestamppb.New(proposal.CreatedAt), EventType: event, Description: proposal.IntentSummary, ChunkId: proposal.ID})
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].TimestampMs < entries[j].TimestampMs })
-	return &openshellv1.GetDraftHistoryResponse{Entries: entries}, nil
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].GetEventTime().AsTime().Before(entries[j].GetEventTime().AsTime())
+	})
+	return &compatv1.GetDraftHistoryResponse{Entries: entries}, nil
 }
 
-func (s *openShellRPC) authorizeDraftRead(ctx context.Context, name, workspace string) (store.Sandbox, error) {
+func (s *compatRPCAdapter) authorizeDraftRead(ctx context.Context, name, workspace string) (store.Sandbox, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return store.Sandbox{}, status.Error(codes.Unavailable, "policy store is not initialized")
 	}
@@ -222,7 +225,7 @@ func (s *openShellRPC) authorizeDraftRead(ctx context.Context, name, workspace s
 	return sandbox, nil
 }
 
-func (s *openShellRPC) authorizeDraftMutation(ctx context.Context, name, workspace, id, token string) (store.Proposal, error) {
+func (s *compatRPCAdapter) authorizeDraftMutation(ctx context.Context, name, workspace, id, token string) (store.Proposal, error) {
 	if err := s.requireSandboxWrite(ctx, defaultWorkspace(workspace)); err != nil {
 		return store.Proposal{}, err
 	}
@@ -236,7 +239,7 @@ func (s *openShellRPC) authorizeDraftMutation(ctx context.Context, name, workspa
 	return proposal, nil
 }
 
-func (s *openShellRPC) authorizeDraftSubmit(ctx context.Context, name, workspace string) error {
+func (s *compatRPCAdapter) authorizeDraftSubmit(ctx context.Context, name, workspace string) error {
 	p := PrincipalFrom(ctx)
 	if p.Kind == PrincipalSandbox {
 		if p.Sandbox != name {
@@ -247,8 +250,8 @@ func (s *openShellRPC) authorizeDraftSubmit(ctx context.Context, name, workspace
 	return s.requireSandboxWrite(ctx, defaultWorkspace(workspace))
 }
 
-func proposalToPolicyChunk(proposal store.Proposal) *openshellv1.PolicyChunk {
-	chunk := &openshellv1.PolicyChunk{Id: proposal.ID, Status: proposal.Status, RuleName: proposal.RuleName, Rationale: proposal.Rationale, SecurityNotes: proposal.SecurityNotes, Confidence: proposal.Confidence, CreatedAtMs: proposal.CreatedAt.UnixMilli(), DecidedAtMs: proposal.DecidedAt.UnixMilli(), ValidationResult: proposal.ValidationResult, RejectionReason: proposal.RejectionReason, ReviewToken: proposal.ReviewToken}
+func proposalToPolicyChunk(proposal store.Proposal) *compatv1.PolicyChunk {
+	chunk := &compatv1.PolicyChunk{Id: proposal.ID, Status: proposal.Status, RuleName: proposal.RuleName, Rationale: proposal.Rationale, SecurityNotes: proposal.SecurityNotes, Confidence: proposal.Confidence, CreatedTime: timestamppb.New(proposal.CreatedAt), DecidedTime: timestamppb.New(proposal.DecidedAt), ValidationResult: proposal.ValidationResult, RejectionReason: proposal.RejectionReason, ReviewToken: proposal.ReviewToken}
 	if proposal.RuleProtoJSON != "" {
 		chunk.ProposedRule = &sandboxv1.NetworkPolicyRule{}
 		_ = protojson.Unmarshal([]byte(proposal.RuleProtoJSON), chunk.ProposedRule)
@@ -263,8 +266,8 @@ func reviewToken(id string, payload []byte) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func (s *openShellRPC) policyMutationResponse(name string) *openshellv1.ApproveDraftChunkResponse {
-	response := &openshellv1.ApproveDraftChunkResponse{}
+func (s *compatRPCAdapter) policyMutationResponse(name string) *compatv1.ApproveDraftChunkResponse {
+	response := &compatv1.ApproveDraftChunkResponse{}
 	if sandbox, ok := s.runtime.st.GetSandbox(name); ok {
 		response.PolicyVersion = uint32(sandbox.PolicyRev)
 		if len(sandbox.PolicyRevisions) > 0 {

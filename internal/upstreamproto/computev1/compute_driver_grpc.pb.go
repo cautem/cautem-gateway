@@ -22,19 +22,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ComputeDriver_GetCapabilities_FullMethodName                = "/openshell.compute.v1.ComputeDriver/GetCapabilities"
-	ComputeDriver_AuthenticateSandbox_FullMethodName            = "/openshell.compute.v1.ComputeDriver/AuthenticateSandbox"
-	ComputeDriver_GetGatewayListenerRequirements_FullMethodName = "/openshell.compute.v1.ComputeDriver/GetGatewayListenerRequirements"
-	ComputeDriver_ValidateSandboxCreate_FullMethodName          = "/openshell.compute.v1.ComputeDriver/ValidateSandboxCreate"
-	ComputeDriver_GetSandbox_FullMethodName                     = "/openshell.compute.v1.ComputeDriver/GetSandbox"
-	ComputeDriver_ListSandboxes_FullMethodName                  = "/openshell.compute.v1.ComputeDriver/ListSandboxes"
-	ComputeDriver_CreateSandbox_FullMethodName                  = "/openshell.compute.v1.ComputeDriver/CreateSandbox"
-	ComputeDriver_StopSandbox_FullMethodName                    = "/openshell.compute.v1.ComputeDriver/StopSandbox"
-	ComputeDriver_StartSandbox_FullMethodName                   = "/openshell.compute.v1.ComputeDriver/StartSandbox"
-	ComputeDriver_DeleteSandbox_FullMethodName                  = "/openshell.compute.v1.ComputeDriver/DeleteSandbox"
-	ComputeDriver_WatchSandboxes_FullMethodName                 = "/openshell.compute.v1.ComputeDriver/WatchSandboxes"
-	ComputeDriver_EnsureWorkspace_FullMethodName                = "/openshell.compute.v1.ComputeDriver/EnsureWorkspace"
-	ComputeDriver_DeleteWorkspace_FullMethodName                = "/openshell.compute.v1.ComputeDriver/DeleteWorkspace"
+	ComputeDriver_GetCapabilities_FullMethodName       = "/openshell.compute.v1.ComputeDriver/GetCapabilities"
+	ComputeDriver_AuthenticateSandbox_FullMethodName   = "/openshell.compute.v1.ComputeDriver/AuthenticateSandbox"
+	ComputeDriver_ValidateSandboxCreate_FullMethodName = "/openshell.compute.v1.ComputeDriver/ValidateSandboxCreate"
+	ComputeDriver_GetSandbox_FullMethodName            = "/openshell.compute.v1.ComputeDriver/GetSandbox"
+	ComputeDriver_ListSandboxes_FullMethodName         = "/openshell.compute.v1.ComputeDriver/ListSandboxes"
+	ComputeDriver_CreateSandbox_FullMethodName         = "/openshell.compute.v1.ComputeDriver/CreateSandbox"
+	ComputeDriver_StopSandbox_FullMethodName           = "/openshell.compute.v1.ComputeDriver/StopSandbox"
+	ComputeDriver_StartSandbox_FullMethodName          = "/openshell.compute.v1.ComputeDriver/StartSandbox"
+	ComputeDriver_DeleteSandbox_FullMethodName         = "/openshell.compute.v1.ComputeDriver/DeleteSandbox"
+	ComputeDriver_WatchSandboxes_FullMethodName        = "/openshell.compute.v1.ComputeDriver/WatchSandboxes"
+	ComputeDriver_EnsureWorkspace_FullMethodName       = "/openshell.compute.v1.ComputeDriver/EnsureWorkspace"
+	ComputeDriver_DeleteWorkspace_FullMethodName       = "/openshell.compute.v1.ComputeDriver/DeleteWorkspace"
 )
 
 // ComputeDriverClient is the client API for ComputeDriver service.
@@ -59,11 +58,6 @@ type ComputeDriverClient interface {
 	// sandbox identity it represents. The gateway remains responsible for
 	// checking that the sandbox exists and minting gateway credentials.
 	AuthenticateSandbox(ctx context.Context, in *AuthenticateSandboxRequest, opts ...grpc.CallOption) (*AuthenticateSandboxResponse, error)
-	// Report additional gateway listeners required by this driver instance.
-	//
-	// A requirement is not authorization to expose the gateway. The gateway
-	// owns validation, authorization, and the authoritative bind.
-	GetGatewayListenerRequirements(ctx context.Context, in *GetGatewayListenerRequirementsRequest, opts ...grpc.CallOption) (*GetGatewayListenerRequirementsResponse, error)
 	// Validate a sandbox before create-time provisioning.
 	ValidateSandboxCreate(ctx context.Context, in *ValidateSandboxCreateRequest, opts ...grpc.CallOption) (*ValidateSandboxCreateResponse, error)
 	// Fetch the platform-observed sandbox state for one sandbox.
@@ -109,16 +103,6 @@ func (c *computeDriverClient) AuthenticateSandbox(ctx context.Context, in *Authe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AuthenticateSandboxResponse)
 	err := c.cc.Invoke(ctx, ComputeDriver_AuthenticateSandbox_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *computeDriverClient) GetGatewayListenerRequirements(ctx context.Context, in *GetGatewayListenerRequirementsRequest, opts ...grpc.CallOption) (*GetGatewayListenerRequirementsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetGatewayListenerRequirementsResponse)
-	err := c.cc.Invoke(ctx, ComputeDriver_GetGatewayListenerRequirements_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -256,11 +240,6 @@ type ComputeDriverServer interface {
 	// sandbox identity it represents. The gateway remains responsible for
 	// checking that the sandbox exists and minting gateway credentials.
 	AuthenticateSandbox(context.Context, *AuthenticateSandboxRequest) (*AuthenticateSandboxResponse, error)
-	// Report additional gateway listeners required by this driver instance.
-	//
-	// A requirement is not authorization to expose the gateway. The gateway
-	// owns validation, authorization, and the authoritative bind.
-	GetGatewayListenerRequirements(context.Context, *GetGatewayListenerRequirementsRequest) (*GetGatewayListenerRequirementsResponse, error)
 	// Validate a sandbox before create-time provisioning.
 	ValidateSandboxCreate(context.Context, *ValidateSandboxCreateRequest) (*ValidateSandboxCreateResponse, error)
 	// Fetch the platform-observed sandbox state for one sandbox.
@@ -297,9 +276,6 @@ func (UnimplementedComputeDriverServer) GetCapabilities(context.Context, *GetCap
 }
 func (UnimplementedComputeDriverServer) AuthenticateSandbox(context.Context, *AuthenticateSandboxRequest) (*AuthenticateSandboxResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AuthenticateSandbox not implemented")
-}
-func (UnimplementedComputeDriverServer) GetGatewayListenerRequirements(context.Context, *GetGatewayListenerRequirementsRequest) (*GetGatewayListenerRequirementsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetGatewayListenerRequirements not implemented")
 }
 func (UnimplementedComputeDriverServer) ValidateSandboxCreate(context.Context, *ValidateSandboxCreateRequest) (*ValidateSandboxCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ValidateSandboxCreate not implemented")
@@ -384,24 +360,6 @@ func _ComputeDriver_AuthenticateSandbox_Handler(srv interface{}, ctx context.Con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ComputeDriverServer).AuthenticateSandbox(ctx, req.(*AuthenticateSandboxRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _ComputeDriver_GetGatewayListenerRequirements_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetGatewayListenerRequirementsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ComputeDriverServer).GetGatewayListenerRequirements(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ComputeDriver_GetGatewayListenerRequirements_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ComputeDriverServer).GetGatewayListenerRequirements(ctx, req.(*GetGatewayListenerRequirementsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -593,10 +551,6 @@ var ComputeDriver_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AuthenticateSandbox",
 			Handler:    _ComputeDriver_AuthenticateSandbox_Handler,
-		},
-		{
-			MethodName: "GetGatewayListenerRequirements",
-			Handler:    _ComputeDriver_GetGatewayListenerRequirements_Handler,
 		},
 		{
 			MethodName: "ValidateSandboxCreate",

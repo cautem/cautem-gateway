@@ -9,9 +9,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	"github.com/cautem/cautem-gateway/internal/gatewayconfig"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 const maxSupervisorMiddlewarePayload = 4 << 20
@@ -66,9 +68,10 @@ func supervisorMiddlewareServices(configs []gatewayconfig.Middleware) ([]*sandbo
 				return nil, fmt.Errorf("openshell.supervisor.middleware[%d].tls_ca_cert_path: %w", i, err)
 			}
 		}
+		requestTimeout, _ := time.ParseDuration(timeout)
 		services = append(services, &sandboxv1.SupervisorMiddlewareService{
 			Name: name, GrpcEndpoint: endpoint, MaxPayloadBytes: maxPayload,
-			Timeout: timeout, TlsCaCertPem: caPEM, Audience: audience,
+			RequestTimeout: durationpb.New(requestTimeout), TlsCaCertPem: caPEM, Audience: audience,
 			AllowInsecureTransport: config.AllowInsecureTransport,
 		})
 	}

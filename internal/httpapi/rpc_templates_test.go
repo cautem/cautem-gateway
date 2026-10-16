@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	datamodelv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
@@ -24,42 +24,42 @@ func TestSandboxTemplateCRUDIsWorkspaceScoped(t *testing.T) {
 	if err := st.CreateWorkspace(store.WorkspaceRecord{Name: "team-a"}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	template := &openshellv1.SandboxWorkloadTemplate{Metadata: &datamodelv1.ObjectMeta{Name: "go-service", Labels: map[string]string{"team": "platform"}}, Spec: &openshellv1.SandboxWorkloadTemplateSpec{Workload: &openshellv1.SandboxWorkloadConfig{Image: "golang:1.25"}}}
-	created, err := rpc.CreateSandboxTemplate(ctx, &openshellv1.CreateSandboxTemplateRequest{Template: template, Workspace: "team-a"})
+	template := &compatv1.SandboxWorkloadTemplate{Metadata: &datamodelv1.ObjectMeta{Name: "go-service", Labels: map[string]string{"team": "platform"}}, Spec: &compatv1.SandboxWorkloadTemplateSpec{Workload: &compatv1.SandboxWorkloadConfig{Image: "golang:1.25"}}}
+	created, err := rpc.CreateSandboxTemplate(ctx, &compatv1.CreateSandboxTemplateRequest{Template: template, WorkspaceScope: workspaceScope("team-a")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created.GetTemplate().GetMetadata().GetResourceVersion() != 1 || created.GetTemplate().GetMetadata().GetWorkspace() != "team-a" {
 		t.Fatalf("created template metadata=%v", created.GetTemplate().GetMetadata())
 	}
-	if _, err := rpc.CreateSandboxTemplate(ctx, &openshellv1.CreateSandboxTemplateRequest{Template: template, Workspace: "team-a"}); status.Code(err) != codes.AlreadyExists {
+	if _, err := rpc.CreateSandboxTemplate(ctx, &compatv1.CreateSandboxTemplateRequest{Template: template, WorkspaceScope: workspaceScope("team-a")}); status.Code(err) != codes.AlreadyExists {
 		t.Fatalf("duplicate create error=%v", err)
 	}
-	if _, err := rpc.GetSandboxTemplate(ctx, &openshellv1.GetSandboxTemplateRequest{Name: "go-service", Workspace: "team-b"}); status.Code(err) != codes.NotFound {
+	if _, err := rpc.GetSandboxTemplate(ctx, &compatv1.GetSandboxTemplateRequest{Name: "go-service", WorkspaceScope: workspaceScope("team-b")}); status.Code(err) != codes.NotFound {
 		t.Fatalf("cross-workspace get error=%v", err)
 	}
-	got, err := rpc.GetSandboxTemplate(ctx, &openshellv1.GetSandboxTemplateRequest{Name: "go-service", Workspace: "team-a"})
+	got, err := rpc.GetSandboxTemplate(ctx, &compatv1.GetSandboxTemplateRequest{Name: "go-service", WorkspaceScope: workspaceScope("team-a")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.GetTemplate().GetSpec().GetWorkload().GetImage() != "golang:1.25" {
 		t.Fatalf("template spec=%v", got.GetTemplate().GetSpec())
 	}
-	list, err := rpc.ListSandboxTemplates(ctx, &openshellv1.ListSandboxTemplatesRequest{Workspace: "team-a", LabelSelector: "team=platform"})
+	list, err := rpc.ListSandboxTemplates(ctx, &compatv1.ListSandboxTemplatesRequest{WorkspaceScope: workspaceScope("team-a"), LabelSelector: "team=platform"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(list.GetTemplates()) != 1 || list.GetTemplates()[0].GetMetadata().GetName() != "go-service" {
 		t.Fatalf("list=%v", list)
 	}
-	deleted, err := rpc.DeleteSandboxTemplate(ctx, &openshellv1.DeleteSandboxTemplateRequest{Name: "go-service", Workspace: "team-b"})
-	if err != nil || deleted.GetDeleted() {
+	deleted, err := rpc.DeleteSandboxTemplate(ctx, &compatv1.DeleteSandboxTemplateRequest{Name: "go-service", WorkspaceScope: workspaceScope("team-b")})
+	if err != nil || deleted.GetOutcome() != compatv1.DeletionOutcome_DELETION_OUTCOME_ALREADY_ABSENT {
 		t.Fatalf("wrong-workspace delete response=%v err=%v", deleted, err)
 	}
-	deleted, err = rpc.DeleteSandboxTemplate(ctx, &openshellv1.DeleteSandboxTemplateRequest{Name: "go-service", Workspace: "team-a"})
-	if err != nil || !deleted.GetDeleted() {
+	deleted, err = rpc.DeleteSandboxTemplate(ctx, &compatv1.DeleteSandboxTemplateRequest{Name: "go-service", WorkspaceScope: workspaceScope("team-a")})
+	if err != nil || deleted.GetOutcome() != compatv1.DeletionOutcome_DELETION_OUTCOME_COMPLETED {
 		t.Fatalf("delete response=%v err=%v", deleted, err)
 	}
 }
@@ -80,20 +80,20 @@ func TestCreateSandboxResolvesWorkspaceTemplateAndGovernanceOverrides(t *testing
 	dataDir := t.TempDir()
 	registry := newComputeRegistry(Options{ComputeDriverNames: []string{"docker"}, ComputeDriverConfigs: map[string]map[string]any{"docker": {"grpc_endpoint": "http://gateway:7443"}}})
 	registry.engines["docker"] = engine
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, opt: Options{DataDir: dataDir, Listen: "127.0.0.1:7443"}, compute: registry, waitSupervisorReady: func(context.Context, string) error { return nil }}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, opt: Options{DataDir: dataDir, Listen: "127.0.0.1:7443"}, compute: registry, waitSupervisorReady: func(context.Context, string) error { return nil }}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	_, err = rpc.CreateSandboxTemplate(ctx, &openshellv1.CreateSandboxTemplateRequest{Template: &openshellv1.SandboxWorkloadTemplate{Metadata: &datamodelv1.ObjectMeta{Name: "worker"}, Spec: &openshellv1.SandboxWorkloadTemplateSpec{Workload: &openshellv1.SandboxWorkloadConfig{Image: "alpine:3.22", Environment: map[string]string{"FROM_WORKLOAD_TEMPLATE": "yes"}, Resources: &openshellv1.SandboxResources{Cpu: "500m", Memory: "32Mi"}}}}})
+	_, err = rpc.CreateSandboxTemplate(ctx, &compatv1.CreateSandboxTemplateRequest{Template: &compatv1.SandboxWorkloadTemplate{Metadata: &datamodelv1.ObjectMeta{Name: "worker"}, Spec: &compatv1.SandboxWorkloadTemplateSpec{Workload: &compatv1.SandboxWorkloadConfig{Image: "alpine:3.22", Environment: map[string]string{"FROM_WORKLOAD_TEMPLATE": "yes"}, Resources: &compatv1.SandboxResources{Cpu: "500m", Memory: "32Mi"}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := rpc.CreateSandbox(ctx, &openshellv1.CreateSandboxRequest{Name: "worker-1", Workspace: "default", WorkloadTemplateName: "worker", Spec: &openshellv1.SandboxSpec{Policy: &sandboxv1.SandboxPolicy{Version: 1}, Command: []string{"sleep", "infinity"}}})
+	response, err := rpc.CreateSandbox(ctx, &compatv1.CreateSandboxRequest{Name: "worker-1", WorkspaceScope: workspaceScope("default"), WorkloadTemplate: "worker", Spec: &compatv1.SandboxSpec{Policy: &sandboxv1.SandboxPolicy{Version: 1}, Command: []string{"sleep", "infinity"}, RestartPolicy: compatv1.SandboxRestartPolicy_SANDBOX_RESTART_POLICY_ON_FAILURE}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.GetSandbox().GetSpec().GetTemplate().GetImage() != "alpine:3.22" || engine.created.Image != "alpine:3.22" || engine.created.CPU != 0.5 || engine.created.MemoryBytes != 32*1024*1024 {
+	if response.GetSandbox().GetSpec().GetTemplate().GetImage() != "alpine:3.22" || engine.created.Image != "alpine:3.22" || engine.created.CPU != 0.5 || engine.created.MemoryBytes != 32*1024*1024 || engine.created.MainProcessRestartPolicy != "on-failure" {
 		t.Fatalf("resolved sandbox spec=%v driver spec=%+v", response.GetSandbox().GetSpec(), engine.created)
 	}
-	if _, err := rpc.CreateSandbox(ctx, &openshellv1.CreateSandboxRequest{Name: "invalid-override", Workspace: "default", WorkloadTemplateName: "worker", Spec: &openshellv1.SandboxSpec{Template: &openshellv1.SandboxTemplate{Image: "busybox"}, Policy: &sandboxv1.SandboxPolicy{Version: 1}}}); status.Code(err) != codes.InvalidArgument {
+	if _, err := rpc.CreateSandbox(ctx, &compatv1.CreateSandboxRequest{Name: "invalid-override", WorkspaceScope: workspaceScope("default"), WorkloadTemplate: "worker", Spec: &compatv1.SandboxSpec{Template: &compatv1.SandboxTemplate{Image: "busybox"}, Policy: &sandboxv1.SandboxPolicy{Version: 1}}}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("template shape override error=%v", err)
 	}
 }
@@ -106,14 +106,14 @@ func TestSandboxTemplateRequiresWorkspaceAdminAndValidSpec(t *testing.T) {
 	if err := st.UpsertWorkspace(store.WorkspaceRecord{Name: "team", Members: []store.WorkspaceMember{{Subject: "member", Role: "user"}, {Subject: "admin", Role: "admin"}}}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
-	template := &openshellv1.SandboxWorkloadTemplate{Metadata: &datamodelv1.ObjectMeta{Name: "job"}, Spec: &openshellv1.SandboxWorkloadTemplateSpec{Workload: &openshellv1.SandboxWorkloadConfig{Image: "busybox"}}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
+	template := &compatv1.SandboxWorkloadTemplate{Metadata: &datamodelv1.ObjectMeta{Name: "job"}, Spec: &compatv1.SandboxWorkloadTemplateSpec{Workload: &compatv1.SandboxWorkloadConfig{Image: "busybox"}}}
 	member := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "oidc", Subject: "member", Scopes: []string{"sandbox:write"}})
-	if _, err := rpc.CreateSandboxTemplate(member, &openshellv1.CreateSandboxTemplateRequest{Workspace: "team", Template: template}); status.Code(err) != codes.PermissionDenied {
+	if _, err := rpc.CreateSandboxTemplate(member, &compatv1.CreateSandboxTemplateRequest{WorkspaceScope: workspaceScope("team"), Template: template}); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("non-admin create error=%v", err)
 	}
 	admin := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "oidc", Subject: "admin", Scopes: []string{"sandbox:write"}})
-	if _, err := rpc.CreateSandboxTemplate(admin, &openshellv1.CreateSandboxTemplateRequest{Workspace: "team", Template: &openshellv1.SandboxWorkloadTemplate{Metadata: &datamodelv1.ObjectMeta{Name: "missing-spec"}}}); status.Code(err) != codes.InvalidArgument {
+	if _, err := rpc.CreateSandboxTemplate(admin, &compatv1.CreateSandboxTemplateRequest{WorkspaceScope: workspaceScope("team"), Template: &compatv1.SandboxWorkloadTemplate{Metadata: &datamodelv1.ObjectMeta{Name: "missing-spec"}}}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("invalid template error=%v", err)
 	}
 	zeroGPU := uint32(0)
@@ -121,52 +121,52 @@ func TestSandboxTemplateRequiresWorkspaceAdminAndValidSpec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	invalidTemplates := []*openshellv1.SandboxWorkloadTemplate{
-		{Metadata: &datamodelv1.ObjectMeta{Name: "bad-label", Labels: map[string]string{"bad key": "x"}}, Spec: &openshellv1.SandboxWorkloadTemplateSpec{Workload: &openshellv1.SandboxWorkloadConfig{Image: "busybox"}}},
-		{Metadata: &datamodelv1.ObjectMeta{Name: "reserved-env"}, Spec: &openshellv1.SandboxWorkloadTemplateSpec{Workload: &openshellv1.SandboxWorkloadConfig{Image: "busybox", Environment: map[string]string{"OPENSHELL_TOKEN": "x"}}}},
-		{Metadata: &datamodelv1.ObjectMeta{Name: "zero-gpu"}, Spec: &openshellv1.SandboxWorkloadTemplateSpec{Workload: &openshellv1.SandboxWorkloadConfig{Image: "busybox", Resources: &openshellv1.SandboxResources{Gpu: &openshellv1.GpuResourceRequirements{Count: &zeroGPU}}}}},
-		{Metadata: &datamodelv1.ObjectMeta{Name: "reserved-driver-config"}, Spec: &openshellv1.SandboxWorkloadTemplateSpec{Workload: &openshellv1.SandboxWorkloadConfig{Image: "busybox"}, DriverConfig: reservedConfig}},
+	invalidTemplates := []*compatv1.SandboxWorkloadTemplate{
+		{Metadata: &datamodelv1.ObjectMeta{Name: "bad-label", Labels: map[string]string{"bad key": "x"}}, Spec: &compatv1.SandboxWorkloadTemplateSpec{Workload: &compatv1.SandboxWorkloadConfig{Image: "busybox"}}},
+		{Metadata: &datamodelv1.ObjectMeta{Name: "reserved-env"}, Spec: &compatv1.SandboxWorkloadTemplateSpec{Workload: &compatv1.SandboxWorkloadConfig{Image: "busybox", Environment: map[string]string{"OPENSHELL_TOKEN": "x"}}}},
+		{Metadata: &datamodelv1.ObjectMeta{Name: "zero-gpu"}, Spec: &compatv1.SandboxWorkloadTemplateSpec{Workload: &compatv1.SandboxWorkloadConfig{Image: "busybox", Resources: &compatv1.SandboxResources{Gpu: &compatv1.GpuResourceRequirements{Count: &zeroGPU}}}}},
+		{Metadata: &datamodelv1.ObjectMeta{Name: "reserved-driver-config"}, Spec: &compatv1.SandboxWorkloadTemplateSpec{Workload: &compatv1.SandboxWorkloadConfig{Image: "busybox"}, DriverConfig: reservedConfig}},
 	}
 	for _, invalid := range invalidTemplates {
-		if _, err := rpc.CreateSandboxTemplate(admin, &openshellv1.CreateSandboxTemplateRequest{Workspace: "team", Template: invalid}); status.Code(err) != codes.InvalidArgument {
+		if _, err := rpc.CreateSandboxTemplate(admin, &compatv1.CreateSandboxTemplateRequest{WorkspaceScope: workspaceScope("team"), Template: invalid}); status.Code(err) != codes.InvalidArgument {
 			t.Errorf("template %q validation error=%v", invalid.GetMetadata().GetName(), err)
 		}
 	}
-	if _, err := rpc.CreateSandboxTemplate(admin, &openshellv1.CreateSandboxTemplateRequest{Workspace: "team", Template: template}); err != nil {
+	if _, err := rpc.CreateSandboxTemplate(admin, &compatv1.CreateSandboxTemplateRequest{WorkspaceScope: workspaceScope("team"), Template: template}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rpc.DeleteSandboxTemplate(member, &openshellv1.DeleteSandboxTemplateRequest{Workspace: "team", Name: "job"}); status.Code(err) != codes.PermissionDenied {
+	if _, err := rpc.DeleteSandboxTemplate(member, &compatv1.DeleteSandboxTemplateRequest{WorkspaceScope: workspaceScope("team"), Name: "job"}); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("non-admin delete error=%v", err)
 	}
 }
 
-func TestOpenShellCreateSandboxValidationMatchesPinnedFieldBoundaries(t *testing.T) {
-	valid := func() *openshellv1.SandboxSpec {
-		return &openshellv1.SandboxSpec{Template: &openshellv1.SandboxTemplate{Image: "alpine:3.22"}, Command: []string{"sleep", "infinity"}}
+func TestCompatCreateSandboxValidationMatchesPinnedFieldBoundaries(t *testing.T) {
+	valid := func() *compatv1.SandboxSpec {
+		return &compatv1.SandboxSpec{Template: &compatv1.SandboxTemplate{Image: "alpine:3.22"}, Command: []string{"sleep", "infinity"}}
 	}
 	tests := []struct {
 		name   string
-		mutate func(*openshellv1.SandboxSpec) (map[string]string, map[string]string, string)
+		mutate func(*compatv1.SandboxSpec) (map[string]string, map[string]string, string)
 	}{
-		{name: "command nul", mutate: func(spec *openshellv1.SandboxSpec) (map[string]string, map[string]string, string) {
+		{name: "command nul", mutate: func(spec *compatv1.SandboxSpec) (map[string]string, map[string]string, string) {
 			spec.Command = []string{"sh\x00"}
 			return nil, nil, "worker"
 		}},
-		{name: "reserved environment", mutate: func(spec *openshellv1.SandboxSpec) (map[string]string, map[string]string, string) {
+		{name: "reserved environment", mutate: func(spec *compatv1.SandboxSpec) (map[string]string, map[string]string, string) {
 			spec.Environment = map[string]string{"OPENSHELL_TOKEN": "secret"}
 			return nil, nil, "worker"
 		}},
-		{name: "provider count", mutate: func(spec *openshellv1.SandboxSpec) (map[string]string, map[string]string, string) {
+		{name: "provider count", mutate: func(spec *compatv1.SandboxSpec) (map[string]string, map[string]string, string) {
 			spec.Providers = make([]string, 33)
 			return nil, nil, "worker"
 		}},
-		{name: "invalid label", mutate: func(spec *openshellv1.SandboxSpec) (map[string]string, map[string]string, string) {
+		{name: "invalid label", mutate: func(spec *compatv1.SandboxSpec) (map[string]string, map[string]string, string) {
 			return map[string]string{"bad key": "x"}, nil, "worker"
 		}},
-		{name: "oversized routable name", mutate: func(spec *openshellv1.SandboxSpec) (map[string]string, map[string]string, string) {
+		{name: "oversized routable name", mutate: func(spec *compatv1.SandboxSpec) (map[string]string, map[string]string, string) {
 			return nil, nil, strings.Repeat("a", 20)
 		}},
-		{name: "invalid CPU quantity", mutate: func(spec *openshellv1.SandboxSpec) (map[string]string, map[string]string, string) {
+		{name: "invalid CPU quantity", mutate: func(spec *compatv1.SandboxSpec) (map[string]string, map[string]string, string) {
 			spec.Template.Resources = mustStruct(t, map[string]any{"limits": map[string]any{"cpu": "not-a-quantity"}})
 			return nil, nil, "worker"
 		}},
@@ -175,12 +175,12 @@ func TestOpenShellCreateSandboxValidationMatchesPinnedFieldBoundaries(t *testing
 		t.Run(test.name, func(t *testing.T) {
 			spec := valid()
 			labels, annotations, name := test.mutate(spec)
-			if err := validateOpenShellCreateSandbox(name, labels, annotations, spec, "docker"); err == nil {
+			if err := validateSandboxCreate(name, labels, annotations, spec, "docker"); err == nil {
 				t.Fatal("expected request validation error")
 			}
 		})
 	}
-	if err := validateOpenShellCreateSandbox("worker", map[string]string{"app": "api"}, map[string]string{"example.com/owner": "team"}, valid(), "docker"); err != nil {
+	if err := validateSandboxCreate("worker", map[string]string{"app": "api"}, map[string]string{"example.com/owner": "team"}, valid(), "docker"); err != nil {
 		t.Fatalf("valid request rejected: %v", err)
 	}
 }

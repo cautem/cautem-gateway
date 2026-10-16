@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"github.com/cautem/cautem-runtime/secrets"
 )
 
-func TestGetSandboxProviderEnvironmentRequiresMatchingSupervisorAndReturnsEncryptedCredential(t *testing.T) {
+func TestGetSandboxProviderEnvironmentRequiresMatchingSupervisorAndWithholdsWithoutBindingCapability(t *testing.T) {
 	st, err := store.Open(t.TempDir(), "gw-test")
 	if err != nil {
 		t.Fatal(err)
@@ -37,18 +37,172 @@ func TestGetSandboxProviderEnvironmentRequiresMatchingSupervisorAndReturnsEncryp
 	if err := sec.PutProviderCredentials(context.Background(), "provider-a", map[string]string{"API_TOKEN": "secret-value"}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, sec: sec}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, sec: sec}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalSandbox, Sandbox: "sandbox-a"})
-	response, err := rpc.GetSandboxProviderEnvironment(ctx, &openshellv1.GetSandboxProviderEnvironmentRequest{SandboxId: "sandbox-a"})
-	if err != nil || response.GetEnvironment()["API_TOKEN"] != "secret-value" {
+	response, err := rpc.GetSandboxProviderEnvironment(ctx, &compatv1.GetSandboxProviderEnvironmentRequest{SandboxId: "sandbox-a"})
+	if err != nil || len(response.GetEnvironment()) != 0 || response.GetReadinessReason() != compatv1.ProviderReadinessReason_PROVIDER_READINESS_REASON_UNSUPPORTED_SUPERVISOR || response.GetSupportsStablePlaceholderEnvironmentKeys() {
 		t.Fatalf("response=%v err=%v", response, err)
 	}
-	if _, err := rpc.GetSandboxProviderEnvironment(ctx, &openshellv1.GetSandboxProviderEnvironmentRequest{SandboxId: "sandbox-b"}); err == nil {
+	if _, err := rpc.GetSandboxProviderEnvironment(ctx, &compatv1.GetSandboxProviderEnvironmentRequest{SandboxId: "sandbox-b"}); err == nil {
 		t.Fatal("sandbox supervisor read another sandbox's credentials")
 	}
 }
 
-func TestOpenShellCredentialRefreshRPCConfiguresRotatesAndDeletesVaultMaterial(t *testing.T) {
+func TestGetSandboxProviderEnvironmentReturnsOnlyBoundStaticCredentials(t *testing.T) {
+	st, err := store.Open(t.TempDir(), "bound-provider-env")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sec, err := secrets.OpenLocal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertProfile("test-provider", `id: test-provider
+credentials:
+  - name: bound
+    env_vars: [BOUND_TOKEN]
+    required: true
+  - name: unbound
+    env_vars: [UNBOUND_TOKEN]
+`); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertProvider(store.ProviderRecord{
+		Name: "provider-a", Type: "test-provider", Workspace: "default",
+		EnvVars: []string{"BOUND_TOKEN", "UNBOUND_TOKEN"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	basePolicy := `version: 1
+network_policies:
+  api:
+    endpoints:
+      - host: api.example.com
+        port: 443
+        path: /v1
+        credential_keys: [BOUND_TOKEN]
+`
+	if err := st.UpsertSandbox(store.Sandbox{
+		Name: "sandbox", ID: "sandbox", Workspace: "default",
+		BasePolicyYAML: basePolicy, AttachedProviders: []string{"provider-a"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sec.PutProviderCredentials(context.Background(), "provider-a", map[string]string{
+		"BOUND_TOKEN": "bound-secret", "UNBOUND_TOKEN": "unbound-secret",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, sec: sec, opt: Options{ProviderProfileSources: []string{"user"}}}}
+	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalSandbox, Sandbox: "sandbox"})
+	response, err := rpc.GetSandboxProviderEnvironment(ctx, &compatv1.GetSandboxProviderEnvironmentRequest{
+		SandboxId: "sandbox", SupportsStaticCredentialBindings: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := response.GetEnvironment(); len(got) != 1 || got["BOUND_TOKEN"] != "bound-secret" {
+		t.Fatalf("environment=%v", got)
+	}
+	binding := response.GetStaticCredentialBindings()["BOUND_TOKEN"]
+	if binding == nil || len(binding.GetEndpoints()) != 1 || binding.GetEndpoints()[0].GetHost() != "api.example.com" || binding.GetEndpoints()[0].GetPort() != 443 || binding.GetEndpoints()[0].GetPath() != "/v1" {
+		t.Fatalf("static binding=%v", binding)
+	}
+	if response.GetReadinessReason() != compatv1.ProviderReadinessReason_PROVIDER_READINESS_REASON_CREDENTIALS_WITHHELD {
+		t.Fatalf("readiness=%v", response.GetReadinessReason())
+	}
+	if response.GetSupportsStablePlaceholderEnvironmentKeys() {
+		t.Fatal("stable placeholder support was advertised before lifecycle support")
+	}
+	stateJSON, err := json.Marshal(st.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(stateJSON), "bound-secret") || strings.Contains(string(stateJSON), "unbound-secret") {
+		t.Fatal("plaintext provider credential was persisted in gateway state")
+	}
+}
+
+func TestGetSandboxProviderEnvironmentWithholdsStablePlaceholderAndTokenGrantCredentials(t *testing.T) {
+	st, err := store.Open(t.TempDir(), "unsupported-provider-env")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sec, err := secrets.OpenLocal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertProfile("test-provider", `id: test-provider
+credentials:
+  - name: stable
+    env_vars: [STABLE_TOKEN]
+    stable_placeholder: true
+  - name: dynamic
+    env_vars: [DYNAMIC_TOKEN]
+    token_grant:
+      grant_type: token_exchange
+      token_endpoint: https://issuer.example/token
+`); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertProvider(store.ProviderRecord{
+		Name: "provider-a", Type: "test-provider", Workspace: "default",
+		EnvVars: []string{"STABLE_TOKEN", "DYNAMIC_TOKEN"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertProfile("ordinary-provider", `id: ordinary-provider
+credentials:
+  - name: ordinary
+    env_vars: [STABLE_TOKEN]
+`); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertProvider(store.ProviderRecord{
+		Name: "provider-b", Type: "ordinary-provider", Workspace: "default",
+		EnvVars: []string{"STABLE_TOKEN"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	basePolicy := `version: 1
+network_policies:
+  api:
+    endpoints:
+      - host: api.example.com
+        port: 443
+        credential_keys: [STABLE_TOKEN, DYNAMIC_TOKEN]
+`
+	if err := st.UpsertSandbox(store.Sandbox{
+		Name: "sandbox", ID: "sandbox", Workspace: "default",
+		BasePolicyYAML: basePolicy, AttachedProviders: []string{"provider-a", "provider-b"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sec.PutProviderCredentials(context.Background(), "provider-a", map[string]string{
+		"STABLE_TOKEN": "stable-secret", "DYNAMIC_TOKEN": "dynamic-secret",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sec.PutProviderCredentials(context.Background(), "provider-b", map[string]string{"STABLE_TOKEN": "ordinary-secret"}); err != nil {
+		t.Fatal(err)
+	}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, sec: sec, opt: Options{ProviderProfileSources: []string{"user"}}}}
+	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalSandbox, Sandbox: "sandbox"})
+	response, err := rpc.GetSandboxProviderEnvironment(ctx, &compatv1.GetSandboxProviderEnvironmentRequest{
+		SandboxId: "sandbox", SupportsStaticCredentialBindings: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.GetEnvironment()) != 0 || len(response.GetStaticCredentialBindings()) != 0 {
+		t.Fatalf("unsupported credentials were returned: %v", response)
+	}
+	if response.GetReadinessReason() != compatv1.ProviderReadinessReason_PROVIDER_READINESS_REASON_UNSUPPORTED_SUPERVISOR {
+		t.Fatalf("readiness=%v", response.GetReadinessReason())
+	}
+}
+
+func TestCompatCredentialRefreshRPCConfiguresRotatesAndDeletesVaultMaterial(t *testing.T) {
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
 			t.Error(err)
@@ -73,17 +227,17 @@ func TestOpenShellCredentialRefreshRPCConfiguresRotatesAndDeletesVaultMaterial(t
 	if err := st.UpsertProvider(rec); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, sec: sec}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, sec: sec}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local"})
-	configured, err := rpc.ConfigureProviderRefresh(ctx, &openshellv1.ConfigureProviderRefreshRequest{Provider: "p", CredentialKey: "API_TOKEN", Strategy: openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_REFRESH_TOKEN, Material: map[string]string{"token_url": tokenServer.URL, "refresh_token": "initial-refresh"}})
+	configured, err := rpc.ConfigureProviderRefresh(ctx, &compatv1.ConfigureProviderRefreshRequest{Provider: "p", CredentialKey: "API_TOKEN", Strategy: compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_REFRESH_TOKEN, Material: map[string]string{"token_url": tokenServer.URL, "refresh_token": "initial-refresh"}})
 	if err != nil || configured.GetStatus().GetStatus() != "configured" {
 		t.Fatalf("configured=%v err=%v", configured, err)
 	}
-	refreshStatus, err := rpc.GetProviderRefreshStatus(ctx, &openshellv1.GetProviderRefreshStatusRequest{Provider: "p", CredentialKey: "API_TOKEN"})
+	refreshStatus, err := rpc.GetProviderRefreshStatus(ctx, &compatv1.GetProviderRefreshStatusRequest{Provider: "p", CredentialKey: "API_TOKEN"})
 	if err != nil || len(refreshStatus.GetCredentials()) != 1 || refreshStatus.GetCredentials()[0].GetCredentialKey() != "API_TOKEN" {
 		t.Fatalf("refresh status=%v err=%v", refreshStatus, err)
 	}
-	current, err := rpc.RotateProviderCredential(ctx, &openshellv1.RotateProviderCredentialRequest{Provider: "p", CredentialKey: "API_TOKEN"})
+	current, err := rpc.RotateProviderCredential(ctx, &compatv1.RotateProviderCredentialRequest{Provider: "p", CredentialKey: "API_TOKEN"})
 	if err != nil || current.GetStatus().GetStatus() != "configured" {
 		t.Fatalf("rotated=%v err=%v", current, err)
 	}
@@ -91,13 +245,13 @@ func TestOpenShellCredentialRefreshRPCConfiguresRotatesAndDeletesVaultMaterial(t
 	if err != nil || values["API_TOKEN"] != "rotated-secret" {
 		t.Fatalf("vault values=%v err=%v", values, err)
 	}
-	deleted, err := rpc.DeleteProviderRefresh(ctx, &openshellv1.DeleteProviderRefreshRequest{Provider: "p", CredentialKey: "API_TOKEN"})
-	if err != nil || !deleted.GetDeleted() {
+	deleted, err := rpc.DeleteProviderRefresh(ctx, &compatv1.DeleteProviderRefreshRequest{Provider: "p", CredentialKey: "API_TOKEN"})
+	if err != nil || deleted.GetOutcome() != compatv1.DeletionOutcome_DELETION_OUTCOME_COMPLETED {
 		t.Fatalf("deleted=%v err=%v", deleted, err)
 	}
 }
 
-func TestOpenShellCredentialRefreshRPCSupportsGoogleServiceAccountJWT(t *testing.T) {
+func TestCompatCredentialRefreshRPCSupportsGoogleServiceAccountJWT(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
@@ -131,17 +285,17 @@ func TestOpenShellCredentialRefreshRPCSupportsGoogleServiceAccountJWT(t *testing
 	if err := st.UpsertProvider(store.ProviderRecord{Name: "google", Type: "unused", EnvVars: []string{"GOOGLE_TOKEN"}}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, sec: sec}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, sec: sec}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local"})
-	_, err = rpc.ConfigureProviderRefresh(ctx, &openshellv1.ConfigureProviderRefreshRequest{
+	_, err = rpc.ConfigureProviderRefresh(ctx, &compatv1.ConfigureProviderRefreshRequest{
 		Provider: "google", CredentialKey: "GOOGLE_TOKEN",
-		Strategy: openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_GOOGLE_SERVICE_ACCOUNT_JWT,
+		Strategy: compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_GOOGLE_SERVICE_ACCOUNT_JWT,
 		Material: map[string]string{"client_email": "svc@example.test", "private_key": privateKey, "token_url": tokenServer.URL, "scope": "scope:test"},
 	})
 	if err != nil {
 		t.Fatalf("configure google refresh: %v", err)
 	}
-	if _, err := rpc.RotateProviderCredential(ctx, &openshellv1.RotateProviderCredentialRequest{Provider: "google", CredentialKey: "GOOGLE_TOKEN"}); err != nil {
+	if _, err := rpc.RotateProviderCredential(ctx, &compatv1.RotateProviderCredentialRequest{Provider: "google", CredentialKey: "GOOGLE_TOKEN"}); err != nil {
 		t.Fatalf("rotate google refresh: %v", err)
 	}
 	values, err := sec.GetProviderCredentials(ctx, "google", []string{"GOOGLE_TOKEN"})
@@ -150,7 +304,7 @@ func TestOpenShellCredentialRefreshRPCSupportsGoogleServiceAccountJWT(t *testing
 	}
 }
 
-func TestOpenShellCredentialRefreshRPCSupportsAWSSTSAssumeRole(t *testing.T) {
+func TestCompatCredentialRefreshRPCSupportsAWSSTSAssumeRole(t *testing.T) {
 	stsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
 			t.Error(err)
@@ -192,16 +346,16 @@ credentials:
 	if err := st.UpsertProvider(store.ProviderRecord{Name: "aws", Type: "aws-profile", Workspace: "default", EnvVars: []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"}}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, sec: sec, opt: Options{ProviderProfileSources: []string{"user"}}}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, sec: sec, opt: Options{ProviderProfileSources: []string{"user"}}}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local"})
-	if _, err := rpc.ConfigureProviderRefresh(ctx, &openshellv1.ConfigureProviderRefreshRequest{
+	if _, err := rpc.ConfigureProviderRefresh(ctx, &compatv1.ConfigureProviderRefreshRequest{
 		Provider: "aws", CredentialKey: "AWS_ACCESS_KEY_ID",
-		Strategy: openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_AWS_STS_ASSUME_ROLE,
+		Strategy: compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_AWS_STS_ASSUME_ROLE,
 		Material: map[string]string{"role_arn": "arn:aws:iam::123456789012:role/test", "aws_region": "us-east-1", "aws_access_key_id": "source-access", "aws_secret_access_key": "source-secret"},
 	}); err != nil {
 		t.Fatalf("configure AWS refresh: %v", err)
 	}
-	if _, err := rpc.RotateProviderCredential(ctx, &openshellv1.RotateProviderCredentialRequest{Provider: "aws", CredentialKey: "AWS_ACCESS_KEY_ID"}); err != nil {
+	if _, err := rpc.RotateProviderCredential(ctx, &compatv1.RotateProviderCredentialRequest{Provider: "aws", CredentialKey: "AWS_ACCESS_KEY_ID"}); err != nil {
 		t.Fatalf("rotate AWS refresh: %v", err)
 	}
 	values, err := sec.GetProviderCredentials(ctx, "aws", []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"})

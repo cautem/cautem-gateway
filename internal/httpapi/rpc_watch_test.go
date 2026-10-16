@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/logbuf"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	computev1 "github.com/cautem/cautem-gateway/internal/upstreamproto/computev1"
@@ -24,7 +24,7 @@ func TestWatchSandboxReplaysTailAndStreamsLiveLogs(t *testing.T) {
 	}
 	logs := logbuf.NewHub(16)
 	logs.Append("demo", []logbuf.Line{{TS: time.Now().UTC(), Source: "sandbox", Level: "INFO", Text: "tail"}})
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, logs: logs}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, logs: logs}}
 	ctx, cancel := context.WithCancel(withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local"}))
 	defer cancel()
 	stream := &fakeWatchSandboxStream{ctx: ctx, onSend: func(index int) {
@@ -35,7 +35,7 @@ func TestWatchSandboxReplaysTailAndStreamsLiveLogs(t *testing.T) {
 			cancel()
 		}
 	}}
-	err = rpc.WatchSandbox(&openshellv1.WatchSandboxRequest{Id: "sandbox-1", FollowLogs: true, LogTailLines: 1}, stream)
+	err = rpc.WatchSandbox(&compatv1.WatchSandboxRequest{Sandbox: "sandbox-1", FollowLogs: true, LogTailLines: 1}, stream)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("WatchSandbox error=%v, want context cancellation after receiving live event", err)
 	}
@@ -58,10 +58,10 @@ func TestWatchSandboxStopsOnReadyAndStreamsLocalLifecycleEvents(t *testing.T) {
 	if err := st.UpsertSandbox(store.Sandbox{Name: "demo", ID: "sandbox-1", Workspace: "default", Status: "ready"}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, logs: logbuf.NewHub(4)}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, logs: logbuf.NewHub(4)}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local"})
 	stream := &fakeWatchSandboxStream{ctx: ctx}
-	if err := rpc.WatchSandbox(&openshellv1.WatchSandboxRequest{Id: "sandbox-1", StopOnTerminal: true}, stream); err != nil {
+	if err := rpc.WatchSandbox(&compatv1.WatchSandboxRequest{Sandbox: "sandbox-1", StopOnTerminal: true}, stream); err != nil {
 		t.Fatal(err)
 	}
 	if len(stream.events) != 1 || stream.events[0].GetSandbox() == nil {
@@ -78,8 +78,8 @@ func TestWatchSandboxStopsOnReadyAndStreamsLocalLifecycleEvents(t *testing.T) {
 			eventCancel()
 		}
 	}}
-	rpc = &openShellRPC{runtime: &grpcRuntime{st: st, logs: logbuf.NewHub(4)}}
-	err = rpc.WatchSandbox(&openshellv1.WatchSandboxRequest{Id: "sandbox-1", FollowEvents: true}, eventStream)
+	rpc = &compatRPCAdapter{runtime: &grpcRuntime{st: st, logs: logbuf.NewHub(4)}}
+	err = rpc.WatchSandbox(&compatv1.WatchSandboxRequest{Sandbox: "sandbox-1", FollowEvents: true}, eventStream)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		t.Fatalf("follow_events error=%v", err)
 	}
@@ -126,8 +126,8 @@ func TestWatchSandboxBridgesExternalComputePlatformEvents(t *testing.T) {
 			cancel()
 		}
 	}}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, compute: compute}}
-	err = rpc.WatchSandbox(&openshellv1.WatchSandboxRequest{Id: "sandbox-1", FollowEvents: true}, stream)
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, compute: compute}}
+	err = rpc.WatchSandbox(&compatv1.WatchSandboxRequest{Sandbox: "sandbox-1", FollowEvents: true}, stream)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		t.Fatalf("WatchSandbox error=%v, want clean stream completion or context cancellation after event", err)
 	}
@@ -143,12 +143,12 @@ func TestWatchSandboxBridgesExternalComputePlatformEvents(t *testing.T) {
 type fakeWatchSandboxStream struct {
 	grpc.ServerStream
 	ctx    context.Context
-	events []*openshellv1.SandboxStreamEvent
+	events []*compatv1.SandboxStreamEvent
 	onSend func(int)
 }
 
 func (s *fakeWatchSandboxStream) Context() context.Context { return s.ctx }
-func (s *fakeWatchSandboxStream) Send(event *openshellv1.SandboxStreamEvent) error {
+func (s *fakeWatchSandboxStream) Send(event *compatv1.SandboxStreamEvent) error {
 	s.events = append(s.events, event)
 	if s.onSend != nil {
 		s.onSend(len(s.events))

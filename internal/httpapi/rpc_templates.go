@@ -5,18 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
 	datamodelv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func validDNSLabel(name string) bool {
@@ -33,7 +35,21 @@ func validDNSLabel(name string) bool {
 	return true
 }
 
-func sandboxSpecFromWorkloadTemplate(template *openshellv1.SandboxWorkloadTemplate) (*openshellv1.SandboxSpec, error) {
+func mainProcessRestartPolicy(policy compatv1.SandboxRestartPolicy) (string, error) {
+	switch policy {
+	case compatv1.SandboxRestartPolicy_SANDBOX_RESTART_POLICY_UNSPECIFIED,
+		compatv1.SandboxRestartPolicy_SANDBOX_RESTART_POLICY_NEVER:
+		return "never", nil
+	case compatv1.SandboxRestartPolicy_SANDBOX_RESTART_POLICY_ON_FAILURE:
+		return "on-failure", nil
+	case compatv1.SandboxRestartPolicy_SANDBOX_RESTART_POLICY_ALWAYS:
+		return "always", nil
+	default:
+		return "", fmt.Errorf("restart_policy is invalid")
+	}
+}
+
+func sandboxSpecFromWorkloadTemplate(template *compatv1.SandboxWorkloadTemplate) (*compatv1.SandboxSpec, error) {
 	if template.GetSpec() == nil {
 		return nil, status.Error(codes.Internal, "sandbox template spec is required")
 	}
@@ -42,7 +58,7 @@ func sandboxSpecFromWorkloadTemplate(template *openshellv1.SandboxWorkloadTempla
 		return nil, status.Error(codes.Internal, "sandbox template workload is required")
 	}
 	var resources *structpb.Struct
-	var requirements *openshellv1.ResourceRequirements
+	var requirements *compatv1.ResourceRequirements
 	if portable := workload.GetResources(); portable != nil {
 		limits := map[string]any{}
 		if portable.GetCpu() != "" {
@@ -59,17 +75,17 @@ func sandboxSpecFromWorkloadTemplate(template *openshellv1.SandboxWorkloadTempla
 			}
 		}
 		if portable.GetGpu() != nil {
-			requirements = &openshellv1.ResourceRequirements{Gpu: portable.GetGpu()}
+			requirements = &compatv1.ResourceRequirements{Gpu: portable.GetGpu()}
 		}
 	}
-	return &openshellv1.SandboxSpec{
+	return &compatv1.SandboxSpec{
 		Environment:          maps.Clone(workload.GetEnvironment()),
-		Template:             &openshellv1.SandboxTemplate{Image: workload.GetImage(), Resources: resources, DriverConfig: template.GetSpec().GetDriverConfig()},
+		Template:             &compatv1.SandboxTemplate{Image: workload.GetImage(), Resources: resources, DriverConfig: template.GetSpec().GetDriverConfig()},
 		ResourceRequirements: requirements,
 	}, nil
 }
 
-func validateTemplateGovernanceSpec(spec *openshellv1.SandboxSpec) error {
+func validateTemplateGovernanceSpec(spec *compatv1.SandboxSpec) error {
 	if spec == nil {
 		return nil
 	}
@@ -88,14 +104,14 @@ func validateTemplateGovernanceSpec(spec *openshellv1.SandboxSpec) error {
 	return nil
 }
 
-func (s *openShellRPC) CreateSandboxTemplate(ctx context.Context, req *openshellv1.CreateSandboxTemplateRequest) (*openshellv1.SandboxTemplateResponse, error) {
+func (s *compatRPCAdapter) CreateSandboxTemplate(ctx context.Context, req *compatv1.CreateSandboxTemplateRequest) (*compatv1.SandboxTemplateResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return nil, status.Error(codes.Unavailable, "sandbox store is not initialized")
 	}
 	if req == nil || req.GetTemplate() == nil {
 		return nil, status.Error(codes.InvalidArgument, "template is required")
 	}
-	workspace := strings.TrimSpace(req.GetWorkspace())
+	workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope()))
 	if workspace == "" {
 		workspace = "default"
 	}
@@ -124,7 +140,7 @@ func (s *openShellRPC) CreateSandboxTemplate(ctx context.Context, req *openshell
 		return nil, status.Error(codes.InvalidArgument, "template.spec.workload is required")
 	}
 	now := time.Now().UTC()
-	resolved := &openshellv1.SandboxWorkloadTemplate{Metadata: &datamodelv1.ObjectMeta{Id: newGatewayID(), Name: name, Labels: metadata.GetLabels(), Annotations: metadata.GetAnnotations(), Workspace: workspace, CreatedAtMs: now.UnixMilli(), ResourceVersion: 1}, Spec: template.GetSpec()}
+	resolved := &compatv1.SandboxWorkloadTemplate{Metadata: &datamodelv1.ObjectMeta{Id: newGatewayID(), Name: name, Labels: metadata.GetLabels(), Annotations: metadata.GetAnnotations(), Workspace: workspace, CreatedTime: timestamppb.New(now), ResourceVersion: 1}, Spec: template.GetSpec()}
 	if err := validateSandboxWorkloadTemplate(resolved); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -142,10 +158,10 @@ func (s *openShellRPC) CreateSandboxTemplate(ctx context.Context, req *openshell
 	if !created {
 		return nil, status.Error(codes.AlreadyExists, "sandbox template already exists")
 	}
-	return &openshellv1.SandboxTemplateResponse{Template: resolved}, nil
+	return &compatv1.SandboxTemplateResponse{Template: resolved}, nil
 }
 
-func validateSandboxWorkloadTemplate(template *openshellv1.SandboxWorkloadTemplate) error {
+func validateSandboxWorkloadTemplate(template *compatv1.SandboxWorkloadTemplate) error {
 	metadata := template.GetMetadata()
 	if metadata == nil || strings.TrimSpace(metadata.GetId()) == "" || strings.TrimSpace(metadata.GetName()) == "" {
 		return fmt.Errorf("template metadata id and name are required")
@@ -174,7 +190,7 @@ func validateSandboxWorkloadTemplate(template *openshellv1.SandboxWorkloadTempla
 	if len(workload.GetImage()) > 1024 {
 		return fmt.Errorf("template.spec.workload.image exceeds maximum length (1024)")
 	}
-	if err := validateOpenShellEnvironment(workload.GetEnvironment(), "template.spec.workload.environment", 128); err != nil {
+	if err := validateEnvironment(workload.GetEnvironment(), "template.spec.workload.environment", 128); err != nil {
 		return err
 	}
 	if resources := workload.GetResources(); resources != nil {
@@ -290,7 +306,7 @@ func hasControlCharacter(value string) bool {
 	return false
 }
 
-func validateOpenShellCreateSandbox(name string, labels, annotations map[string]string, spec *openshellv1.SandboxSpec, driverName string) error {
+func validateSandboxCreate(name string, labels, annotations map[string]string, spec *compatv1.SandboxSpec, driverName string) error {
 	if len(name) > 19 || !validDNSLabel(name) {
 		return fmt.Errorf("name must be a DNS-1123 label of at most 19 bytes")
 	}
@@ -316,13 +332,16 @@ func validateOpenShellCreateSandbox(name string, labels, annotations map[string]
 	if spec == nil {
 		return fmt.Errorf("spec is required")
 	}
+	if _, err := mainProcessRestartPolicy(spec.GetRestartPolicy()); err != nil {
+		return err
+	}
 	if len(spec.GetProviders()) > 32 {
 		return fmt.Errorf("providers list exceeds maximum (32)")
 	}
 	if len(spec.GetLogLevel()) > 32 {
 		return fmt.Errorf("log_level exceeds maximum length (32)")
 	}
-	if err := validateOpenShellEnvironment(spec.GetEnvironment(), "spec.environment", 128); err != nil {
+	if err := validateEnvironment(spec.GetEnvironment(), "spec.environment", 128); err != nil {
 		return err
 	}
 	if template := spec.GetTemplate(); template != nil {
@@ -331,7 +350,7 @@ func validateOpenShellCreateSandbox(name string, labels, annotations map[string]
 				return fmt.Errorf("spec.template.%s exceeds maximum length (1024)", field)
 			}
 		}
-		if err := validateOpenShellEnvironment(template.GetEnvironment(), "spec.template.environment", 128); err != nil {
+		if err := validateEnvironment(template.GetEnvironment(), "spec.template.environment", 128); err != nil {
 			return err
 		}
 		for field, values := range map[string]map[string]string{"labels": template.GetLabels(), "annotations": template.GetAnnotations()} {
@@ -390,7 +409,7 @@ func validateOpenShellCreateSandbox(name string, labels, annotations map[string]
 	return nil
 }
 
-func validateOpenShellEnvironment(values map[string]string, field string, maxEntries int) error {
+func validateEnvironment(values map[string]string, field string, maxEntries int) error {
 	if len(values) > maxEntries {
 		return fmt.Errorf("%s exceeds maximum entries (%d)", field, maxEntries)
 	}
@@ -421,14 +440,14 @@ func validateGatewayOwnedDriverConfig(config *structpb.Struct) error {
 	return nil
 }
 
-func (s *openShellRPC) GetSandboxTemplate(ctx context.Context, req *openshellv1.GetSandboxTemplateRequest) (*openshellv1.SandboxTemplateResponse, error) {
+func (s *compatRPCAdapter) GetSandboxTemplate(ctx context.Context, req *compatv1.GetSandboxTemplateRequest) (*compatv1.SandboxTemplateResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return nil, status.Error(codes.Unavailable, "sandbox store is not initialized")
 	}
 	if req == nil || strings.TrimSpace(req.GetName()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
-	workspace := strings.TrimSpace(req.GetWorkspace())
+	workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope()))
 	if workspace == "" {
 		workspace = "default"
 	}
@@ -443,18 +462,18 @@ func (s *openShellRPC) GetSandboxTemplate(ctx context.Context, req *openshellv1.
 	if err != nil {
 		return nil, status.Error(codes.FailedPrecondition, "stored sandbox template is invalid")
 	}
-	return &openshellv1.SandboxTemplateResponse{Template: result}, nil
+	return &compatv1.SandboxTemplateResponse{Template: result}, nil
 }
 
-func (s *openShellRPC) ListSandboxTemplates(ctx context.Context, req *openshellv1.ListSandboxTemplatesRequest) (*openshellv1.ListSandboxTemplatesResponse, error) {
+func (s *compatRPCAdapter) ListSandboxTemplates(ctx context.Context, req *compatv1.ListSandboxTemplatesRequest) (*compatv1.ListSandboxTemplatesResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return nil, status.Error(codes.Unavailable, "sandbox store is not initialized")
 	}
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request is required")
 	}
-	workspace := strings.TrimSpace(req.GetWorkspace())
-	if req.GetAllWorkspaces() {
+	workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope()))
+	if scopeAllWorkspaces(req.GetWorkspaceScope()) {
 		if workspace != "" {
 			return nil, status.Error(codes.InvalidArgument, "all_workspaces and workspace are mutually exclusive")
 		}
@@ -475,7 +494,7 @@ func (s *openShellRPC) ListSandboxTemplates(ctx context.Context, req *openshellv
 	}
 	filtered := make([]store.TemplateRecord, 0)
 	listWorkspace := workspace
-	if req.GetAllWorkspaces() {
+	if scopeAllWorkspaces(req.GetWorkspaceScope()) {
 		listWorkspace = ""
 	}
 	for _, item := range s.runtime.st.ListScopedTemplates(listWorkspace) {
@@ -490,22 +509,29 @@ func (s *openShellRPC) ListSandboxTemplates(ctx context.Context, req *openshellv
 			filtered = append(filtered, item)
 		}
 	}
-	limit := req.GetLimit()
+	limit := uint32(req.GetPageSize())
 	if limit == 0 {
 		limit = defaultSandboxPageSize
 	}
 	if limit > maxSandboxPageSize {
 		limit = maxSandboxPageSize
 	}
-	start := uint64(req.GetOffset())
+	start := uint64(0)
+	if token := strings.TrimSpace(req.GetPageToken()); token != "" {
+		parsed, parseErr := strconv.ParseUint(token, 10, 64)
+		if parseErr != nil {
+			return nil, status.Error(codes.InvalidArgument, "invalid page_token")
+		}
+		start = parsed
+	}
 	if start >= uint64(len(filtered)) {
-		return &openshellv1.ListSandboxTemplatesResponse{}, nil
+		return &compatv1.ListSandboxTemplatesResponse{}, nil
 	}
 	end := start + uint64(limit)
 	if end > uint64(len(filtered)) {
 		end = uint64(len(filtered))
 	}
-	response := &openshellv1.ListSandboxTemplatesResponse{Templates: make([]*openshellv1.SandboxWorkloadTemplate, 0, end-start)}
+	response := &compatv1.ListSandboxTemplatesResponse{Templates: make([]*compatv1.SandboxWorkloadTemplate, 0, end-start)}
 	for _, item := range filtered[start:end] {
 		result, err := templateRecordToProto(item)
 		if err != nil {
@@ -513,17 +539,20 @@ func (s *openShellRPC) ListSandboxTemplates(ctx context.Context, req *openshellv
 		}
 		response.Templates = append(response.Templates, result)
 	}
+	if end < uint64(len(filtered)) {
+		response.NextPageToken = strconv.FormatUint(end, 10)
+	}
 	return response, nil
 }
 
-func (s *openShellRPC) DeleteSandboxTemplate(ctx context.Context, req *openshellv1.DeleteSandboxTemplateRequest) (*openshellv1.DeleteSandboxTemplateResponse, error) {
+func (s *compatRPCAdapter) DeleteSandboxTemplate(ctx context.Context, req *compatv1.DeleteSandboxTemplateRequest) (*compatv1.DeleteSandboxTemplateResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return nil, status.Error(codes.Unavailable, "sandbox store is not initialized")
 	}
 	if req == nil || strings.TrimSpace(req.GetName()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
-	workspace := strings.TrimSpace(req.GetWorkspace())
+	workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope()))
 	if workspace == "" {
 		workspace = "default"
 	}
@@ -534,10 +563,14 @@ func (s *openShellRPC) DeleteSandboxTemplate(ctx context.Context, req *openshell
 	if err != nil {
 		return nil, status.Error(codes.Internal, "failed to delete sandbox template")
 	}
-	return &openshellv1.DeleteSandboxTemplateResponse{Deleted: deleted}, nil
+	outcome := compatv1.DeletionOutcome_DELETION_OUTCOME_ALREADY_ABSENT
+	if deleted {
+		outcome = compatv1.DeletionOutcome_DELETION_OUTCOME_COMPLETED
+	}
+	return &compatv1.DeleteSandboxTemplateResponse{Outcome: outcome}, nil
 }
 
-func (s *openShellRPC) requireTemplateAdmin(ctx context.Context, workspace string) error {
+func (s *compatRPCAdapter) requireTemplateAdmin(ctx context.Context, workspace string) error {
 	p := PrincipalFrom(ctx)
 	if p.Kind != PrincipalUser {
 		return status.Error(codes.Unauthenticated, "authenticated user required")
@@ -563,7 +596,7 @@ func (s *openShellRPC) requireTemplateAdmin(ctx context.Context, workspace strin
 	return status.Error(codes.PermissionDenied, "workspace admin access required")
 }
 
-func (s *openShellRPC) requireTemplateReadWorkspace(ctx context.Context, workspace string) error {
+func (s *compatRPCAdapter) requireTemplateReadWorkspace(ctx context.Context, workspace string) error {
 	p := PrincipalFrom(ctx)
 	if isConfigAdmin(p, s.options.OIDC.AdminRole) {
 		return nil
@@ -571,8 +604,8 @@ func (s *openShellRPC) requireTemplateReadWorkspace(ctx context.Context, workspa
 	return s.requireSandboxReadWorkspace(ctx, workspace)
 }
 
-func templateRecordToProto(record store.TemplateRecord) (*openshellv1.SandboxWorkloadTemplate, error) {
-	var result openshellv1.SandboxWorkloadTemplate
+func templateRecordToProto(record store.TemplateRecord) (*compatv1.SandboxWorkloadTemplate, error) {
+	var result compatv1.SandboxWorkloadTemplate
 	if record.SpecJSON != "" {
 		if err := protojson.Unmarshal([]byte(record.SpecJSON), &result); err != nil {
 			return nil, err
@@ -581,8 +614,8 @@ func templateRecordToProto(record store.TemplateRecord) (*openshellv1.SandboxWor
 	if result.Metadata == nil {
 		result.Metadata = &datamodelv1.ObjectMeta{Id: record.ID, Name: record.Name, Workspace: record.Workspace, Labels: record.Labels, ResourceVersion: record.ResourceVersion}
 	}
-	if result.Metadata.CreatedAtMs == 0 && !record.CreatedAt.IsZero() {
-		result.Metadata.CreatedAtMs = record.CreatedAt.UnixMilli()
+	if result.Metadata.CreatedTime == nil && !record.CreatedAt.IsZero() {
+		result.Metadata.CreatedTime = timestamppb.New(record.CreatedAt)
 	}
 	return &result, nil
 }

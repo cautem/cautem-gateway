@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/sshrelay"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-func TestOpenShellGRPCSSHSessionLifecycle(t *testing.T) {
+func TestCompatGRPCSSHSessionLifecycle(t *testing.T) {
 	st, err := store.Open(t.TempDir(), "ssh-grpc")
 	if err != nil {
 		t.Fatal(err)
@@ -23,37 +23,37 @@ func TestOpenShellGRPCSSHSessionLifecycle(t *testing.T) {
 	}
 	done := make(chan struct{})
 	relay := sshrelay.NewHub()
-	remove := relay.RegisterOpenShellSupervisor("demo", "instance-demo", func(string, string) error { return nil }, done, nil)
+	remove := relay.RegisterSupervisor("demo", "instance-demo", func(string, string) error { return nil }, done, nil)
 	defer func() { close(done); remove() }()
-	rpc := &openShellRPC{options: Options{Listen: "127.0.0.1:7443"}, runtime: &grpcRuntime{
+	rpc := &compatRPCAdapter{options: Options{Listen: "127.0.0.1:7443"}, runtime: &grpcRuntime{
 		st: st, relay: relay, sshSessionTTL: 0,
 		compute: &computeRegistry{configured: map[string]map[string]any{"docker": {"grpc_endpoint": "https://gateway.example:8443"}}},
 	}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev", Subject: "alice"})
-	created, err := rpc.CreateSshSession(ctx, &openshellv1.CreateSshSessionRequest{SandboxId: "sb-demo"})
+	created, err := rpc.CreateSshSession(ctx, &compatv1.CreateSshSessionRequest{Sandbox: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.GetSandboxId() != "demo" || created.GetGatewayHost() != "gateway.example" || created.GetGatewayPort() != 8443 || created.GetGatewayScheme() != "https" || created.GetToken() == "" || created.GetExpiresAtMs() == 0 {
+	if created.GetSandboxId() != "demo" || created.GetGatewayHost() != "gateway.example" || created.GetGatewayPort() != 8443 || created.GetGatewayScheme() != "https" || created.GetToken() == "" || created.GetExpirationTime() == nil {
 		t.Fatalf("CreateSshSession returned incomplete response: %v", created)
 	}
 	if _, err := st.ValidateSSHSession(created.GetToken(), "demo", time.Now()); err != nil {
 		t.Fatalf("issued session token does not validate: %v", err)
 	}
-	revoked, err := rpc.RevokeSshSession(ctx, &openshellv1.RevokeSshSessionRequest{Token: created.GetToken()})
-	if err != nil || !revoked.GetRevoked() {
+	revoked, err := rpc.RevokeSshSession(ctx, &compatv1.RevokeSshSessionRequest{Token: created.GetToken()})
+	if err != nil || revoked.GetOutcome() != compatv1.DeletionOutcome_DELETION_OUTCOME_COMPLETED {
 		t.Fatalf("RevokeSshSession=%v err=%v", revoked, err)
 	}
 	if _, err := st.ValidateSSHSession(created.GetToken(), "demo", time.Now()); !errors.Is(err, store.ErrSessionRevoked) {
 		t.Fatalf("revoked session validation error=%v", err)
 	}
-	revoked, err = rpc.RevokeSshSession(ctx, &openshellv1.RevokeSshSessionRequest{Token: created.GetToken()})
-	if err != nil || revoked.GetRevoked() {
+	revoked, err = rpc.RevokeSshSession(ctx, &compatv1.RevokeSshSessionRequest{Token: created.GetToken()})
+	if err != nil || revoked.GetOutcome() == compatv1.DeletionOutcome_DELETION_OUTCOME_COMPLETED {
 		t.Fatalf("repeated revoke=%v err=%v; want false, nil", revoked, err)
 	}
 }
 
-func TestOpenShellGRPCSSHSessionRequiresRelayAndScopedOwner(t *testing.T) {
+func TestCompatGRPCSSHSessionRequiresRelayAndScopedOwner(t *testing.T) {
 	st, err := store.Open(t.TempDir(), "ssh-grpc-auth")
 	if err != nil {
 		t.Fatal(err)
@@ -64,9 +64,9 @@ func TestOpenShellGRPCSSHSessionRequiresRelayAndScopedOwner(t *testing.T) {
 	if err := st.UpsertWorkspace(store.WorkspaceRecord{Name: "team", Members: []store.WorkspaceMember{{Subject: "alice", Role: "user"}}}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{options: Options{Listen: "127.0.0.1:7443"}, runtime: &grpcRuntime{st: st, relay: sshrelay.NewHub()}}
+	rpc := &compatRPCAdapter{options: Options{Listen: "127.0.0.1:7443"}, runtime: &grpcRuntime{st: st, relay: sshrelay.NewHub()}}
 	alice := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "oidc", Subject: "alice", Scopes: []string{"sandbox:write"}})
-	if _, err := rpc.CreateSshSession(alice, &openshellv1.CreateSshSessionRequest{SandboxId: "demo"}); status.Code(err) != codes.FailedPrecondition {
+	if _, err := rpc.CreateSshSession(alice, &compatv1.CreateSshSessionRequest{Sandbox: "demo"}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("not-ready CreateSshSession code=%s err=%v", status.Code(err), err)
 	}
 	_, token, err := st.CreateSSHSession("demo", "alice", 0)
@@ -74,7 +74,7 @@ func TestOpenShellGRPCSSHSessionRequiresRelayAndScopedOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	bob := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "oidc", Subject: "bob", Scopes: []string{"sandbox:write"}})
-	if _, err := rpc.RevokeSshSession(bob, &openshellv1.RevokeSshSessionRequest{Token: token}); status.Code(err) != codes.PermissionDenied {
+	if _, err := rpc.RevokeSshSession(bob, &compatv1.RevokeSshSessionRequest{Token: token}); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("cross-workspace RevokeSshSession code=%s err=%v", status.Code(err), err)
 	}
 	if _, err := st.ValidateSSHSession(token, "demo", time.Now()); err != nil {
@@ -82,7 +82,7 @@ func TestOpenShellGRPCSSHSessionRequiresRelayAndScopedOwner(t *testing.T) {
 	}
 }
 
-func TestOpenShellGRPCSSHSessionExpiresAndCannotBeValidated(t *testing.T) {
+func TestCompatGRPCSSHSessionExpiresAndCannotBeValidated(t *testing.T) {
 	st, err := store.Open(t.TempDir(), "ssh-expiry")
 	if err != nil {
 		t.Fatal(err)
@@ -92,13 +92,13 @@ func TestOpenShellGRPCSSHSessionExpiresAndCannotBeValidated(t *testing.T) {
 	}
 	done := make(chan struct{})
 	relay := sshrelay.NewHub()
-	remove := relay.RegisterOpenShellSupervisor("demo", "instance", func(string, string) error { return nil }, done, nil)
+	remove := relay.RegisterSupervisor("demo", "instance", func(string, string) error { return nil }, done, nil)
 	t.Cleanup(func() { close(done); remove() })
-	rpc := &openShellRPC{options: Options{Listen: "127.0.0.1:7443"}, runtime: &grpcRuntime{
+	rpc := &compatRPCAdapter{options: Options{Listen: "127.0.0.1:7443"}, runtime: &grpcRuntime{
 		st: st, relay: relay, sshSessionTTL: time.Millisecond,
 	}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev", Subject: "alice"})
-	created, err := rpc.CreateSshSession(ctx, &openshellv1.CreateSshSessionRequest{SandboxId: "demo"})
+	created, err := rpc.CreateSshSession(ctx, &compatv1.CreateSshSessionRequest{Sandbox: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}

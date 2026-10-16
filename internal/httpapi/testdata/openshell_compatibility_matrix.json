@@ -1,0 +1,462 @@
+{
+  "schema_version": 1,
+  "upstream_version": "v0.1.4",
+  "upstream_commit": "5a7728c304b5528e954e9ae900cf21f84e1a12b1",
+  "evidence_statuses": [
+    "implemented",
+    "local_test",
+    "target_host_test",
+    "released"
+  ],
+  "features": [
+    {
+      "id": "P0-RPC-CONFORMANCE",
+      "feature": "Public RPC and related driver protocol behavior",
+      "backend": [
+        "gateway",
+        "compute-driver",
+        "credential-driver",
+        "middleware",
+        "interceptor"
+      ],
+      "public_api": [
+        "openshell.v1.OpenShell: all 83 methods",
+        "openshell.compute.v1.ComputeDriver",
+        "openshell.credentials.v1.CredentialDriver",
+        "middleware and interceptor services"
+      ],
+      "test_refs": [
+        "cautem-gateway/internal/httpapi/rpc_inventory_test.go",
+        "cautem-gateway/internal/httpapi/testdata/openshell_rpc_inventory.json",
+        "cautem-gateway/internal/httpapi/remote_compute_engine_test.go",
+        "cautem-gateway/internal/httpapi/rpc_watch_test.go",
+        "cautem-driver/driver/backend_test.go"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "partial",
+      "scope": "Inventory and handler registration are checked. Remote ComputeDriver watch events now map through a product-owned optional extension inside the compatibility adapter and are scoped to the requested sandbox. Per-method golden behavior, durable event cursor/resume semantics, unsupported readiness/configuration reports and peer relay parity remain open."
+    },
+    {
+      "id": "P1-STATE-RECOVERY",
+      "feature": "Sandbox lifecycle, durable state and daemon/Gateway recovery",
+      "backend": [
+        "docker",
+        "podman-rootful",
+        "podman-rootless"
+      ],
+      "public_api": [
+        "CreateSandbox",
+        "GetSandbox",
+        "ListSandboxes",
+        "StartSandbox",
+        "StopSandbox",
+        "DeleteSandbox",
+        "WatchSandbox"
+      ],
+      "test_refs": [
+        "cautem-gateway/internal/httpapi/runtime_recovery_test.go",
+        "cautem-gateway/tests/e2e/engine_connect_test.go",
+        "cautem-driver/tests/e2e/docker/docker_test.go",
+        "cautem-driver/tests/e2e/podman/podman_test.go"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "pass",
+      "scope": "Current local Docker and Podman recovery lanes pass; supported-host matrix and full supervisor event parity remain open."
+    },
+    {
+      "id": "P2-UPSTREAM-PROXY",
+      "feature": "Authenticated upstream proxy, CA trust and no_proxy behavior",
+      "backend": [
+        "docker",
+        "podman-rootful",
+        "podman-rootless"
+      ],
+      "public_api": [
+        "CreateSandbox",
+        "UpdateConfig",
+        "GetSandboxLogs"
+      ],
+      "test_refs": [
+        "cautem-proxy/proxy/upstream_test.go",
+        "cautem-proxy/proxy/no_proxy_test.go",
+        "cautem-driver/internal/docker/sdk_contract_test.go",
+        "cautem-driver/tests/e2e/docker/docker_test.go"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "pass",
+      "scope": "Docker allow/deny and upstream proxy behavior pass; Podman 5 fails closed and Podman 6 host acceptance remains open."
+    },
+    {
+      "id": "P3-USERNS-MATRIX",
+      "feature": "Rootful/rootless user namespace and ownership modes",
+      "backend": [
+        "podman-rootful",
+        "podman-rootless"
+      ],
+      "public_api": [
+        "openshell.drivers.podman.userns",
+        "openshell.drivers.podman.uidmap",
+        "openshell.drivers.podman.gidmap",
+        "CreateSandbox"
+      ],
+      "test_refs": [
+        "cautem-driver/internal/podman/libpod_create_test.go",
+        "cautem-driver/tests/e2e/podman/lifecycle_fixture_test.go"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "pass",
+      "scope": "Supported Podman 5.8.7 modes pass with exact runner capability skips; ownership acceptance on dedicated Linux hosts remains open."
+    },
+    {
+      "id": "P4-CREDENTIAL-LIFECYCLE",
+      "feature": "Provider attach, refresh, rotation, expiry and redaction",
+      "backend": [
+        "gateway",
+        "proxy",
+        "docker",
+        "podman"
+      ],
+      "public_api": [
+        "AttachSandboxProvider",
+        "DetachSandboxProvider",
+        "GetSandboxProviderEnvironment",
+        "ConfigureProviderRefresh",
+        "RotateProviderCredential",
+        "RefreshSandboxToken"
+      ],
+      "test_refs": [
+        "cautem-gateway/internal/httpapi/rpc_credentials_test.go",
+        "cautem-gateway/internal/httpapi/rpc_profiles_test.go",
+        "cautem-gateway/internal/httpapi/driver_registry_test.go",
+        "cautem-gateway/internal/httpapi/provider_credentials_runtime.go",
+        "cautem-gateway/internal/httpapi/rpc_sandbox_test.go",
+        "cautem-sdk/go/cautem/secrets_rpc_test.go",
+        "cautem-cli/internal/service/proxy.go"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "partial",
+      "scope": "CRUD, refresh, redaction and external driver operations have local coverage. Provider endpoint layers compose over the restrictive runtime default when no explicit sandbox policy exists. The proxy requests endpoint-binding capability and receives static keys only when effective policy binds them to enforced endpoints. Stable handles, acknowledgements, dynamic token grants, supervisor installation parity and broader expiry/restart corpus remain open."
+    },
+    {
+      "id": "P6-RELEASE-GATES",
+      "feature": "Local release checks, artifacts, documentation and runtime lanes",
+      "backend": [
+        "all"
+      ],
+      "public_api": [
+        "Go module consumer API",
+        "CLI and Gateway binaries",
+        "container image and SBOM"
+      ],
+      "test_refs": [
+        "Taskfile.yml",
+        "scripts/check-release-artifacts.sh",
+        "scripts/check-docs-strict.sh",
+        "scripts/check-standalone.sh"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "pass",
+      "scope": "Workspace checks, race, standalone siblings, artifact/SBOM, strict docs and local Docker/Podman/MicroVM lanes pass; published dependency resolution is tracked separately."
+    },
+    {
+      "id": "P0-CONFIG-CORPUS",
+      "feature": "Gateway TOML, backend config, policy YAML, provider profiles and sandbox templates",
+      "backend": [
+        "gateway",
+        "docker",
+        "podman-rootful",
+        "podman-rootless",
+        "providers"
+      ],
+      "public_api": [
+        "openshell.gateway TOML",
+        "openshell.drivers.docker",
+        "openshell.drivers.podman",
+        "SandboxTemplate",
+        "provider profile YAML",
+        "cautem-driver/internal/configcompat/testdata/openshell-v0.1.4-driver-config.json"
+      ],
+      "test_refs": [
+        "cautem-gateway/internal/gatewayconfig/load_test.go",
+        "cautem-core/resourceadmission/admission_test.go",
+        "cautem-driver/internal/docker/config_test.go",
+        "cautem-driver/internal/docker/driver_config_test.go",
+        "cautem-driver/internal/docker/resource_admission_test.go",
+        "cautem-driver/internal/docker/app_armor_test.go",
+        "cautem-driver/internal/podman/podman_test.go",
+        "cautem-driver/internal/podman/app_armor_test.go",
+        "cautem-driver/internal/podman/libpod_create_test.go",
+        "cautem-providers/provider/provider_test.go"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "partial",
+      "scope": "The loader parses pinned v0.1.4 schema v2 and singular compute_driver, preserving local compute_drivers; pinned upstream Docker/Podman TOMLs are tested at the parser boundary. Docker and Podman reject explicit null for consumed fields. app_armor_profile is validated, host-checked and translated to Docker Engine/Libpod requests. allow_driver_config is gated before Gateway persistence and Create; named external volumes require pinned approval/workspace labels and their identity is rechecked before restart. Bind/image mounts fail closed while admission is enabled. sandbox_runtime_image and other startup consumers remain incomplete. Version 2 of the driver field matrix covers 54 pinned Docker/Podman fields with decoder classification and per-field omission/empty/zero/runtime-effect evidence (5 verified, 49 partial, 0 unaudited). It exposed and fixed Docker image_pull_policy=newer acceptance, zero sandbox_pids_limit acceptance, empty image_pull_policy acceptance, empty socket/default-image/provider-socket/guest-CA acceptance and stop_timeout u32 range handling. Podman stop timeout default and explicit-zero behavior are verified; image defaults, PIDs environment overrides, socket discovery, proxy host behavior, SSH paths, rootless/rootful ID maps and health lifecycle boundary are partial; every field now has an omission/empty/zero/runtime-effect entry. The wider config, gateway, policy and provider-profile behavior corpus remains open."
+    },
+    {
+      "id": "P0-CLI-SDK-CORPUS",
+      "feature": "CLI leaf commands and Go/Python SDK behavior",
+      "backend": [
+        "cli",
+        "go-sdk",
+        "python-sdk"
+      ],
+      "public_api": [
+        "CLI command/flag interface",
+        "Go SDK",
+        "Python SDK",
+        "CreateSandbox",
+        "ExecSandbox",
+        "UploadRootfsTar"
+      ],
+      "test_refs": [
+        "cautem-cli/internal/app/cli/help_test.go",
+        "cautem-cli/internal/app/cli/sandbox_parse_test.go",
+        "cautem-cli/internal/app/cli/sandbox_upload_test.go",
+        "cautem-cli/internal/app/cli/settings_parser_test.go",
+        "cautem-cli/internal/app/cli/provider_parser_test.go",
+        "cautem-cli/internal/app/cli/command_args_test.go",
+        "cautem-cli/internal/providerflags/providerflags_test.go",
+        "cautem-sdk/tests/consumer/main_test.go",
+        "cautem-python/tests/test_client.py",
+        "cautem-cli/internal/service/workspace_list_test.go",
+        "cautem-sdk/go/cautem/workspace_labels_test.go"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "partial",
+      "scope": "Public top-level help is checked against routed commands, and every documented command path has leaf-specific usage. Every public sandbox leaf has command-specific help, and fixtures enumerate its accepted flags and arguments. The sandbox create parser tests every documented flag, value preservation, canonical argv, malformed values and removed --ssh. Settings get/delete reject unknown, missing, duplicate and extra arguments; workspace get/delete/member and service get/delete reject extra arguments. Workspace create forwards repeated labels; workspace list forwards page size/token and label selector, supports table/YAML/JSON, emits the pinned metadata and pagination envelope, and the local fallback applies validated multi-pair selectors and cursor pagination. Provider profile sources/output and routed provider, sandbox, gateway, workspace, forward, service, rule, inference and policy commands reject tested extra/ambiguous arguments. Provider create map fields preserve the pinned CLI's repeated-key precedence; credential expiry parses as non-negative epoch milliseconds or RFC3339, and refresh configure requires its scalar timestamp and strategy. Other nested parser behavior, output/timeout parity, Python parity and published consumers remain open."
+    },
+    {
+      "id": "P1-SUPERVISOR-EVENTS",
+      "feature": "Process launch/exit events, signal/reap and log stream sequencing",
+      "backend": [
+        "runtime",
+        "gateway",
+        "docker",
+        "podman"
+      ],
+      "public_api": [
+        "PushSandboxLogs",
+        "GetSandboxLogs",
+        "WatchSandbox",
+        "WatchSandboxes"
+      ],
+      "test_refs": [
+        "cautem-runtime/internal/app/supervisor/process_linux_test.go",
+        "cautem-gateway/internal/httpapi/rpc_logs_test.go",
+        "cautem-gateway/internal/httpapi/rpc_watch_test.go",
+        "cautem-gateway/internal/httpapi/remote_compute_engine_test.go",
+        "cautem-driver/driver/backend_test.go"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "partial",
+      "scope": "Launch/exit reporting and current streams are tested; platform watch is negotiated through a separate non-cursor SPI extension and cross-sandbox events are dropped. Short-lived descendants, loss-aware resume and complete restart/reconnect semantics remain open."
+    },
+    {
+      "id": "P4-EXTERNAL-CORPUS",
+      "feature": "Per-method RPC, external compute data plane and middleware/interceptor errors",
+      "backend": [
+        "gateway",
+        "docker",
+        "podman",
+        "external-compute"
+      ],
+      "public_api": [
+        "openshell.v1.OpenShell RPCs",
+        "openshell.compute.v1.ComputeDriver",
+        "middleware and interceptor services"
+      ],
+      "test_refs": [
+        "cautem-gateway/internal/httpapi/rpc_inventory_test.go",
+        "cautem-gateway/internal/httpapi/driver_registry_test.go",
+        "cautem-gateway/internal/httpapi/config_startup_test.go"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "partial",
+      "scope": "Inventory and selected integration paths are covered; complete request/response fixtures, deadlines, cancellation and error policy parity remain open."
+    },
+    {
+      "id": "P6-PUBLISHED-STANDALONE",
+      "feature": "Consumers resolved from published module tags without workspace replacements",
+      "backend": [
+        "all"
+      ],
+      "public_api": [
+        "published Go module APIs for CLI, Gateway, SDK, proto, driver and runtime"
+      ],
+      "test_refs": [
+        "scripts/check-published-deps.sh",
+        "Taskfile.yml"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "fail",
+      "scope": "The gate was executed after publishing core v0.3.0, proto v0.2.0, providers v0.1.8, proxy v0.3.0 and runtime v0.3.0. CLI remains pinned to runtime v0.2.1 (missing heartbeat/log fields) and SDK v0.2.0 (old provider/service APIs); Gateway remains pinned to driver v0.2.0 (no Backend SPI) and proto v0.1.0 (no AttachMainProcess/current control fields). SDK v0.3.0 release PR is merged pending its tag; driver v0.3.0 remains pending. The published consumer gate therefore still fails."
+    },
+    {
+      "id": "P4-LIVE-POLICY",
+      "feature": "Policy update acknowledgement and active egress decisions across restart",
+      "backend": [
+        "docker"
+      ],
+      "public_api": [
+        "UpdateConfig",
+        "GetSandboxPolicyStatus",
+        "CreateSandbox"
+      ],
+      "test_refs": [
+        "cautem-gateway/tests/e2e/engine_connect_test.go",
+        "cautem-proxy/proxy/no_proxy_test.go"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "pass",
+      "scope": "Docker Gateway E2E verifies policy acknowledgement, persistence and active allow/deny proxy decisions; Podman 6 repetitions remain open."
+    },
+    {
+      "id": "P3-PODMAN-HOST-GATEWAY",
+      "feature": "Host-gateway isolation with native blackhole routes",
+      "backend": [
+        "podman-rootful",
+        "podman-rootless"
+      ],
+      "public_api": [
+        "CreateSandbox",
+        "openshell.drivers.podman.host_gateway_ip"
+      ],
+      "test_refs": [
+        "cautem-driver/internal/podman/libpod_create_test.go",
+        "cautem-driver/tests/e2e/podman/podman_test.go",
+        "cautem-driver/tests/e2e/podman/Containerfile.podman6",
+        "cautem-driver/.github/workflows/podman-e2e.yml",
+        "cautem-driver/.github/workflows/podman-rootless-e2e.yml",
+        "cautem-gateway/tests/e2e/engine_connect_test.go"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "partial",
+      "scope": "Podman 5.8.7 rejects proxy-backed create because blackhole route support is absent. Nested Podman 6.1.3 checks pass lifecycle, service recovery, pull policy, digest pinning, and rootless service recovery; its complete nested user-namespace matrix is blocked by missing host cgroup memory.max, and the rootless Gateway relay lane remains open. Rootful/rootless host-gateway enforcement still requires a dedicated Linux host runner. The installed Podman 6.1.4 macOS VM failed before usable API/SSH forwarding, so it is not target-host acceptance."
+    },
+    {
+      "id": "P2-HOST-BOUNDARIES",
+      "feature": "Docker dual-stack host isolation and race-safe bind source",
+      "backend": [
+        "docker"
+      ],
+      "public_api": [
+        "CreateSandbox",
+        "template.driver_config.mounts",
+        "openshell.drivers.docker.host_gateway_ip"
+      ],
+      "test_refs": [
+        "cautem-driver/internal/docker/sdk_contract_test.go",
+        "cautem-driver/internal/mounts/mounts_test.go",
+        "cautem-driver/tests/e2e/docker/docker_test.go",
+        "cautem-driver/tests/e2e/docker/docker_desktop_test.go"
+      ],
+      "evidence_status": "target_host_test",
+      "gate_result": "partial",
+      "scope": "The Engine request is checked for isolated IPv4/IPv6 gateway options and symlink paths are validated. On macOS ARM64 Docker Desktop, a dual-stack control sandbox reached listeners on the host through host.docker.internal (IPv4) and the host ULA IPv6 address; the proxy-isolated sandbox reached neither. The same host lane confirms workspace bind read/write and stop/start persistence. The driver rechecks directory identity immediately before ContainerCreate, with a regression proving that replacement during preparation fails before workload creation and cleans up the network. Atomic daemon-side path pinning remains open because the Engine API accepts a path rather than a directory handle; broader supported-host coverage also remains open."
+    },
+    {
+      "id": "P0-MAIN-PROCESS-RESTART-POLICY",
+      "feature": "Canonical workload restart policy and process replacement behavior",
+      "backend": [
+        "docker",
+        "podman",
+        "kubernetes",
+        "remote-driver",
+        "vm"
+      ],
+      "public_api": [
+        "SandboxSpec.restart_policy",
+        "CreateSandbox",
+        "StartSandbox",
+        "ExecSandboxInteractive"
+      ],
+      "test_refs": [
+        "cautem-gateway/internal/httpapi/rpc_main_process_test.go",
+        "cautem-cli/internal/app/cli/sandbox_restart_policy_test.go",
+        "cautem-driver/internal/vm/live_acceptance_test.go"
+      ],
+      "evidence_status": "target_host_test",
+      "gate_result": "partial",
+      "scope": "Local Docker/Podman/Kubernetes paths and macOS ARM64 VM on-failure restart are tested; remote-driver and broad foreground attach/recovery corpus remain open."
+    },
+    {
+      "id": "P0-OPERATOR-CREDENTIAL-EXPORT",
+      "feature": "Operator-only credential export, refresh lifetime and all-or-nothing response",
+      "backend": [
+        "gateway",
+        "providers"
+      ],
+      "public_api": [
+        "GetProviderCredentials"
+      ],
+      "test_refs": [
+        "cautem-gateway/internal/httpapi/provider_credentials_export_test.go",
+        "cautem-gateway/internal/httpapi/rpc_dispatch_test.go",
+        "cautem-gateway/internal/httpapi/tls_config_test.go"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "partial",
+      "scope": "mTLS operator OU, bearer rejection and local export validation are tested; operator certificate deployment, audit review and upstream lifetime parity remain open."
+    },
+    {
+      "id": "P0-V014-PROVIDER-CONTRACT",
+      "feature": "Provider labels, stable placeholders and runtime environment bindings",
+      "backend": [
+        "gateway",
+        "runtime",
+        "providers"
+      ],
+      "public_api": [
+        "ListProviders.label_selector",
+        "GetSandboxProviderEnvironment",
+        "LintProviderProfiles"
+      ],
+      "test_refs": [
+        "cautem-gateway/internal/httpapi/rpc_providers_test.go",
+        "cautem-gateway/internal/httpapi/rpc_credentials_test.go",
+        "cautem-gateway/internal/httpapi/provider_credentials_runtime.go",
+        "cautem-gateway/internal/httpapi/rpc_sandbox_test.go",
+        "cautem-sdk/go/cautem/secrets_rpc_test.go",
+        "cautem-providers/provider/provider_test.go"
+      ],
+      "evidence_status": "local_test",
+      "gate_result": "partial",
+      "scope": "Labels and selectors are implemented. Provider endpoints compose over the restrictive runtime default; non-stable static credentials can be delivered to the authenticated proxy only with effective-policy endpoint bindings. Stable placeholder delivery remains withheld until identity, acknowledgement and supervisor installation exist."
+    },
+    {
+      "id": "P3-VM-PRODUCTION-GATE",
+      "feature": "MicroVM image provenance, host isolation, protocol, broker and durable recovery",
+      "backend": [
+        "vm"
+      ],
+      "public_api": [
+        "CreateSandbox",
+        "ExecSandbox",
+        "UploadRootfsTar",
+        "GetSandboxLogs",
+        "ExposeService"
+      ],
+      "test_refs": [
+        "cautem-driver/internal/vm/control_test.go",
+        "cautem-driver/internal/vm/image_cache_test.go",
+        "cautem-driver/internal/vm/launch_spec_test.go",
+        "cautem-driver/internal/vm/live_acceptance_test.go",
+        "cautem-driver/internal/vm/network_broker_test_helper_unix_test.go",
+        "cautem-driver/internal/vm/oci_image_test.go",
+        "cautem-driver/internal/vm/rootfs_image_test.go",
+        "cautem-driver/internal/vm/rootfs_path_test.go",
+        "cautem-driver/internal/vm/state_test.go",
+        "cautem-driver/internal/vm/testdata/guest-security-probe/main_linux.go",
+        "cautem-driver/internal/vm/worker_env_unix_test.go",
+        "cautem-driver/internal/vm/worker_process_linux_test.go",
+        "cautem-driver/internal/vmguest/agent_linux_test.go",
+        "cautem-driver/scripts/run-live-darwin-arm64-acceptance.sh",
+        "cautem-driver/scripts/run-live-kvm-acceptance.sh",
+        "cautem-runtime/internal/app/supervisor/run_test_unix_test.go"
+      ],
+      "evidence_status": "target_host_test",
+      "gate_result": "partial",
+      "scope": "MicroVM resolves registry references to a root manifest digest, selects linux/host-arch and records the selected platform manifest digest. Local tests cover SHA-512 child descriptors, compressed layer digest checks, gzip extraction, normal/opaque whiteouts, path escape rejection, cache quota, state references and active leases. Immutable ext4 cache keys include source and selected manifest digests, platform, layout version and guest-agent digest. OCI Entrypoint/Cmd, image plus caller environment merge, WorkingDir and User are applied to the in-memory launch spec; recovery re-fetches config by the immutable selected platform digest. Environment and identity values are omitted from durable state, reserved identity variables are filtered, and root identities fail closed. Linux worker startup requires private user/mount namespaces, private mount propagation and a non-root host identity; inherited Gateway environment is removed. The namespace UID maps to the Gateway account and is not a dedicated host UID. Host↔guest JSON frames use protocol v1 and reject missing or unsupported versions; start-workload waits for the guest supervisor's private readiness marker after the workload starts. Per-sandbox token rotation is persisted in a private pending record and retry is bound to the same candidate and rotation ID; macOS ARM64 lifecycle acceptance passes with the current host and guest agents, and host mounts are rejected. macOS ARM64 live acceptance denies workload TCP connections to host IPv4 and IPv6 loopback listeners. It kills the worker process group, verifies durable stopped state, restores the launch spec through a new driver, and relaunches the VM from its persisted rootfs/overlay. Worker config rejects unknown host-vsock mappings outside broker/SSH/supervisor ports (negative test rejects port 5504), and live workload TCP to host IPv4/IPv6 loopback is denied. The live guest probe denies connection to unmapped host-vsock port 5504; raw ICMP socket creation is rejected with EPERM on macOS ARM64. The live guest reports 2 vCPU and 981 MiB visible memory for a 1024 MiB configuration; PID limits remain unsupported. The live policy-file watcher reloads revision 2, the acceptance broker acknowledges it, and a request for the allowlisted endpoint passes policy evaluation while a blocked endpoint remains denied. This does not exercise the Gateway status-report RPC. Killing the live broker terminates the worker process group, persists stopped state, and permits relaunch after restoring the workload spec. Gateway status-report integration, Gateway restart/orphan recovery and Linux KVM remain open. macOS ARM64 live acceptance imports an OCI rootfs from a Basic Auth-protected local registry through the production Docker keychain, runs image Entrypoint/Cmd, Env, WorkingDir and User in the guest, verifies durable state omits the test credential and image env, and recovers by the original platform manifest digest after the tag moves. Credential-helper and TLS/auth variants on target registries, OCI pulls on Linux KVM, dedicated host UID, fd-based host mount allowlist, UID/GID mapping, broader service/worker protocol contracts and policy/security gates remain open. VM now advertises separate PTY and ExecTerminal capabilities; its authenticated guest session streams stdin/output, applies window resize, forwards Ctrl-C through the terminal line discipline, and returns normalized exit status. Linux/arm64 guest tests pass in Alpine, and macOS ARM64/HVF live acceptance verifies 80x24 to 101x41 resize, stdin, SIGINT trap/exit, one-shot TTY exec, and OCI env/workdir inheritance. Gateway's v0.1.4 interactive-exec adapter has unit tests for extension negotiation, stdin, resize, output, exit status, and one-shot TTY forwarding. A fresh VM driver can restore the process-local launch spec for an already-running worker before adoption without persisting image env/user; Gateway Start now requests this hydration for running records. Gateway-to-VM live acceptance remains open because VM creation is fail-closed; Linux KVM, dedicated host UID, workspace mounts/ownership, and broader recovery/security gates remain open."
+    }
+  ]
+}

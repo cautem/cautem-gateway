@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	"github.com/cautem/cautem-driver/driver"
 	"github.com/cautem/cautem-gateway/internal/logbuf"
 	"github.com/cautem/cautem-gateway/internal/service"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
@@ -99,13 +101,28 @@ func TestControlCreateUsesRuntimeAndAudits(t *testing.T) {
 	runtime := &grpcRuntime{st: st, opt: Options{DataDir: t.TempDir(), Listen: "127.0.0.1:7443"}, compute: registry, waitSupervisorReady: func(context.Context, string) error { return nil }}
 	api := &controlAPI{store: st, reader: service.ConsoleReader{Store: st}, opt: Options{grpcRuntime: runtime}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local", Subject: "operator"})
-	req := connect.NewRequest(&controlv1.CreateSandboxRequest{Name: "box", Image: "alpine:3.22", Command: []string{"sleep", "infinity"}, RequestId: "request-valid-create-01"})
+	req := connect.NewRequest(&controlv1.CreateSandboxRequest{Name: "box", Image: "alpine:3.22", Command: []string{"sleep", "infinity"}, RequestId: "request-valid-create-01", CpuMillis: 500, MemoryBytes: 2 * 1024 * 1024 * 1024, GpuCount: 2, Environment: map[string]string{"FEATURE_FLAG": "on"}, DriverConfigJson: `{"docker":{"mounts":[{"type":"tmpfs","target":"/scratch"}]}}`, Tty: true, PidsLimit: 512, CdiDevices: []string{"nvidia.com/gpu=0", "nvidia.com/gpu=1"}})
 	created, err := api.CreateSandbox(ctx, req)
 	if err != nil || !created.Msg.GetCompleted() || created.Msg.GetSandbox().GetRegistryStatus() != "running" || engine.created.Name != "box" || engine.started != 1 {
 		t.Fatalf("create=%v error=%v engine=%+v", created, err, engine)
 	}
+	if engine.created.CPU != .5 || engine.created.MemoryBytes != 2*1024*1024*1024 || engine.created.GPUCount != 2 || !engine.created.GPU || !engine.created.TTY || engine.created.PidsLimit != 512 || strings.Join(engine.created.CDIDevices, ",") != "nvidia.com/gpu=0,nvidia.com/gpu=1" || !strings.Contains(engine.created.DriverConfigJSON, `"mounts"`) || !containsString(engine.created.Env, "FEATURE_FLAG=on") {
+		t.Fatalf("remote create failed to apply inline workload options: %+v", engine.created)
+	}
+	if record, ok := st.GetSandbox("box"); !ok || record.Annotations[annotationQuarshellPidsLimit] != "512" || record.Annotations[annotationQuarshellCDIDevices] != `["nvidia.com/gpu=0","nvidia.com/gpu=1"]` {
+		t.Fatalf("control runtime options were not persisted for recovery: %+v", record.Annotations)
+	}
 	if _, err := api.CreateSandbox(ctx, req); connect.CodeOf(err) != connect.CodeAlreadyExists {
 		t.Fatalf("duplicate create error=%v", err)
+	}
+	if _, err := api.CreateSandbox(ctx, connect.NewRequest(&controlv1.CreateSandboxRequest{Name: "template-conflict", WorkloadTemplateName: "shared", CpuMillis: 500, RequestId: "request-template-conflict-01"})); connect.CodeOf(err) != connect.CodeInvalidArgument || engine.started != 1 {
+		t.Fatalf("template inline override error=%v; compute starts=%d", err, engine.started)
+	}
+	if _, err := api.CreateSandbox(ctx, connect.NewRequest(&controlv1.CreateSandboxRequest{Name: "invalid-pids", Image: "alpine:3.22", PidsLimit: -2, RequestId: "request-invalid-pids-01"})); connect.CodeOf(err) != connect.CodeInvalidArgument || engine.started != 1 {
+		t.Fatalf("invalid pids limit error=%v; compute starts=%d", err, engine.started)
+	}
+	if _, err := api.CreateSandbox(ctx, connect.NewRequest(&controlv1.CreateSandboxRequest{Name: "invalid-cdi", Image: "alpine:3.22", CdiDevices: []string{"nvidia.com/gpu=0", "nvidia.com/gpu=0"}, RequestId: "request-invalid-cdi-01"})); connect.CodeOf(err) != connect.CodeInvalidArgument || engine.started != 1 {
+		t.Fatalf("invalid CDI request error=%v; compute starts=%d", err, engine.started)
 	}
 	if _, err := api.CreateSandbox(ctx, connect.NewRequest(&controlv1.CreateSandboxRequest{Name: "box", Image: "busybox", RequestId: "request-valid-create-01"})); connect.CodeOf(err) != connect.CodeAborted {
 		t.Fatalf("changed input with reused request id error=%v", err)
@@ -114,8 +131,48 @@ func TestControlCreateUsesRuntimeAndAudits(t *testing.T) {
 	if err != nil || operation.Msg.GetOperation().GetState() != store.OperationSucceeded || operation.Msg.GetOperation().GetId() != created.Msg.GetOperationId() {
 		t.Fatalf("create operation=%v error=%v", operation, err)
 	}
-	if audit := st.ListAuditEvents(0, 100); len(audit) != 6 || audit[0].Action != "sandbox.create" || audit[1].Outcome != "succeeded" || audit[3].Code != "already_exists" || audit[5].Code != "aborted" {
+	if audit := st.ListAuditEvents(0, 100); len(audit) != 12 || audit[0].Action != "sandbox.create" || audit[1].Outcome != "succeeded" || audit[3].Code != "already_exists" || audit[5].Code != "invalid_argument" || audit[7].Code != "invalid_argument" || audit[9].Code != "invalid_argument" || audit[11].Code != "aborted" {
 		t.Fatalf("create audit=%+v", audit)
+	}
+}
+
+type mainProcessCaptureStream struct {
+	responses []*controlv1.AttachMainProcessResponse
+}
+
+func (*mainProcessCaptureStream) Receive() (*controlv1.AttachMainProcessRequest, error) {
+	return nil, io.EOF
+}
+func (s *mainProcessCaptureStream) Send(response *controlv1.AttachMainProcessResponse) error {
+	s.responses = append(s.responses, response)
+	return nil
+}
+
+func TestControlMainProcessAttachReconnectsWithoutRestartingRuntime(t *testing.T) {
+	engine := &rpcTestEngine{mainWaitCode: 17}
+	backend, err := driver.AdaptComputeDriver("docker", driver.BackendInfo{Capabilities: map[driver.Capability]struct{}{
+		driver.CapabilityProcessWait: {},
+		driver.CapabilityProcessLogs: {},
+	}}, engine, driver.LegacySpecFromBackendRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamOutput := make([]string, 0, 2)
+	for range 2 {
+		stream := &mainProcessCaptureStream{}
+		if err := attachControlMainProcessLogs(context.Background(), stream, backend, "runtime-1", nil); err != nil {
+			t.Fatal(err)
+		}
+		if len(stream.responses) != 2 || string(stream.responses[0].GetOutput()) != "canonical-output\n" || stream.responses[1].GetExitCode() != 17 {
+			t.Fatalf("attach response frames = %+v", stream.responses)
+		}
+		streamOutput = append(streamOutput, string(stream.responses[0].GetOutput()))
+	}
+	if engine.mainLogsOpened != 2 || engine.started != 0 || engine.stopped != 0 || engine.deleted {
+		t.Fatalf("reattach mutated/recreated runtime: log attaches=%d starts=%d stops=%d deleted=%v", engine.mainLogsOpened, engine.started, engine.stopped, engine.deleted)
+	}
+	if streamOutput[0] != streamOutput[1] {
+		t.Fatalf("reattach output differs: %q != %q", streamOutput[0], streamOutput[1])
 	}
 }
 
@@ -146,6 +203,89 @@ func TestControlActionConnectTransport(t *testing.T) {
 	response, err := client.StopSandbox(context.Background(), req)
 	if err != nil || !response.Msg.GetCompleted() || response.Msg.GetSandbox().GetRegistryStatus() != "stopped" || engine.stopped != 1 {
 		t.Fatalf("Connect stop=%v error=%v engine=%+v", response, err, engine)
+	}
+}
+
+func TestControlMainProcessAttachConnectTransportAndReconnect(t *testing.T) {
+	st, err := store.Open(t.TempDir(), "control-main-process-attach")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := st.EnsureAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertSandbox(store.Sandbox{Name: "box", Workspace: "default", RuntimeID: "runtime-1", ComputeDriver: "docker", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	engine := &processAttachRPCtestEngine{rpcTestEngine: &rpcTestEngine{mainWaitCode: 17, mainWaitFirstBlock: make(chan struct{})}}
+	registry := newComputeRegistry(Options{ComputeDriverNames: []string{"docker"}})
+	registry.engines["docker"] = engine
+	opt := Options{grpcRuntime: &grpcRuntime{st: st, compute: registry}}
+	mux := http.NewServeMux()
+	mountControlAPI(mux, st, logbuf.NewHub(4), opt, nil)
+	server := httptest.NewUnstartedServer(mux)
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	defer server.Close()
+	client := controlv1connect.NewSandboxServiceClient(server.Client(), server.URL)
+	firstCtx, cancelFirst := context.WithCancel(context.Background())
+	first := client.AttachMainProcess(firstCtx)
+	first.RequestHeader().Set("Authorization", "Bearer "+token)
+	if err := first.Send(&controlv1.AttachMainProcessRequest{Payload: &controlv1.AttachMainProcessRequest_Start{Start: &controlv1.AttachMainProcessStart{Workspace: "default", Name: "box"}}}); err != nil {
+		t.Fatal(err)
+	}
+	firstOutput, err := first.Receive()
+	if err != nil || string(firstOutput.GetOutput()) != "canonical-output\n" {
+		t.Fatalf("first Connect attach output=%v error=%v", firstOutput, err)
+	}
+	cancelFirst() // disconnecting the client must leave the canonical process alive
+	if _, err := first.Receive(); err == nil {
+		t.Fatal("detached Connect stream unexpectedly remained open")
+	}
+	second := client.AttachMainProcess(context.Background())
+	second.RequestHeader().Set("Authorization", "Bearer "+token)
+	if err := second.Send(&controlv1.AttachMainProcessRequest{Payload: &controlv1.AttachMainProcessRequest_Start{Start: &controlv1.AttachMainProcessStart{Workspace: "default", Name: "box"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.CloseRequest(); err != nil {
+		t.Fatal(err)
+	}
+	var output string
+	var exit int32 = -1
+	for {
+		response, receiveErr := second.Receive()
+		if receiveErr != nil {
+			if !errors.Is(receiveErr, io.EOF) {
+				t.Fatal(receiveErr)
+			}
+			break
+		}
+		if response.GetOutput() != nil {
+			output += string(response.GetOutput())
+		}
+		if final, ok := response.GetPayload().(*controlv1.AttachMainProcessResponse_ExitCode); ok {
+			exit = final.ExitCode
+		}
+	}
+	if output != "canonical-output\n" || exit != 17 {
+		t.Fatalf("reconnected Connect attach output=%q exit=%d", output, exit)
+	}
+	if engine.mainLogsOpened != 2 || engine.started != 0 || engine.stopped != 0 {
+		t.Fatalf("Connect reconnect changed runtime: attaches=%d starts=%d stops=%d", engine.mainLogsOpened, engine.started, engine.stopped)
+	}
+}
+
+type processAttachRPCtestEngine struct{ *rpcTestEngine }
+
+func (*processAttachRPCtestEngine) BackendCapabilityInfo() driver.BackendInfo {
+	return driver.BackendInfo{
+		ID: "docker",
+		Capabilities: map[driver.Capability]struct{}{
+			driver.CapabilityProcessWait:     {},
+			driver.CapabilityProcessLogs:     {},
+			driver.CapabilityProcessTerminal: {},
+		},
 	}
 }
 

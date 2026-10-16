@@ -49,7 +49,7 @@ func applyGlobalPolicy(ctx context.Context, st *store.Store, runtime *grpcRuntim
 	if len(sandboxes) == 0 {
 		return globalRevision, nil
 	}
-	rpc := &openShellRPC{options: runtime.opt, runtime: runtime}
+	rpc := &compatRPCAdapter{options: runtime.opt, runtime: runtime}
 	syncFailed := make(map[string]bool)
 	var firstErr error
 	for _, sandbox := range sandboxes {
@@ -76,7 +76,7 @@ func applyGlobalPolicy(ctx context.Context, st *store.Store, runtime *grpcRuntim
 		}
 		revision := sandboxRevisions[sandbox.Name]
 		connected := runtime.relay != nil && runtime.relay.Connected(sandbox.Name)
-		restartDelivery, deliveryErr := sandboxUsesRestartedPolicyDelivery(runtime, sandbox)
+		restartDelivery, deliveryErr := sandboxUsesRestartedPolicyDelivery(ctx, runtime, sandbox)
 		if deliveryErr != nil {
 			if firstErr == nil {
 				firstErr = fmt.Errorf("inspect policy delivery for sandbox %q: %w", sandbox.Name, deliveryErr)
@@ -164,7 +164,7 @@ func rollbackGlobalPolicy(ctx context.Context, st *store.Store, runtime *grpcRun
 	if runtime == nil {
 		return nil
 	}
-	rpc := &openShellRPC{options: runtime.opt, runtime: runtime}
+	rpc := &compatRPCAdapter{options: runtime.opt, runtime: runtime}
 	connected := make(map[string]int, len(sandboxes))
 	var failures []error
 	for _, sandbox := range sandboxes {
@@ -173,7 +173,7 @@ func rollbackGlobalPolicy(ctx context.Context, st *store.Store, runtime *grpcRun
 			continue
 		}
 		connectedNow := runtime.relay != nil && runtime.relay.Connected(sandbox.Name)
-		restartDelivery, deliveryErr := sandboxUsesRestartedPolicyDelivery(runtime, sandbox)
+		restartDelivery, deliveryErr := sandboxUsesRestartedPolicyDelivery(recoveryCtx, runtime, sandbox)
 		if deliveryErr != nil {
 			failures = append(failures, fmt.Errorf("inspect policy delivery for sandbox %q during compensation: %w", sandbox.Name, deliveryErr))
 			continue

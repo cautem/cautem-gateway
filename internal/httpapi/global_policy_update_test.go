@@ -143,7 +143,7 @@ func TestPendingGlobalPolicySurvivesRestartAndCanBeAcknowledged(t *testing.T) {
 	if err != nil || latest.Status != store.PolicyStatusPending {
 		t.Fatalf("persisted revision=%+v error=%v", latest, err)
 	}
-	restarted := &openShellRPC{runtime: &grpcRuntime{st: reopened, relay: sshrelay.NewHub(), opt: Options{DataDir: runtimeData}}}
+	restarted := &compatRPCAdapter{runtime: &grpcRuntime{st: reopened, relay: sshrelay.NewHub(), opt: Options{DataDir: runtimeData}}}
 	if err := restarted.syncSandboxRuntimePolicy(context.Background(), "demo", sandbox.PolicyRev); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func globalPolicyRuntime(t *testing.T, names []string, status string) (*store.St
 			t.Fatal(err)
 		}
 		done := make(chan struct{})
-		remove := hub.RegisterOpenShellSupervisor(name, "instance-"+name, func(string, string) error { return nil }, done, nil)
+		remove := hub.RegisterSupervisor(name, "instance-"+name, func(string, string) error { return nil }, done, nil)
 		stops = append(stops, func() { close(done); remove() })
 	}
 	runtime := &grpcRuntime{st: st, relay: hub, opt: Options{DataDir: t.TempDir()}, policyApplyTimeout: 80 * time.Millisecond}

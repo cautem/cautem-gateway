@@ -98,7 +98,7 @@ func (r *driverRegistry) storeProviderCredentials(ctx context.Context, opt Optio
 	}
 	handles := make(map[string]store.CredentialHandle, len(values))
 	for key, value := range values {
-		request := &credentialsv1.StoreCredentialRequest{ProviderName: provider, CredentialKey: key, Value: value, Workspace: workspace, ProviderId: provider}
+		request := &credentialsv1.StoreCredentialRequest{Provider: provider, CredentialKey: key, Value: value, Workspace: workspace, ProviderId: provider}
 		if old := existing[key]; old.Handle != "" {
 			request.ExistingHandle = &datamodelv1.CredentialHandle{Driver: old.Driver, Handle: old.Handle, Metadata: old.Metadata}
 		}
@@ -127,7 +127,7 @@ func (r *driverRegistry) deleteProviderCredential(ctx context.Context, provider,
 	if !ok || registration.client == nil {
 		return fmt.Errorf("credential driver %q is not configured", handle.Driver)
 	}
-	_, err := registration.client.DeleteCredential(ctx, &credentialsv1.DeleteCredentialRequest{ProviderName: provider, CredentialKey: "", Workspace: workspace, ProviderId: provider, Handle: &datamodelv1.CredentialHandle{Driver: handle.Driver, Handle: handle.Handle, Metadata: handle.Metadata}})
+	_, err := registration.client.DeleteCredential(ctx, &credentialsv1.DeleteCredentialRequest{Provider: provider, CredentialKey: "", Workspace: workspace, ProviderId: provider, Handle: &datamodelv1.CredentialHandle{Driver: handle.Driver, Handle: handle.Handle, Metadata: handle.Metadata}})
 	return err
 }
 
@@ -163,7 +163,7 @@ func (r *driverRegistry) resolveProviderCredentialsWithExpiry(ctx context.Contex
 		if !ok || handle.Handle == "" {
 			return nil, nil, fmt.Errorf("provider %s credential %s has no driver handle", record.Name, key)
 		}
-		requests = append(requests, &credentialsv1.ResolveCredentialRequest{RequestId: key, ProviderName: record.Name, CredentialKey: key, Workspace: record.Workspace, ProviderId: record.Name, Handle: &datamodelv1.CredentialHandle{Driver: handle.Driver, Handle: handle.Handle, Metadata: handle.Metadata}})
+		requests = append(requests, &credentialsv1.ResolveCredentialRequest{RequestId: key, Provider: record.Name, CredentialKey: key, Workspace: record.Workspace, ProviderId: record.Name, Handle: &datamodelv1.CredentialHandle{Driver: handle.Driver, Handle: handle.Handle, Metadata: handle.Metadata}})
 	}
 	response, err := registration.client.ResolveCredentials(ctx, &credentialsv1.ResolveCredentialsRequest{Credentials: requests})
 	if err != nil {
@@ -178,12 +178,16 @@ func (r *driverRegistry) resolveProviderCredentialsWithExpiry(ctx context.Contex
 		if credential == nil || credential.GetRequestId() == "" {
 			return nil, nil, fmt.Errorf("credential driver %q returned an invalid resolve response", record.CredentialDriver)
 		}
-		if credential.GetExpiresAtMs() < 0 {
-			return nil, nil, fmt.Errorf("credential driver %q returned an invalid expiry for %s", record.CredentialDriver, credential.GetRequestId())
-		}
 		values[credential.GetRequestId()] = credential.GetValue()
-		if credential.GetExpiresAtMs() > 0 {
-			expires[credential.GetRequestId()] = credential.GetExpiresAtMs()
+		if expiration := credential.GetExpirationTime(); expiration != nil {
+			if err := expiration.CheckValid(); err != nil {
+				return nil, nil, fmt.Errorf("credential driver %q returned an invalid expiry for %s", record.CredentialDriver, credential.GetRequestId())
+			}
+			expiresAt := expiration.AsTime().UnixMilli()
+			if expiresAt <= 0 {
+				return nil, nil, fmt.Errorf("credential driver %q returned an invalid expiry for %s", record.CredentialDriver, credential.GetRequestId())
+			}
+			expires[credential.GetRequestId()] = expiresAt
 		}
 	}
 	for _, key := range keys {

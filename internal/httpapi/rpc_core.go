@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	_ "github.com/cautem/cautem-driver/driver/all"
 	"github.com/cautem/cautem-gateway/internal/logbuf"
@@ -18,12 +18,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// openShellRPC exposes the pinned OpenShell protobuf service. Backend-specific
+// compatRPCAdapter exposes the pinned OpenShell protobuf service. Backend-specific
 // capabilities that have no safe implementation return an explicit status
 // rather than silently accepting an ineffective request.
 
-type openShellRPC struct {
-	openshellv1.UnimplementedOpenShellServer
+type compatRPCAdapter struct {
+	compatv1.UnimplementedOpenShellServer
 	options Options
 	runtime *grpcRuntime
 }
@@ -54,41 +54,41 @@ type grpcRuntime struct {
 // computeRegistry resolves only configured engines. Engine construction is lazy so
 // gateway health/config inspection remains available while a daemon is restarting.
 
-func (s *openShellRPC) Health(context.Context, *openshellv1.HealthRequest) (*openshellv1.HealthResponse, error) {
-	return &openshellv1.HealthResponse{Status: openshellv1.ServiceStatus_SERVICE_STATUS_HEALTHY, Version: "cautem-alpha"}, nil
+func (s *compatRPCAdapter) Health(context.Context, *compatv1.HealthRequest) (*compatv1.HealthResponse, error) {
+	return &compatv1.HealthResponse{Status: compatv1.ServiceStatus_SERVICE_STATUS_HEALTHY, Version: "cautem-alpha"}, nil
 }
 
 // ConnectSupervisor accepts the pinned OpenShell supervisor control protocol.
 // Sandbox identity is bound by the gRPC auth interceptor and checked against
 // the mandatory first Hello payload before the session is registered.
 
-func (s *openShellRPC) GetCurrentUser(ctx context.Context, _ *openshellv1.GetCurrentUserRequest) (*openshellv1.GetCurrentUserResponse, error) {
+func (s *compatRPCAdapter) GetCurrentUser(ctx context.Context, _ *compatv1.GetCurrentUserRequest) (*compatv1.GetCurrentUserResponse, error) {
 	p := PrincipalFrom(ctx)
 	if p.Kind == PrincipalNone {
 		return nil, status.Error(codes.Unauthenticated, "authenticated identity required")
 	}
-	return &openshellv1.GetCurrentUserResponse{Subject: p.Subject, Roles: append([]string(nil), p.Roles...), Scopes: append([]string(nil), p.Scopes...), IdentityProvider: p.IDP}, nil
+	return &compatv1.GetCurrentUserResponse{Subject: p.Subject, Roles: append([]string(nil), p.Roles...), Scopes: append([]string(nil), p.Scopes...), IdentityProvider: p.IDP}, nil
 }
 
-func (s *openShellRPC) GetGatewayInfo(context.Context, *openshellv1.GetGatewayInfoRequest) (*openshellv1.GetGatewayInfoResponse, error) {
-	return &openshellv1.GetGatewayInfoResponse{
-		Status:         openshellv1.ServiceStatus_SERVICE_STATUS_DEGRADED,
+func (s *compatRPCAdapter) GetGatewayInfo(context.Context, *compatv1.GetGatewayInfoRequest) (*compatv1.GetGatewayInfoResponse, error) {
+	return &compatv1.GetGatewayInfoResponse{
+		Status:         compatv1.ServiceStatus_SERVICE_STATUS_DEGRADED,
 		GatewayVersion: "cautem-alpha",
 		ComputeDrivers: rpcComputeDriverInfo(s.options),
 	}, nil
 }
 
-func (s *openShellRPC) GetGatewayConfig(context.Context, *sandboxv1.GetGatewayConfigRequest) (*sandboxv1.GetGatewayConfigResponse, error) {
+func (s *compatRPCAdapter) GetGatewayConfig(context.Context, *sandboxv1.GetGatewayConfigRequest) (*sandboxv1.GetGatewayConfigResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return nil, status.Error(codes.Unavailable, "gateway settings runtime is not initialized")
 	}
-	settings := make(map[string]*sandboxv1.SettingValue, len(registeredOpenShellSettings))
-	for key := range registeredOpenShellSettings {
+	settings := make(map[string]*sandboxv1.SettingValue, len(registeredGatewaySettings))
+	for key := range registeredGatewaySettings {
 		settings[key] = &sandboxv1.SettingValue{}
 	}
 	stored, revision := s.runtime.st.SettingsSnapshot()
 	for key, raw := range stored {
-		kind, ok := registeredOpenShellSettings[key]
+		kind, ok := registeredGatewaySettings[key]
 		if !ok || key == "policy" {
 			continue
 		}
@@ -101,20 +101,20 @@ func (s *openShellRPC) GetGatewayConfig(context.Context, *sandboxv1.GetGatewayCo
 	return &sandboxv1.GetGatewayConfigResponse{Settings: settings, SettingsRevision: revision}, nil
 }
 
-func registerOpenShellRPC(server *grpc.Server) { registerOpenShellRPCWithOptions(server, Options{}) }
+func registerCompatRPC(server *grpc.Server) { registerCompatRPCWithOptions(server, Options{}) }
 
-func registerOpenShellRPCWithOptions(server *grpc.Server, opt Options) {
-	openshellv1.RegisterOpenShellServer(server, &openShellRPC{options: opt, runtime: opt.grpcRuntime})
+func registerCompatRPCWithOptions(server *grpc.Server, opt Options) {
+	compatv1.RegisterOpenShellServer(server, &compatRPCAdapter{options: opt, runtime: opt.grpcRuntime})
 }
 
-func rpcComputeDriverInfo(opt Options) []*openshellv1.ComputeDriverInfo {
+func rpcComputeDriverInfo(opt Options) []*compatv1.ComputeDriverInfo {
 	names := opt.ComputeDriverNames
 	if len(names) == 0 {
 		names = []string{"docker"}
 	}
-	out := make([]*openshellv1.ComputeDriverInfo, 0, len(names))
+	out := make([]*compatv1.ComputeDriverInfo, 0, len(names))
 	for _, name := range names {
-		out = append(out, &openshellv1.ComputeDriverInfo{Name: name})
+		out = append(out, &compatv1.ComputeDriverInfo{Name: name})
 	}
 	return out
 }

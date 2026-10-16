@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	middlewarev1 "github.com/cautem/cautem-gateway/internal/upstreamproto/middlewarev1"
@@ -115,7 +116,11 @@ func (r *driverRegistry) validateMiddlewareConfigs(ctx context.Context, policy *
 				break
 			}
 		}
-		callCtx, cancel := context.WithTimeout(ctx, interceptorTimeout(registration.service.GetTimeout()))
+		requestTimeout := registration.service.GetRequestTimeout().AsDuration()
+		if requestTimeout <= 0 {
+			requestTimeout = 500 * time.Millisecond
+		}
+		callCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 		response, err := registration.client.ValidateConfig(callCtx, &middlewarev1.ValidateConfigRequest{Config: config, MiddlewareName: name})
 		cancel()
 		if err != nil {

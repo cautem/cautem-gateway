@@ -5,18 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	datamodelv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const workspacePageLimit = 1000
 
-func (s *openShellRPC) CreateWorkspace(ctx context.Context, req *openshellv1.CreateWorkspaceRequest) (*openshellv1.CreateWorkspaceResponse, error) {
+func (s *compatRPCAdapter) CreateWorkspace(ctx context.Context, req *compatv1.CreateWorkspaceRequest) (*compatv1.CreateWorkspaceResponse, error) {
 	if err := s.workspacePlatformAdmin(ctx); err != nil {
 		return nil, err
 	}
@@ -32,10 +34,10 @@ func (s *openShellRPC) CreateWorkspace(ctx context.Context, req *openshellv1.Cre
 		return nil, status.Error(codes.AlreadyExists, "workspace already exists")
 	}
 	created, _ := s.runtime.st.GetWorkspace(name)
-	return &openshellv1.CreateWorkspaceResponse{Workspace: workspaceProto(created)}, nil
+	return &compatv1.CreateWorkspaceResponse{Workspace: workspaceProto(created)}, nil
 }
 
-func (s *openShellRPC) GetWorkspace(ctx context.Context, req *openshellv1.GetWorkspaceRequest) (*openshellv1.GetWorkspaceResponse, error) {
+func (s *compatRPCAdapter) GetWorkspace(ctx context.Context, req *compatv1.GetWorkspaceRequest) (*compatv1.GetWorkspaceResponse, error) {
 	if req == nil || strings.TrimSpace(req.GetName()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
@@ -47,25 +49,32 @@ func (s *openShellRPC) GetWorkspace(ctx context.Context, req *openshellv1.GetWor
 	if !ok {
 		return nil, status.Error(codes.NotFound, "workspace not found")
 	}
-	return &openshellv1.GetWorkspaceResponse{Workspace: workspaceProto(ws)}, nil
+	return &compatv1.GetWorkspaceResponse{Workspace: workspaceProto(ws)}, nil
 }
 
-func (s *openShellRPC) ListWorkspaces(ctx context.Context, req *openshellv1.ListWorkspacesRequest) (*openshellv1.ListWorkspacesResponse, error) {
+func (s *compatRPCAdapter) ListWorkspaces(ctx context.Context, req *compatv1.ListWorkspacesRequest) (*compatv1.ListWorkspacesResponse, error) {
 	p := PrincipalFrom(ctx)
 	if err := s.requireWorkspaceScope(p, "workspace:read"); err != nil {
 		return nil, err
 	}
 	if req == nil {
-		req = &openshellv1.ListWorkspacesRequest{}
+		req = &compatv1.ListWorkspacesRequest{}
 	}
 	if err := validateWorkspaceSelector(req.GetLabelSelector()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	limit := int(req.GetLimit())
+	limit := int(req.GetPageSize())
 	if limit == 0 || limit > workspacePageLimit {
 		limit = workspacePageLimit
 	}
-	offset := int(req.GetOffset())
+	offset := 0
+	if token := strings.TrimSpace(req.GetPageToken()); token != "" {
+		parsed, err := strconv.Atoi(token)
+		if err != nil || parsed < 0 {
+			return nil, status.Error(codes.InvalidArgument, "invalid page_token")
+		}
+		offset = parsed
+	}
 	workspaces := s.runtime.st.ListWorkspaces()
 	out := make([]*datamodelv1.Workspace, 0, len(workspaces))
 	for _, ws := range workspaces {
@@ -79,16 +88,20 @@ func (s *openShellRPC) ListWorkspaces(ctx context.Context, req *openshellv1.List
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].GetMetadata().GetName() < out[j].GetMetadata().GetName() })
 	if offset >= len(out) {
-		return &openshellv1.ListWorkspacesResponse{}, nil
+		return &compatv1.ListWorkspacesResponse{}, nil
 	}
 	end := offset + limit
 	if end > len(out) {
 		end = len(out)
 	}
-	return &openshellv1.ListWorkspacesResponse{Workspaces: out[offset:end]}, nil
+	response := &compatv1.ListWorkspacesResponse{Workspaces: out[offset:end]}
+	if end < len(out) {
+		response.NextPageToken = strconv.Itoa(end)
+	}
+	return response, nil
 }
 
-func (s *openShellRPC) DeleteWorkspace(ctx context.Context, req *openshellv1.DeleteWorkspaceRequest) (*openshellv1.DeleteWorkspaceResponse, error) {
+func (s *compatRPCAdapter) DeleteWorkspace(ctx context.Context, req *compatv1.DeleteWorkspaceRequest) (*compatv1.DeleteWorkspaceResponse, error) {
 	if err := s.workspacePlatformAdmin(ctx); err != nil {
 		return nil, err
 	}
@@ -122,14 +135,14 @@ func (s *openShellRPC) DeleteWorkspace(ctx context.Context, req *openshellv1.Del
 		}
 		return nil, status.Error(codes.Internal, "failed to delete workspace")
 	}
-	return &openshellv1.DeleteWorkspaceResponse{Deleted: true}, nil
+	return &compatv1.DeleteWorkspaceResponse{Outcome: compatv1.DeletionOutcome_DELETION_OUTCOME_COMPLETED}, nil
 }
 
-func (s *openShellRPC) AddWorkspaceMember(ctx context.Context, req *openshellv1.AddWorkspaceMemberRequest) (*openshellv1.AddWorkspaceMemberResponse, error) {
+func (s *compatRPCAdapter) AddWorkspaceMember(ctx context.Context, req *compatv1.AddWorkspaceMemberRequest) (*compatv1.AddWorkspaceMemberResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request is required")
 	}
-	name, subject := strings.TrimSpace(req.GetWorkspace()), strings.TrimSpace(req.GetPrincipalSubject())
+	name, subject := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope())), strings.TrimSpace(req.GetPrincipalSubject())
 	if name == "" || subject == "" {
 		return nil, status.Error(codes.InvalidArgument, "workspace and principal_subject are required")
 	}
@@ -142,10 +155,10 @@ func (s *openShellRPC) AddWorkspaceMember(ctx context.Context, req *openshellv1.
 		return nil, status.Error(codes.FailedPrecondition, "workspace is being deleted")
 	}
 	role := req.GetRole()
-	if role != openshellv1.WorkspaceRole_WORKSPACE_ROLE_USER && role != openshellv1.WorkspaceRole_WORKSPACE_ROLE_ADMIN {
+	if role != compatv1.WorkspaceRole_WORKSPACE_ROLE_USER && role != compatv1.WorkspaceRole_WORKSPACE_ROLE_ADMIN {
 		return nil, status.Error(codes.InvalidArgument, "role must be USER or ADMIN")
 	}
-	if role == openshellv1.WorkspaceRole_WORKSPACE_ROLE_ADMIN && !isConfigAdmin(PrincipalFrom(ctx), s.options.OIDC.AdminRole) {
+	if role == compatv1.WorkspaceRole_WORKSPACE_ROLE_ADMIN && !isConfigAdmin(PrincipalFrom(ctx), s.options.OIDC.AdminRole) {
 		return nil, status.Error(codes.PermissionDenied, "only platform admins can assign workspace admin role")
 	}
 	if ws, ok := s.runtime.st.GetWorkspace(name); ok {
@@ -164,17 +177,17 @@ func (s *openShellRPC) AddWorkspaceMember(ctx context.Context, req *openshellv1.
 	ws, _ := s.runtime.st.GetWorkspace(name)
 	for _, member := range ws.Members {
 		if member.Subject == subject {
-			return &openshellv1.AddWorkspaceMemberResponse{Member: workspaceMemberProto(name, member)}, nil
+			return &compatv1.AddWorkspaceMemberResponse{Member: workspaceMemberProto(name, member)}, nil
 		}
 	}
 	return nil, status.Error(codes.Internal, "created workspace member could not be read")
 }
 
-func (s *openShellRPC) RemoveWorkspaceMember(ctx context.Context, req *openshellv1.RemoveWorkspaceMemberRequest) (*openshellv1.RemoveWorkspaceMemberResponse, error) {
+func (s *compatRPCAdapter) RemoveWorkspaceMember(ctx context.Context, req *compatv1.RemoveWorkspaceMemberRequest) (*compatv1.RemoveWorkspaceMemberResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request is required")
 	}
-	name, subject := strings.TrimSpace(req.GetWorkspace()), strings.TrimSpace(req.GetPrincipalSubject())
+	name, subject := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope())), strings.TrimSpace(req.GetPrincipalSubject())
 	if name == "" || subject == "" {
 		return nil, status.Error(codes.InvalidArgument, "workspace and principal_subject are required")
 	}
@@ -189,14 +202,14 @@ func (s *openShellRPC) RemoveWorkspaceMember(ctx context.Context, req *openshell
 	if err := s.runtime.st.WorkspaceMemberRemove(name, subject); err != nil {
 		return nil, status.Error(codes.NotFound, "workspace not found")
 	}
-	return &openshellv1.RemoveWorkspaceMemberResponse{Removed: removed}, nil
+	return workspaceMemberRemovalResponse(removed), nil
 }
 
-func (s *openShellRPC) ListWorkspaceMembers(ctx context.Context, req *openshellv1.ListWorkspaceMembersRequest) (*openshellv1.ListWorkspaceMembersResponse, error) {
-	if req == nil || strings.TrimSpace(req.GetWorkspace()) == "" {
+func (s *compatRPCAdapter) ListWorkspaceMembers(ctx context.Context, req *compatv1.ListWorkspaceMembersRequest) (*compatv1.ListWorkspaceMembersResponse, error) {
+	if req == nil || strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope())) == "" {
 		return nil, status.Error(codes.InvalidArgument, "workspace is required")
 	}
-	name := strings.TrimSpace(req.GetWorkspace())
+	name := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope()))
 	if err := s.requireWorkspaceRead(ctx, name); err != nil {
 		return nil, err
 	}
@@ -204,28 +217,35 @@ func (s *openShellRPC) ListWorkspaceMembers(ctx context.Context, req *openshellv
 	if !ok {
 		return nil, status.Error(codes.NotFound, "workspace not found")
 	}
-	limit := int(req.GetLimit())
+	limit := int(req.GetPageSize())
 	if limit == 0 || limit > workspacePageLimit {
 		limit = workspacePageLimit
 	}
 	items := append([]store.WorkspaceMember(nil), ws.Members...)
 	sort.Slice(items, func(i, j int) bool { return items[i].Subject < items[j].Subject })
-	offset := int(req.GetOffset())
+	offset := 0
+	if token := strings.TrimSpace(req.GetPageToken()); token != "" {
+		parsed, err := strconv.Atoi(token)
+		if err != nil || parsed < 0 {
+			return nil, status.Error(codes.InvalidArgument, "invalid page_token")
+		}
+		offset = parsed
+	}
 	if offset >= len(items) {
-		return &openshellv1.ListWorkspaceMembersResponse{}, nil
+		return &compatv1.ListWorkspaceMembersResponse{}, nil
 	}
 	end := offset + limit
 	if end > len(items) {
 		end = len(items)
 	}
-	out := make([]*openshellv1.WorkspaceMember, 0, end-offset)
+	out := make([]*compatv1.WorkspaceMember, 0, end-offset)
 	for _, m := range items[offset:end] {
 		out = append(out, workspaceMemberProto(name, m))
 	}
-	return &openshellv1.ListWorkspaceMembersResponse{Members: out}, nil
+	return &compatv1.ListWorkspaceMembersResponse{Members: out}, nil
 }
 
-func (s *openShellRPC) workspacePlatformAdmin(ctx context.Context) error {
+func (s *compatRPCAdapter) workspacePlatformAdmin(ctx context.Context) error {
 	p := PrincipalFrom(ctx)
 	if err := s.requireWorkspaceScope(p, "workspace:write"); err != nil {
 		return err
@@ -247,7 +267,7 @@ func cloneStringMap(in map[string]string) map[string]string {
 	return out
 }
 
-func (s *openShellRPC) requireWorkspaceRead(ctx context.Context, name string) error {
+func (s *compatRPCAdapter) requireWorkspaceRead(ctx context.Context, name string) error {
 	p := PrincipalFrom(ctx)
 	if err := s.requireWorkspaceScope(p, "workspace:read"); err != nil {
 		return err
@@ -265,7 +285,7 @@ func (s *openShellRPC) requireWorkspaceRead(ctx context.Context, name string) er
 	return status.Error(codes.PermissionDenied, "workspace membership required")
 }
 
-func (s *openShellRPC) requireWorkspaceAdmin(ctx context.Context, name string) error {
+func (s *compatRPCAdapter) requireWorkspaceAdmin(ctx context.Context, name string) error {
 	p := PrincipalFrom(ctx)
 	if err := s.requireWorkspaceScope(p, "workspace:write"); err != nil {
 		return err
@@ -285,7 +305,7 @@ func (s *openShellRPC) requireWorkspaceAdmin(ctx context.Context, name string) e
 	return status.Error(codes.PermissionDenied, "workspace admin access required")
 }
 
-func (s *openShellRPC) requireWorkspaceActive(name string) error {
+func (s *compatRPCAdapter) requireWorkspaceActive(name string) error {
 	ws, ok := s.runtime.st.GetWorkspace(name)
 	if !ok && name != "default" {
 		return status.Error(codes.NotFound, "workspace not found")
@@ -306,7 +326,7 @@ func defaultWorkspace(name string) string {
 	return strings.TrimSpace(name)
 }
 
-func (s *openShellRPC) requireWorkspaceScope(p Principal, scope string) error {
+func (s *compatRPCAdapter) requireWorkspaceScope(p Principal, scope string) error {
 	if p.Kind != PrincipalUser {
 		return status.Error(codes.Unauthenticated, "authenticated user required")
 	}
@@ -324,35 +344,35 @@ func workspaceHasSubject(ws store.WorkspaceRecord, subject string) bool {
 	}
 	return false
 }
-func workspaceRoleString(role openshellv1.WorkspaceRole) string {
-	if role == openshellv1.WorkspaceRole_WORKSPACE_ROLE_ADMIN {
+func workspaceRoleString(role compatv1.WorkspaceRole) string {
+	if role == compatv1.WorkspaceRole_WORKSPACE_ROLE_ADMIN {
 		return "admin"
 	}
 	return "user"
 }
 func workspaceProto(ws store.WorkspaceRecord) *datamodelv1.Workspace {
-	created := int64(0)
+	var created *timestamppb.Timestamp
 	if !ws.CreatedAt.IsZero() {
-		created = ws.CreatedAt.UnixMilli()
+		created = timestamppb.New(ws.CreatedAt)
 	}
 	phase := datamodelv1.WorkspacePhase_WORKSPACE_PHASE_ACTIVE
-	var deletingAt int64
+	var deletingAt *timestamppb.Timestamp
 	if !ws.DeletionTimestamp.IsZero() {
 		phase = datamodelv1.WorkspacePhase_WORKSPACE_PHASE_TERMINATING
-		deletingAt = ws.DeletionTimestamp.UnixMilli()
+		deletingAt = timestamppb.New(ws.DeletionTimestamp)
 	}
-	return &datamodelv1.Workspace{Metadata: &datamodelv1.ObjectMeta{Id: ws.ID, Name: ws.Name, CreatedAtMs: created, Labels: cloneStringMap(ws.Labels), ResourceVersion: ws.ResourceVersion, DeletionTimestampMs: deletingAt}, Status: &datamodelv1.WorkspaceStatus{Phase: phase}}
+	return &datamodelv1.Workspace{Metadata: &datamodelv1.ObjectMeta{Id: ws.ID, Name: ws.Name, CreatedTime: created, Labels: cloneStringMap(ws.Labels), ResourceVersion: ws.ResourceVersion, DeletionTime: deletingAt}, Status: &datamodelv1.WorkspaceStatus{Phase: phase}}
 }
-func workspaceMemberProto(name string, member store.WorkspaceMember) *openshellv1.WorkspaceMember {
-	var created int64
+func workspaceMemberProto(name string, member store.WorkspaceMember) *compatv1.WorkspaceMember {
+	var created *timestamppb.Timestamp
 	if !member.CreatedAt.IsZero() {
-		created = member.CreatedAt.UnixMilli()
+		created = timestamppb.New(member.CreatedAt)
 	}
-	protoRole := openshellv1.WorkspaceRole_WORKSPACE_ROLE_USER
+	protoRole := compatv1.WorkspaceRole_WORKSPACE_ROLE_USER
 	if strings.EqualFold(member.Role, "admin") || strings.EqualFold(member.Role, "owner") {
-		protoRole = openshellv1.WorkspaceRole_WORKSPACE_ROLE_ADMIN
+		protoRole = compatv1.WorkspaceRole_WORKSPACE_ROLE_ADMIN
 	}
-	return &openshellv1.WorkspaceMember{Metadata: &datamodelv1.ObjectMeta{Id: member.ID, Name: member.Subject, Workspace: name, CreatedAtMs: created, ResourceVersion: member.ResourceVersion}, PrincipalSubject: member.Subject, Role: protoRole}
+	return &compatv1.WorkspaceMember{Metadata: &datamodelv1.ObjectMeta{Id: member.ID, Name: member.Subject, Workspace: name, CreatedTime: created, ResourceVersion: member.ResourceVersion}, PrincipalSubject: member.Subject, Role: protoRole}
 }
 func validateWorkspaceSelector(selector string) error {
 	selector = strings.TrimSpace(selector)
@@ -380,4 +400,12 @@ func matchesWorkspaceSelector(labels map[string]string, selector string) bool {
 		}
 	}
 	return true
+}
+
+func workspaceMemberRemovalResponse(removed bool) *compatv1.RemoveWorkspaceMemberResponse {
+	outcome := compatv1.DeletionOutcome_DELETION_OUTCOME_ALREADY_ABSENT
+	if removed {
+		outcome = compatv1.DeletionOutcome_DELETION_OUTCOME_COMPLETED
+	}
+	return &compatv1.RemoveWorkspaceMemberResponse{Outcome: outcome}
 }

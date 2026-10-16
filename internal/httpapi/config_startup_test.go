@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,9 +10,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/cautem/cautem-driver/driver"
 )
 
-func TestOpenShellGatewayStartupPrecedence(t *testing.T) {
+func TestCompatGatewayStartupPrecedence(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	for _, key := range []string{"OPENSHELL_GATEWAY_CONFIG", "OPENSHELL_GATEWAY_NAME", "OPENSHELL_BIND_ADDRESS", "OPENSHELL_SERVER_PORT", "OPENSHELL_HEALTH_PORT", "OPENSHELL_METRICS_PORT", "OPENSHELL_DISABLE_TLS", EnvSSHSessionTTL, EnvAllowUnauthenticated} {
 		t.Setenv(key, "")
@@ -78,7 +81,7 @@ func TestGatewayPostgreSQLURLSupportsEnvironmentAndFlagPrecedence(t *testing.T) 
 	}
 }
 
-func TestOpenShellBackendSelectionsAreResolvedToRegistryPlaceholders(t *testing.T) {
+func TestCompatBackendSelectionsAreResolvedToRegistryPlaceholders(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gateway.toml")
 	config := `[openshell.gateway]
 disable_tls=true
@@ -110,6 +113,60 @@ type="local_encrypted"
 	}
 	if strings.Join(opt.CredentialDriverNames, ",") != "local" || opt.CredentialDriverConfigs["local"]["type"] != "local_encrypted" || opt.CredentialStorage["type"] != "local_encrypted" {
 		t.Fatalf("credential registry config=%+v", opt)
+	}
+}
+
+func TestPinnedV014ComputeDriverSelectsSingleBackend(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gateway.toml")
+	config := `[openshell]
+version=2
+[openshell.gateway]
+compute_driver="podman"
+disable_tls=true
+`
+	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opt, err := resolveGatewayOptions([]string{"--config", path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(opt.ComputeDriverNames) != 1 || opt.ComputeDriverNames[0] != "podman" {
+		t.Fatalf("compute_driver resolved to %v; want [podman]", opt.ComputeDriverNames)
+	}
+}
+
+func TestNativeBackendCanBeSelectedWithoutRemoteEndpoint(t *testing.T) {
+	kind := fmt.Sprintf("native-config-test-%d", time.Now().UnixNano())
+	if err := driver.RegisterBackendWithConfig(kind, func(map[string]any) (driver.Backend, error) {
+		return &registeredTestBackend{id: driver.CanonicalBackendID(kind)}, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "gateway.toml")
+	config := fmt.Sprintf(`[openshell.gateway]
+disable_tls=true
+compute_drivers=[%q]
+[openshell.drivers.%s]
+mode="native"
+`, kind, kind)
+	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opt, err := resolveGatewayOptions([]string{"--config", path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := newDriverRegistry(opt)
+	if err != nil {
+		t.Fatalf("native backend was incorrectly treated as an external gRPC driver: %v", err)
+	}
+	defer registry.close()
+	if got := opt.ComputeDriverNames; len(got) != 1 || got[0] != kind {
+		t.Fatalf("configured drivers = %v; want [%q]", got, kind)
+	}
+	if got := configuredDriverStatus(opt.ComputeDriverNames, opt.ComputeDriverConfigs); got[0]["state"] != "backend_registered_lazy" {
+		t.Fatalf("native backend startup status = %v", got)
 	}
 }
 
@@ -237,7 +294,7 @@ func TestGatewayFlagsShadowInvalidSupportedEnvironment(t *testing.T) {
 	}
 }
 
-func TestOpenShellAuxiliaryListenersUseFileEnvAndFlagPrecedence(t *testing.T) {
+func TestCompatAuxiliaryListenersUseFileEnvAndFlagPrecedence(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	for _, key := range []string{"OPENSHELL_GATEWAY_CONFIG", "OPENSHELL_HEALTH_PORT", "OPENSHELL_METRICS_PORT"} {
 		t.Setenv(key, "")
@@ -289,7 +346,7 @@ func TestAuxiliaryHealthAndMetricsContracts(t *testing.T) {
 	}
 }
 
-func TestOpenShellOIDCConfigAndClaims(t *testing.T) {
+func TestCompatOIDCConfigAndClaims(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	for _, key := range []string{"OPENSHELL_GATEWAY_CONFIG", "OPENSHELL_OIDC_ISSUER", "OPENSHELL_OIDC_AUDIENCE", "OPENSHELL_OIDC_JWKS_TTL", "OPENSHELL_OIDC_ROLES_CLAIM", "OPENSHELL_OIDC_ADMIN_ROLE", "OPENSHELL_OIDC_USER_ROLE", "OPENSHELL_OIDC_SCOPES_CLAIM"} {
 		t.Setenv(key, "")
@@ -347,7 +404,7 @@ func TestOpenShellOIDCConfigAndClaims(t *testing.T) {
 	}
 }
 
-func TestOpenShellOIDCScopesAuthorizeRESTRoutes(t *testing.T) {
+func TestCompatOIDCScopesAuthorizeRESTRoutes(t *testing.T) {
 	settings := OIDCOptions{ScopesClaim: "scope"}
 	user := Principal{IDP: "oidc", Scopes: []string{"sandbox:read", "provider:read"}}
 	for _, route := range []struct {
@@ -367,7 +424,7 @@ func TestOpenShellOIDCScopesAuthorizeRESTRoutes(t *testing.T) {
 	}
 }
 
-func TestOpenShellOIDCRolesAuthorizeReadsAndWrites(t *testing.T) {
+func TestCompatOIDCRolesAuthorizeReadsAndWrites(t *testing.T) {
 	settings := OIDCOptions{AdminRole: "ops-admin", UserRole: "ops-user"}
 	user := Principal{Kind: PrincipalUser, IDP: "oidc", Roles: []string{"ops-user"}}
 	admin := Principal{Kind: PrincipalUser, IDP: "oidc", Roles: []string{"ops-admin"}}

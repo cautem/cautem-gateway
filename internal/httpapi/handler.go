@@ -111,6 +111,7 @@ func NewHandler(ctx context.Context, opt Options) (handler http.Handler, returnE
 	ssh := &sshAPI{st: st, hub: relayHub, sessionTTL: ttl, log: log.Logger}
 	go reapSSHSessions(ctx, st, log.Logger)
 	if opt.grpcRuntime != nil {
+		go reapExpiredRootfsTarStaging(ctx, opt.grpcRuntime)
 		go func() {
 			reconcileRuntimeState(ctx, st, opt.grpcRuntime.compute, log.Logger)
 			runRuntimeCredentialRefresh(ctx, st, opt.grpcRuntime.compute, log.Logger)
@@ -163,6 +164,9 @@ func NewHandler(ctx context.Context, opt Options) (handler http.Handler, returnE
 	mountControlAPI(mux, st, logs, opt, oidcValidator)
 	mountBrowserServiceManagement(mux, st, opt.grpcRuntime, opt)
 	mountBrowserFiles(mux, st, opt.grpcRuntime, opt)
+	if opt.grpcRuntime != nil {
+		mux.Handle("/v1/rootfs-tar/", rootfsTarUploadHandler(opt.grpcRuntime, opt))
+	}
 	auth := withAuth(mux, st, authOptions)
 	log.Info("gateway ready",
 		slog.String("op", "gateway.serve"),

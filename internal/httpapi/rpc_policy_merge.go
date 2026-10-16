@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	corepolicy "github.com/cautem/cautem-core/policy"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
@@ -23,7 +23,7 @@ import (
 
 const maxPolicyMergeOperations = 128
 
-func (s *openShellRPC) updateConfigPolicyMerge(ctx context.Context, req *openshellv1.UpdateConfigRequest) (*openshellv1.UpdateConfigResponse, error) {
+func (s *compatRPCAdapter) updateConfigPolicyMerge(ctx context.Context, req *compatv1.UpdateConfigRequest) (*compatv1.UpdateConfigResponse, error) {
 	if req.GetGlobal() {
 		return nil, status.Error(codes.InvalidArgument, "merge_operations are not supported for global policy updates")
 	}
@@ -34,7 +34,7 @@ func (s *openShellRPC) updateConfigPolicyMerge(ctx context.Context, req *openshe
 	if p.Kind != PrincipalUser {
 		return nil, status.Error(codes.Unauthenticated, "authenticated user required")
 	}
-	name := strings.TrimSpace(req.GetName())
+	name := strings.TrimSpace(req.GetSandbox())
 	if name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required for sandbox policy updates")
 	}
@@ -42,7 +42,7 @@ func (s *openShellRPC) updateConfigPolicyMerge(ctx context.Context, req *openshe
 	if !ok {
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
-	if workspace := strings.TrimSpace(req.GetWorkspace()); workspace != "" && workspace != sandbox.Workspace {
+	if workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope())); workspace != "" && workspace != sandbox.Workspace {
 		return nil, status.Error(codes.PermissionDenied, "sandbox does not belong to requested workspace")
 	}
 	if err := s.requireSandboxConfigWrite(p, sandbox.Workspace); err != nil {
@@ -58,7 +58,7 @@ func (s *openShellRPC) updateConfigPolicyMerge(ctx context.Context, req *openshe
 	if err != nil || base.Validate() != nil {
 		return nil, status.Error(codes.FailedPrecondition, "stored sandbox policy is invalid")
 	}
-	merged, err := applyOpenShellPolicyMerge(base, req.GetMergeOperations())
+	merged, err := applyPolicyMerge(base, req.GetMergeOperations())
 	if err != nil {
 		return nil, err
 	}
@@ -101,10 +101,10 @@ func (s *openShellRPC) updateConfigPolicyMerge(ctx context.Context, req *openshe
 	if err := s.waitSandboxPolicyApplied(ctx, name, updated.PolicyRev); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
-	return &openshellv1.UpdateConfigResponse{Version: uint32(updated.PolicyRev), PolicyHash: hex.EncodeToString(digest[:]), Annotations: updated.Annotations}, nil
+	return &compatv1.UpdateConfigResponse{Version: uint32(updated.PolicyRev), PolicyHash: hex.EncodeToString(digest[:]), Annotations: updated.Annotations}, nil
 }
 
-func applyOpenShellPolicyMerge(base corepolicy.Document, operations []*openshellv1.PolicyMergeOperation) (corepolicy.Document, error) {
+func applyPolicyMerge(base corepolicy.Document, operations []*compatv1.PolicyMergeOperation) (corepolicy.Document, error) {
 	serialized, err := yaml.Marshal(base)
 	if err != nil {
 		return corepolicy.Document{}, status.Error(codes.Internal, "could not copy sandbox policy")
@@ -121,7 +121,7 @@ func applyOpenShellPolicyMerge(base corepolicy.Document, operations []*openshell
 			return corepolicy.Document{}, status.Errorf(codes.InvalidArgument, "merge_operations[%d] is missing an operation", index)
 		}
 		switch value := operation.GetOperation().(type) {
-		case *openshellv1.PolicyMergeOperation_AddRule:
+		case *compatv1.PolicyMergeOperation_AddRule:
 			if value.AddRule == nil || strings.TrimSpace(value.AddRule.GetRuleName()) == "" {
 				return corepolicy.Document{}, status.Errorf(codes.InvalidArgument, "merge_operations[%d].add_rule.rule_name is required", index)
 			}
@@ -144,18 +144,18 @@ func applyOpenShellPolicyMerge(base corepolicy.Document, operations []*openshell
 			if err := addMergedNetworkRule(merged.NetworkPolicies, name, fragment); err != nil {
 				return corepolicy.Document{}, status.Errorf(codes.FailedPrecondition, "merge_operations[%d]: %v", index, err)
 			}
-		case *openshellv1.PolicyMergeOperation_RemoveEndpoint:
+		case *compatv1.PolicyMergeOperation_RemoveEndpoint:
 			endpoint := value.RemoveEndpoint
 			if endpoint == nil || strings.TrimSpace(endpoint.GetHost()) == "" || endpoint.GetPort() == 0 {
 				return corepolicy.Document{}, status.Errorf(codes.InvalidArgument, "merge_operations[%d].remove_endpoint requires host and non-zero port", index)
 			}
 			removeMergedEndpoint(merged.NetworkPolicies, strings.TrimSpace(endpoint.GetRuleName()), strings.TrimSpace(endpoint.GetHost()), int(endpoint.GetPort()))
-		case *openshellv1.PolicyMergeOperation_RemoveRule:
+		case *compatv1.PolicyMergeOperation_RemoveRule:
 			if value.RemoveRule == nil || strings.TrimSpace(value.RemoveRule.GetRuleName()) == "" {
 				return corepolicy.Document{}, status.Errorf(codes.InvalidArgument, "merge_operations[%d].remove_rule.rule_name is required", index)
 			}
 			delete(merged.NetworkPolicies, strings.TrimSpace(value.RemoveRule.GetRuleName()))
-		case *openshellv1.PolicyMergeOperation_RemoveBinary:
+		case *compatv1.PolicyMergeOperation_RemoveBinary:
 			remove := value.RemoveBinary
 			if remove == nil || strings.TrimSpace(remove.GetRuleName()) == "" || strings.TrimSpace(remove.GetBinaryPath()) == "" {
 				return corepolicy.Document{}, status.Errorf(codes.InvalidArgument, "merge_operations[%d].remove_binary requires rule_name and binary_path", index)
@@ -179,21 +179,21 @@ func applyOpenShellPolicyMerge(base corepolicy.Document, operations []*openshell
 					merged.NetworkPolicies[name] = rule
 				}
 			}
-		case *openshellv1.PolicyMergeOperation_AddDenyRules:
+		case *compatv1.PolicyMergeOperation_AddDenyRules:
 			add := value.AddDenyRules
-			if add == nil || strings.TrimSpace(add.GetHost()) == "" || add.GetPort() == 0 || len(add.GetDenyRules()) == 0 {
+			if add == nil || add.GetTarget() == nil || strings.TrimSpace(add.GetTarget().GetHost()) == "" || len(add.GetTarget().GetPorts()) != 1 || add.GetTarget().GetPorts()[0] == 0 || len(add.GetDenyRules()) == 0 {
 				return corepolicy.Document{}, status.Errorf(codes.InvalidArgument, "merge_operations[%d].add_deny_rules requires host, non-zero port, and at least one deny rule", index)
 			}
-			fragment, err := parseMergeEndpointRules(strings.TrimSpace(add.GetHost()), add.GetPort(), nil, add.GetDenyRules())
+			fragment, err := parseMergeEndpointRules(strings.TrimSpace(add.GetTarget().GetHost()), add.GetTarget().GetPorts()[0], nil, add.GetDenyRules())
 			if err != nil {
 				return corepolicy.Document{}, status.Errorf(codes.InvalidArgument, "merge_operations[%d].add_deny_rules is invalid: %v", index, err)
 			}
 			if err := appendMergedEndpointRules(merged.NetworkPolicies, fragment, false); err != nil {
 				return corepolicy.Document{}, status.Errorf(codes.FailedPrecondition, "merge_operations[%d]: %v", index, err)
 			}
-		case *openshellv1.PolicyMergeOperation_AddAllowRules:
+		case *compatv1.PolicyMergeOperation_AddAllowRules:
 			add := value.AddAllowRules
-			if add == nil || strings.TrimSpace(add.GetHost()) == "" || add.GetPort() == 0 || len(add.GetRules()) == 0 {
+			if add == nil || add.GetTarget() == nil || strings.TrimSpace(add.GetTarget().GetHost()) == "" || len(add.GetTarget().GetPorts()) != 1 || add.GetTarget().GetPorts()[0] == 0 || len(add.GetRules()) == 0 {
 				return corepolicy.Document{}, status.Errorf(codes.InvalidArgument, "merge_operations[%d].add_allow_rules requires host, non-zero port, and at least one allow rule", index)
 			}
 			for _, rule := range add.GetRules() {
@@ -201,7 +201,7 @@ func applyOpenShellPolicyMerge(base corepolicy.Document, operations []*openshell
 					return corepolicy.Document{}, status.Errorf(codes.InvalidArgument, "merge_operations[%d].add_allow_rules rules must include allow payloads", index)
 				}
 			}
-			fragment, err := parseMergeEndpointRules(strings.TrimSpace(add.GetHost()), add.GetPort(), add.GetRules(), nil)
+			fragment, err := parseMergeEndpointRules(strings.TrimSpace(add.GetTarget().GetHost()), add.GetTarget().GetPorts()[0], add.GetRules(), nil)
 			if err != nil {
 				return corepolicy.Document{}, status.Errorf(codes.InvalidArgument, "merge_operations[%d].add_allow_rules is invalid: %v", index, err)
 			}
@@ -222,7 +222,7 @@ func applyOpenShellPolicyMerge(base corepolicy.Document, operations []*openshell
 }
 
 func parseMergeRule(name string, rule *sandboxv1.NetworkPolicyRule) (corepolicy.NetworkPolicy, error) {
-	doc, err := parseOpenShellSandboxPolicy(&sandboxv1.SandboxPolicy{Version: 1, NetworkPolicies: map[string]*sandboxv1.NetworkPolicyRule{name: rule}})
+	doc, err := parseSandboxPolicy(&sandboxv1.SandboxPolicy{Version: 1, NetworkPolicies: map[string]*sandboxv1.NetworkPolicyRule{name: rule}})
 	if err != nil {
 		return corepolicy.NetworkPolicy{}, err
 	}
@@ -230,7 +230,7 @@ func parseMergeRule(name string, rule *sandboxv1.NetworkPolicyRule) (corepolicy.
 }
 
 func parseMergeEndpointRules(host string, port uint32, allows []*sandboxv1.L7Rule, denies []*sandboxv1.L7DenyRule) (corepolicy.AllowRule, error) {
-	doc, err := parseOpenShellSandboxPolicy(&sandboxv1.SandboxPolicy{Version: 1, NetworkPolicies: map[string]*sandboxv1.NetworkPolicyRule{"merge": {Endpoints: []*sandboxv1.NetworkEndpoint{{Host: host, Port: port, Protocol: "rest", Rules: allows, DenyRules: denies}}}}})
+	doc, err := parseSandboxPolicy(&sandboxv1.SandboxPolicy{Version: 1, NetworkPolicies: map[string]*sandboxv1.NetworkPolicyRule{"merge": {Endpoints: []*sandboxv1.NetworkEndpoint{{Host: host, Port: port, Protocol: "rest", Rules: allows, DenyRules: denies}}}}})
 	if err != nil {
 		return corepolicy.AllowRule{}, err
 	}

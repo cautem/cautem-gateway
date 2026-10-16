@@ -43,7 +43,7 @@ func approveProposal(ctx context.Context, st *store.Store, runtime *grpcRuntime,
 	if !ok {
 		return fmt.Errorf("sandbox not found")
 	}
-	rpc := &openShellRPC{options: runtime.opt, runtime: runtime}
+	rpc := &compatRPCAdapter{options: runtime.opt, runtime: runtime}
 	if err := rpc.syncSandboxRuntimePolicy(ctx, sandbox, updated.PolicyRev); err != nil {
 		return fmt.Errorf("policy was stored but could not be delivered: %w", err)
 	}

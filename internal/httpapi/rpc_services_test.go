@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 )
 
-func TestOpenShellServiceEndpointLifecycle(t *testing.T) {
+func TestCompatServiceEndpointLifecycle(t *testing.T) {
 	st, err := store.Open(t.TempDir(), "services")
 	if err != nil {
 		t.Fatal(err)
@@ -16,10 +16,10 @@ func TestOpenShellServiceEndpointLifecycle(t *testing.T) {
 	if err := st.UpsertSandbox(store.Sandbox{Name: "demo", ID: "sandbox-demo", Workspace: "default"}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
 
-	exposed, err := rpc.ExposeService(ctx, &openshellv1.ExposeServiceRequest{Sandbox: "demo", Service: "web", TargetPort: 8080, Domain: true})
+	exposed, err := rpc.ExposeService(ctx, &compatv1.ExposeServiceRequest{Sandbox: "demo", Name: "web", TargetPort: 8080, Domain: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,24 +27,24 @@ func TestOpenShellServiceEndpointLifecycle(t *testing.T) {
 		t.Fatalf("exposed endpoint=%v", exposed)
 	}
 
-	got, err := rpc.GetService(ctx, &openshellv1.GetServiceRequest{Sandbox: "demo", Service: "web"})
-	if err != nil || got.GetEndpoint().GetServiceName() != "web" {
+	got, err := rpc.GetService(ctx, &compatv1.GetServiceRequest{Sandbox: "demo", Name: "web"})
+	if err != nil || got.GetEndpoint().GetName() != "web" {
 		t.Fatalf("GetService=%v err=%v", got, err)
 	}
-	listed, err := rpc.ListServices(ctx, &openshellv1.ListServicesRequest{})
+	listed, err := rpc.ListServices(ctx, &compatv1.ListServicesRequest{})
 	if err != nil || len(listed.GetServices()) != 1 {
 		t.Fatalf("ListServices=%v err=%v", listed, err)
 	}
-	deleted, err := rpc.DeleteService(ctx, &openshellv1.DeleteServiceRequest{Sandbox: "demo", Service: "web"})
-	if err != nil || !deleted.GetDeleted() {
+	deleted, err := rpc.DeleteService(ctx, &compatv1.DeleteServiceRequest{Sandbox: "demo", Name: "web"})
+	if err != nil || deleted.GetOutcome() != compatv1.DeletionOutcome_DELETION_OUTCOME_COMPLETED {
 		t.Fatalf("DeleteService=%v err=%v", deleted, err)
 	}
-	if _, err := rpc.GetService(ctx, &openshellv1.GetServiceRequest{Sandbox: "demo", Service: "web"}); err == nil {
+	if _, err := rpc.GetService(ctx, &compatv1.GetServiceRequest{Sandbox: "demo", Name: "web"}); err == nil {
 		t.Fatal("deleted service still returned")
 	}
 }
 
-func TestOpenShellSandboxTokenRotation(t *testing.T) {
+func TestCompatSandboxTokenRotation(t *testing.T) {
 	st, err := store.Open(t.TempDir(), "tokens")
 	if err != nil {
 		t.Fatal(err)
@@ -52,13 +52,13 @@ func TestOpenShellSandboxTokenRotation(t *testing.T) {
 	if err := st.UpsertSandbox(store.Sandbox{Name: "demo", ID: "sandbox-demo"}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalSandbox, Sandbox: "demo"})
-	first, err := rpc.IssueSandboxToken(ctx, &openshellv1.IssueSandboxTokenRequest{})
+	first, err := rpc.IssueSandboxToken(ctx, &compatv1.IssueSandboxTokenRequest{})
 	if err != nil || first.GetToken() == "" {
 		t.Fatalf("IssueSandboxToken=%v err=%v", first, err)
 	}
-	second, err := rpc.RefreshSandboxToken(ctx, &openshellv1.RefreshSandboxTokenRequest{})
+	second, err := rpc.RefreshSandboxToken(ctx, &compatv1.RefreshSandboxTokenRequest{})
 	if err != nil || second.GetToken() == "" || second.GetToken() == first.GetToken() {
 		t.Fatalf("RefreshSandboxToken=%v err=%v", second, err)
 	}

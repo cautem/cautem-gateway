@@ -27,12 +27,12 @@ func reconcileRuntimeState(ctx context.Context, st *store.Store, registry *compu
 	}
 	registry.mu.Unlock()
 	for _, name := range names {
-		engine, err := registry.engine(name)
+		backend, err := registry.backend(name)
 		if err != nil {
 			log.Warn("runtime reconciliation skipped", slog.String("op", "gateway.runtime.reconcile"), slog.String("driver", name), slogx.Err(err))
 			continue
 		}
-		rows, err := engine.List(reconcileCtx)
+		rows, err := backend.List(reconcileCtx)
 		if err != nil {
 			log.Warn("runtime reconciliation skipped while backend is unavailable", slog.String("op", "gateway.runtime.reconcile"), slog.String("driver", name), slogx.Err(err))
 			continue
@@ -48,7 +48,7 @@ func reconcileRuntimeState(ctx context.Context, st *store.Store, registry *compu
 			// Only delete objects returned by the driver's own sandbox label
 			// filter. This is the narrow orphan target; unrelated containers are
 			// never enumerated or touched here.
-			deleted, cleanupErr := cleanupEngineSandbox(reconcileCtx, engine, row.ID, true)
+			deleted, cleanupErr := cleanupSandboxRuntime(reconcileCtx, backend, row.ID, true)
 			if !deleted {
 				log.Warn("orphan runtime cleanup failed; it will be retried", slog.String("op", "gateway.runtime.orphan_sweep"), slog.String("driver", name), slog.String("sandbox", row.Name), slog.String("runtime_id", string(row.ID)), slogx.Err(cleanupErr))
 				continue

@@ -30,6 +30,7 @@ func clonePolicyRevisions(revisions []PolicyRevision) []PolicyRevision {
 }
 
 func cloneProvider(p ProviderRecord) ProviderRecord {
+	p.Labels = maps.Clone(p.Labels)
 	p.EnvVars = slices.Clone(p.EnvVars)
 	p.Config = maps.Clone(p.Config)
 	p.CredentialHandles = maps.Clone(p.CredentialHandles)

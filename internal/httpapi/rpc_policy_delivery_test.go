@@ -18,6 +18,15 @@ type policyDeliveryTestEngine struct {
 	policy []byte
 }
 
+func (*policyDeliveryTestEngine) BackendCapabilityInfo() driver.BackendInfo {
+	return driver.BackendInfo{
+		ID: "kubernetes",
+		Capabilities: map[driver.Capability]struct{}{
+			driver.CapabilityPolicyUpdate: {},
+		},
+	}
+}
+
 func TestWaitSandboxPolicyAppliedForDisconnectedKubernetesRuntime(t *testing.T) {
 	st, err := store.Open(t.TempDir(), "gateway-policy-ack")
 	if err != nil {
@@ -39,7 +48,7 @@ func TestWaitSandboxPolicyAppliedForDisconnectedKubernetesRuntime(t *testing.T) 
 		compute:            &computeRegistry{engines: map[string]driver.Engine{"kubernetes": engine}},
 		policyApplyTimeout: 20 * time.Millisecond,
 	}
-	err = (&openShellRPC{runtime: runtime}).waitSandboxPolicyApplied(context.Background(), "demo", 1)
+	err = (&compatRPCAdapter{runtime: runtime}).waitSandboxPolicyApplied(context.Background(), "demo", 1)
 	if err == nil || !strings.Contains(err.Error(), "timed out") {
 		t.Fatalf("waitSandboxPolicyApplied() error = %v; want timeout while disconnected", err)
 	}
@@ -69,7 +78,7 @@ func TestSyncSandboxRuntimePolicyDeliversToComputeDriverWithoutDataDir(t *testin
 		compute: &computeRegistry{engines: map[string]driver.Engine{"kubernetes": engine}},
 		opt:     Options{},
 	}
-	rpc := &openShellRPC{runtime: runtime}
+	rpc := &compatRPCAdapter{runtime: runtime}
 	if err := rpc.syncSandboxRuntimePolicy(context.Background(), "demo", 3); err != nil {
 		t.Fatalf("syncSandboxRuntimePolicy() error = %v", err)
 	}

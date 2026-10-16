@@ -4,13 +4,13 @@ import (
 	"context"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-func (s *openShellRPC) ReportPolicyStatus(ctx context.Context, req *openshellv1.ReportPolicyStatusRequest) (*openshellv1.ReportPolicyStatusResponse, error) {
+func (s *compatRPCAdapter) ReportPolicyStatus(ctx context.Context, req *compatv1.ReportPolicyStatusRequest) (*compatv1.ReportPolicyStatusResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return nil, status.Error(codes.Unavailable, "policy store is not initialized")
 	}
@@ -36,9 +36,9 @@ func (s *openShellRPC) ReportPolicyStatus(ctx context.Context, req *openshellv1.
 	}
 	var policyStatus string
 	switch req.GetStatus() {
-	case openshellv1.PolicyStatus_POLICY_STATUS_LOADED:
+	case compatv1.PolicyStatus_POLICY_STATUS_LOADED:
 		policyStatus = store.PolicyStatusLoaded
-	case openshellv1.PolicyStatus_POLICY_STATUS_FAILED:
+	case compatv1.PolicyStatus_POLICY_STATUS_FAILED:
 		policyStatus = store.PolicyStatusFailed
 	default:
 		return nil, status.Error(codes.InvalidArgument, "status must be LOADED or FAILED")
@@ -60,5 +60,5 @@ func (s *openShellRPC) ReportPolicyStatus(ctx context.Context, req *openshellv1.
 	if err := s.runtime.st.ReportPolicyStatus(sandboxID, int(req.GetVersion()), policyStatus, loadError, loadedAt); err != nil {
 		return nil, status.Error(codes.Internal, "could not record policy load status")
 	}
-	return &openshellv1.ReportPolicyStatusResponse{}, nil
+	return &compatv1.ReportPolicyStatusResponse{}, nil
 }

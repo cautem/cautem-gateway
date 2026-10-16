@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/httpapi"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
@@ -80,7 +80,7 @@ func newTestGateway(t *testing.T, opt httpapi.Options) *testGateway {
 	return &testGateway{t: t, srv: server, token: strings.TrimSpace(string(b)), dir: opt.DataDir, sshTTL: opt.SSHSessionTTL}
 }
 
-func (g *testGateway) openShellClient() (openshellv1.OpenShellClient, *grpc.ClientConn) {
+func (g *testGateway) openShellClient() (compatv1.OpenShellClient, *grpc.ClientConn) {
 	g.t.Helper()
 	endpoint, err := url.Parse(g.srv.URL)
 	if err != nil {
@@ -91,7 +91,7 @@ func (g *testGateway) openShellClient() (openshellv1.OpenShellClient, *grpc.Clie
 		g.t.Fatal(err)
 	}
 	g.t.Cleanup(func() { _ = conn.Close() })
-	return openshellv1.NewOpenShellClient(conn), conn
+	return compatv1.NewOpenShellClient(conn), conn
 }
 
 func (g *testGateway) rpcContext(ctx context.Context, token string) context.Context {

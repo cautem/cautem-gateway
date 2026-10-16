@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	"github.com/cautem/cautem-core/policy"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
@@ -40,19 +40,19 @@ func TestUpdateConfigAppliesSandboxPolicyMergeOperationsAtomically(t *testing.T)
 	if err := st.SetBasePolicy("demo", mergeTestPolicy); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	addOps := []*openshellv1.PolicyMergeOperation{
-		{Operation: &openshellv1.PolicyMergeOperation_AddAllowRules{AddAllowRules: &openshellv1.AddAllowRules{
-			Host: "api.example.com", Port: 443,
-			Rules: []*sandboxv1.L7Rule{{Allow: &sandboxv1.L7Allow{Method: "POST", Path: "/repos/**"}}},
+	addOps := []*compatv1.PolicyMergeOperation{
+		{Operation: &compatv1.PolicyMergeOperation_AddAllowRules{AddAllowRules: &compatv1.AddAllowRules{
+			Target: &compatv1.L7RuleTarget{Host: "api.example.com", Ports: []uint32{443}},
+			Rules:  []*sandboxv1.L7Rule{{Allow: &sandboxv1.L7Allow{Method: "POST", Path: "/repos/**"}}},
 		}}},
-		{Operation: &openshellv1.PolicyMergeOperation_AddDenyRules{AddDenyRules: &openshellv1.AddDenyRules{
-			Host: "api.example.com", Port: 443,
+		{Operation: &compatv1.PolicyMergeOperation_AddDenyRules{AddDenyRules: &compatv1.AddDenyRules{
+			Target:    &compatv1.L7RuleTarget{Host: "api.example.com", Ports: []uint32{443}},
 			DenyRules: []*sandboxv1.L7DenyRule{{Method: "DELETE", Path: "/repos/**"}},
 		}}},
 	}
-	response, err := rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{Name: "demo", Workspace: "default", MergeOperations: addOps, Annotations: map[string]string{"change": "reviewed"}})
+	response, err := rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{Sandbox: "demo", WorkspaceScope: workspaceScope("default"), MergeOperations: addOps, Annotations: map[string]string{"change": "reviewed"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,8 +70,8 @@ func TestUpdateConfigAppliesSandboxPolicyMergeOperationsAtomically(t *testing.T)
 	}
 
 	before := record.BasePolicyYAML
-	bad := &openshellv1.UpdateConfigRequest{Name: "demo", Workspace: "default", MergeOperations: []*openshellv1.PolicyMergeOperation{
-		{Operation: &openshellv1.PolicyMergeOperation_AddRule{AddRule: &openshellv1.AddNetworkRule{RuleName: "new-rule", Rule: &sandboxv1.NetworkPolicyRule{Endpoints: []*sandboxv1.NetworkEndpoint{{Host: "other.example.com", Port: 443}}}}}},
+	bad := &compatv1.UpdateConfigRequest{Sandbox: "demo", WorkspaceScope: workspaceScope("default"), MergeOperations: []*compatv1.PolicyMergeOperation{
+		{Operation: &compatv1.PolicyMergeOperation_AddRule{AddRule: &compatv1.AddNetworkRule{RuleName: "new-rule", Rule: &sandboxv1.NetworkPolicyRule{Endpoints: []*sandboxv1.NetworkEndpoint{{Host: "other.example.com", Port: 443}}}}}},
 		{},
 	}}
 	if _, err := rpc.UpdateConfig(ctx, bad); status.Code(err) != codes.InvalidArgument {
@@ -94,58 +94,58 @@ func TestUpdateConfigPolicyMergeEnforcesGlobalPolicyAndCAS(t *testing.T) {
 	if err := st.SetBasePolicy("demo", mergeTestPolicy); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	op := &openshellv1.PolicyMergeOperation{Operation: &openshellv1.PolicyMergeOperation_RemoveRule{RemoveRule: &openshellv1.RemoveNetworkRule{RuleName: "api"}}}
-	if _, err := rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{Name: "demo", ExpectedResourceVersion: 1, MergeOperations: []*openshellv1.PolicyMergeOperation{op}}); status.Code(err) != codes.Aborted {
+	op := &compatv1.PolicyMergeOperation{Operation: &compatv1.PolicyMergeOperation_RemoveRule{RemoveRule: &compatv1.RemoveNetworkRule{RuleName: "api"}}}
+	if _, err := rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{Sandbox: "demo", ExpectedResourceVersion: 1, MergeOperations: []*compatv1.PolicyMergeOperation{op}}); status.Code(err) != codes.Aborted {
 		t.Fatalf("stale CAS error=%v; want Aborted", err)
 	}
 	if err := st.SetGlobalPolicy("version: 1\n"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{Name: "demo", MergeOperations: []*openshellv1.PolicyMergeOperation{op}}); status.Code(err) != codes.FailedPrecondition {
+	if _, err := rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{Sandbox: "demo", MergeOperations: []*compatv1.PolicyMergeOperation{op}}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("global policy merge error=%v; want FailedPrecondition", err)
 	}
-	if _, err := rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{Global: true, MergeOperations: []*openshellv1.PolicyMergeOperation{op}}); status.Code(err) != codes.InvalidArgument {
+	if _, err := rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{Global: true, MergeOperations: []*compatv1.PolicyMergeOperation{op}}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("global-scope merge error=%v; want InvalidArgument", err)
 	}
 }
 
-func TestApplyOpenShellPolicyMergeRuleAndRemovalOperations(t *testing.T) {
+func TestApplyPolicyMergeRuleAndRemovalOperations(t *testing.T) {
 	base, err := policy.Parse([]byte(mergeTestPolicy))
 	if err != nil {
 		t.Fatal(err)
 	}
-	newRule := &openshellv1.PolicyMergeOperation{Operation: &openshellv1.PolicyMergeOperation_AddRule{AddRule: &openshellv1.AddNetworkRule{
+	newRule := &compatv1.PolicyMergeOperation{Operation: &compatv1.PolicyMergeOperation_AddRule{AddRule: &compatv1.AddNetworkRule{
 		RuleName: "docs",
 		Rule:     &sandboxv1.NetworkPolicyRule{Endpoints: []*sandboxv1.NetworkEndpoint{{Host: "docs.example.com", Port: 443}}},
 	}}}
-	merged, err := applyOpenShellPolicyMerge(base, []*openshellv1.PolicyMergeOperation{newRule})
+	merged, err := applyPolicyMerge(base, []*compatv1.PolicyMergeOperation{newRule})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := merged.NetworkPolicies["docs"]; !ok {
 		t.Fatalf("add_rule did not create named rule: %+v", merged.NetworkPolicies)
 	}
-	removeEndpoint := &openshellv1.PolicyMergeOperation{Operation: &openshellv1.PolicyMergeOperation_RemoveEndpoint{RemoveEndpoint: &openshellv1.RemoveNetworkEndpoint{RuleName: "api", Host: "api.example.com", Port: 443}}}
-	withoutEndpoint, err := applyOpenShellPolicyMerge(merged, []*openshellv1.PolicyMergeOperation{removeEndpoint})
+	removeEndpoint := &compatv1.PolicyMergeOperation{Operation: &compatv1.PolicyMergeOperation_RemoveEndpoint{RemoveEndpoint: &compatv1.RemoveNetworkEndpoint{RuleName: "api", Host: "api.example.com", Port: 443}}}
+	withoutEndpoint, err := applyPolicyMerge(merged, []*compatv1.PolicyMergeOperation{removeEndpoint})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := withoutEndpoint.NetworkPolicies["api"]; ok {
 		t.Fatalf("remove_endpoint left an empty rule behind: %+v", withoutEndpoint.NetworkPolicies["api"])
 	}
-	removeBinary := &openshellv1.PolicyMergeOperation{Operation: &openshellv1.PolicyMergeOperation_RemoveBinary{RemoveBinary: &openshellv1.RemoveNetworkBinary{RuleName: "api", BinaryPath: "/usr/bin/agent"}}}
-	withoutBinary, err := applyOpenShellPolicyMerge(base, []*openshellv1.PolicyMergeOperation{removeBinary})
+	removeBinary := &compatv1.PolicyMergeOperation{Operation: &compatv1.PolicyMergeOperation_RemoveBinary{RemoveBinary: &compatv1.RemoveNetworkBinary{RuleName: "api", BinaryPath: "/usr/bin/agent"}}}
+	withoutBinary, err := applyPolicyMerge(base, []*compatv1.PolicyMergeOperation{removeBinary})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := withoutBinary.NetworkPolicies["api"]; ok {
 		t.Fatalf("remove_binary did not delete the now-empty binary-scoped rule")
 	}
-	unsafeBinaryRemoval := &openshellv1.PolicyMergeOperation{Operation: &openshellv1.PolicyMergeOperation_RemoveBinary{RemoveBinary: &openshellv1.RemoveNetworkBinary{RuleName: "unrestricted", BinaryPath: "/usr/bin/agent"}}}
+	unsafeBinaryRemoval := &compatv1.PolicyMergeOperation{Operation: &compatv1.PolicyMergeOperation_RemoveBinary{RemoveBinary: &compatv1.RemoveNetworkBinary{RuleName: "unrestricted", BinaryPath: "/usr/bin/agent"}}}
 	base.NetworkPolicies["unrestricted"] = corePolicyAllBinaryRule()
-	if _, err := applyOpenShellPolicyMerge(base, []*openshellv1.PolicyMergeOperation{unsafeBinaryRemoval}); status.Code(err) != codes.FailedPrecondition {
+	if _, err := applyPolicyMerge(base, []*compatv1.PolicyMergeOperation{unsafeBinaryRemoval}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("remove_binary from unrestricted scope error=%v; want FailedPrecondition", err)
 	}
 }
@@ -168,10 +168,10 @@ credentials:
 	if err := st.UpsertSandbox(store.Sandbox{Name: "demo", ID: "sandbox-bindings", Workspace: "default", BasePolicyYAML: "version: 1\nnetwork_policies: {}\n", AttachedProviders: []string{"database"}}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	addBinding := func(providerName string) *openshellv1.PolicyMergeOperation {
-		return &openshellv1.PolicyMergeOperation{Operation: &openshellv1.PolicyMergeOperation_AddRule{AddRule: &openshellv1.AddNetworkRule{
+	addBinding := func(providerName string) *compatv1.PolicyMergeOperation {
+		return &compatv1.PolicyMergeOperation{Operation: &compatv1.PolicyMergeOperation_AddRule{AddRule: &compatv1.AddNetworkRule{
 			RuleName: "database",
 			Rule: &sandboxv1.NetworkPolicyRule{Endpoints: []*sandboxv1.NetworkEndpoint{{
 				Host: "db.example.com", Port: 5432,
@@ -179,7 +179,7 @@ credentials:
 			}}},
 		}}}
 	}
-	if _, err := rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{Name: "demo", Workspace: "default", MergeOperations: []*openshellv1.PolicyMergeOperation{addBinding("database")}}); err != nil {
+	if _, err := rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{Sandbox: "demo", WorkspaceScope: workspaceScope("default"), MergeOperations: []*compatv1.PolicyMergeOperation{addBinding("database")}}); err != nil {
 		t.Fatalf("attached endpointless provider binding rejected: %v", err)
 	}
 	updated, _ := st.GetSandbox("demo")
@@ -188,7 +188,7 @@ credentials:
 	}
 
 	before := updated.BasePolicyYAML
-	if _, err := rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{Name: "demo", Workspace: "default", MergeOperations: []*openshellv1.PolicyMergeOperation{addBinding("missing")}}); status.Code(err) != codes.FailedPrecondition {
+	if _, err := rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{Sandbox: "demo", WorkspaceScope: workspaceScope("default"), MergeOperations: []*compatv1.PolicyMergeOperation{addBinding("missing")}}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("unattached binding error=%v; want FailedPrecondition", err)
 	}
 	after, _ := st.GetSandbox("demo")

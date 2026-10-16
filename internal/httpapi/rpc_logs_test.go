@@ -6,14 +6,15 @@ import (
 	"testing"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/logbuf"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func TestOpenShellGatewaySandboxLogsRPC(t *testing.T) {
+func TestCompatGatewaySandboxLogsRPC(t *testing.T) {
 	st, err := store.Open(t.TempDir(), "gw-log-rpc")
 	if err != nil {
 		t.Fatal(err)
@@ -28,9 +29,9 @@ func TestOpenShellGatewaySandboxLogsRPC(t *testing.T) {
 		{TS: base.Add(time.Second), Source: "sandbox", Level: "ERROR", Target: "supervisor", Text: "sandbox failure", Fields: map[string]string{"code": "7"}},
 		{TS: base.Add(2 * time.Second), Source: "sandbox", Level: "DEBUG", Text: "debug detail"},
 	})
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, logs: logs}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, logs: logs}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local"})
-	resp, err := rpc.GetSandboxLogs(ctx, &openshellv1.GetSandboxLogsRequest{SandboxId: "sandbox-1", Workspace: "default", Sources: []string{"sandbox"}, MinLevel: "WARN"})
+	resp, err := rpc.GetSandboxLogs(ctx, &compatv1.GetSandboxLogsRequest{Sandbox: "sandbox-1", WorkspaceScope: workspaceScope("default"), Sources: []string{"sandbox"}, MinLevel: "WARN"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,9 +44,9 @@ func TestOpenShellGatewaySandboxLogsRPC(t *testing.T) {
 	}
 
 	pushCtx := withPrincipal(context.Background(), Principal{Kind: PrincipalSandbox, Sandbox: "sandbox-1"})
-	stream := &fakePushSandboxLogsStream{ctx: pushCtx, batches: []*openshellv1.PushSandboxLogsRequest{{
+	stream := &fakePushSandboxLogsStream{ctx: pushCtx, batches: []*compatv1.PushSandboxLogsRequest{{
 		SandboxId: "sandbox-1",
-		Logs:      []*openshellv1.SandboxLogLine{{TimestampMs: base.Add(3 * time.Second).UnixMilli(), Source: "forged", Level: "INFO", Target: "proxy", Message: "pushed", Fields: map[string]string{"event": "request"}}},
+		Logs:      []*compatv1.SandboxLogLine{{EventTime: timestamppb.New(base.Add(3 * time.Second)), Source: "forged", Level: "INFO", Target: "proxy", Message: "pushed", Fields: map[string]string{"event": "request"}}},
 	}}}
 	if err := rpc.PushSandboxLogs(stream); err != nil {
 		t.Fatal(err)
@@ -53,7 +54,7 @@ func TestOpenShellGatewaySandboxLogsRPC(t *testing.T) {
 	if stream.response == nil {
 		t.Fatal("PushSandboxLogs did not close with a response")
 	}
-	all, err := rpc.GetSandboxLogs(ctx, &openshellv1.GetSandboxLogsRequest{SandboxId: "sandbox-1"})
+	all, err := rpc.GetSandboxLogs(ctx, &compatv1.GetSandboxLogsRequest{Sandbox: "sandbox-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,12 +67,12 @@ func TestOpenShellGatewaySandboxLogsRPC(t *testing.T) {
 type fakePushSandboxLogsStream struct {
 	grpc.ServerStream
 	ctx      context.Context
-	batches  []*openshellv1.PushSandboxLogsRequest
-	response *openshellv1.PushSandboxLogsResponse
+	batches  []*compatv1.PushSandboxLogsRequest
+	response *compatv1.PushSandboxLogsResponse
 }
 
 func (s *fakePushSandboxLogsStream) Context() context.Context { return s.ctx }
-func (s *fakePushSandboxLogsStream) Recv() (*openshellv1.PushSandboxLogsRequest, error) {
+func (s *fakePushSandboxLogsStream) Recv() (*compatv1.PushSandboxLogsRequest, error) {
 	if len(s.batches) == 0 {
 		return nil, io.EOF
 	}
@@ -79,7 +80,7 @@ func (s *fakePushSandboxLogsStream) Recv() (*openshellv1.PushSandboxLogsRequest,
 	s.batches = s.batches[1:]
 	return batch, nil
 }
-func (s *fakePushSandboxLogsStream) SendAndClose(response *openshellv1.PushSandboxLogsResponse) error {
+func (s *fakePushSandboxLogsStream) SendAndClose(response *compatv1.PushSandboxLogsResponse) error {
 	s.response = response
 	return nil
 }

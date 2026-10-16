@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	edgeSuffixOpenShell = ".openshell.localhost"
-	edgeSuffixOSG       = ".cautem.localhost"
+	legacyServiceDomainSuffix = ".openshell.localhost"
+	edgeSuffixOSG             = ".cautem.localhost"
 )
 
 // withEdgeRouter proxies Host *.openshell.localhost / *.cautem.localhost to registered services.
@@ -148,7 +148,7 @@ func edgeServicePrincipal(r *http.Request, st *store.Store, auth AuthOptions) (P
 
 func edgeServiceName(host string) (string, bool) {
 	host = strings.ToLower(strings.TrimSpace(host))
-	for _, suf := range []string{edgeSuffixOpenShell, edgeSuffixOSG} {
+	for _, suf := range []string{legacyServiceDomainSuffix, edgeSuffixOSG} {
 		if before, ok := strings.CutSuffix(host, suf); ok {
 			name := before
 			if name == "" || strings.Contains(name, ".") {

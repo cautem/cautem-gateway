@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"github.com/cautem/cautem-runtime/secrets"
 	"github.com/go-jose/go-jose/v4"
@@ -174,16 +174,16 @@ credentials:
 	}
 	t.Setenv("OPENSHELL_GATEWAY_SPIFFE_WORKLOAD_API_SOCKET", "")
 	t.Setenv("CAUTEM_GATEWAY_SPIFFE_WORKLOAD_API_SOCKET", socket)
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, sec: sec, opt: Options{ProviderProfileSources: []string{"user"}}}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, sec: sec, opt: Options{ProviderProfileSources: []string{"user"}}}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalSandbox, Sandbox: "sandbox-id"})
-	response, err := rpc.ExchangeProviderSubjectToken(ctx, &openshellv1.ExchangeProviderSubjectTokenRequest{SandboxId: "sandbox-id", Provider: "provider", CredentialKey: "access", SupervisorJwtSvid: supervisorSVID})
+	response, err := rpc.ExchangeProviderSubjectToken(ctx, &compatv1.ExchangeProviderSubjectTokenRequest{SandboxId: "sandbox-id", Provider: "provider", CredentialKey: "access", SupervisorJwtSvid: supervisorSVID})
 	if err != nil {
 		t.Fatalf("subject token exchange: %v", err)
 	}
-	if response.GetAccessToken() != "exchanged-access" || response.GetExpiresIn() != 300 || response.GetTokenType() != "Bearer" {
+	if response.GetAccessToken() != "exchanged-access" || response.GetExpiresAfter().AsDuration() != 300*time.Second || response.GetTokenType() != "Bearer" {
 		t.Fatalf("response=%+v", response)
 	}
-	_, err = rpc.ExchangeProviderSubjectToken(ctx, &openshellv1.ExchangeProviderSubjectTokenRequest{
+	_, err = rpc.ExchangeProviderSubjectToken(ctx, &compatv1.ExchangeProviderSubjectTokenRequest{
 		SandboxId: "sandbox-id", Provider: "provider", CredentialKey: "access", SupervisorJwtSvid: "provider-secret-invalid-svid",
 	})
 	if status.Code(err) != codes.Unauthenticated || strings.Contains(err.Error(), "provider-secret-invalid-svid") {

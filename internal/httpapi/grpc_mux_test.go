@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/sshrelay"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"golang.org/x/net/http2"
@@ -41,7 +41,7 @@ func TestHTTPAndGRPCShareCleartextListener(t *testing.T) {
 			Listen: addr,
 			RegisterGRPC: func(server *grpc.Server) {
 				healthpb.RegisterHealthServer(server, health.NewServer())
-				registerOpenShellRPC(server)
+				registerCompatRPC(server)
 				close(grpcStarted)
 			},
 		}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -115,9 +115,9 @@ func TestHTTPAndGRPCShareCleartextListener(t *testing.T) {
 	if response.GetStatus() != healthpb.HealthCheckResponse_SERVING {
 		t.Fatalf("gRPC health status = %s", fmt.Sprint(response.GetStatus()))
 	}
-	openShellHealth, err := openshellv1.NewOpenShellClient(conn).Health(callCtx, &openshellv1.HealthRequest{})
-	if err != nil || openShellHealth.GetStatus() != openshellv1.ServiceStatus_SERVICE_STATUS_HEALTHY {
-		t.Fatalf("OpenShell Health response=%v err=%v", openShellHealth, err)
+	compatHealth, err := compatv1.NewOpenShellClient(conn).Health(callCtx, &compatv1.HealthRequest{})
+	if err != nil || compatHealth.GetStatus() != compatv1.ServiceStatus_SERVICE_STATUS_HEALTHY {
+		t.Fatalf("OpenShell Health response=%v err=%v", compatHealth, err)
 	}
 
 	cancel()
@@ -131,7 +131,7 @@ func TestHTTPAndGRPCShareCleartextListener(t *testing.T) {
 	}
 }
 
-func TestOpenShellGRPCExternalClientAuthentication(t *testing.T) {
+func TestCompatGRPCExternalClientAuthentication(t *testing.T) {
 	state, err := store.Open(t.TempDir(), "grpc-auth-test")
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +157,7 @@ func TestOpenShellGRPCExternalClientAuthentication(t *testing.T) {
 	relayHub := sshrelay.NewHub()
 	runtime := &grpcRuntime{st: state, relay: relayHub}
 	opt := Options{Listen: addr, grpcRuntime: runtime, RegisterGRPC: func(server *grpc.Server) {
-		registerOpenShellRPCWithOptions(server, Options{grpcRuntime: runtime})
+		registerCompatRPCWithOptions(server, Options{grpcRuntime: runtime})
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -180,21 +180,21 @@ func TestOpenShellGRPCExternalClientAuthentication(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	client := openshellv1.NewOpenShellClient(conn)
+	client := compatv1.NewOpenShellClient(conn)
 	callCtx, callCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer callCancel()
-	if _, err := client.GetCurrentUser(callCtx, &openshellv1.GetCurrentUserRequest{}); status.Code(err) != codes.Unauthenticated {
+	if _, err := client.GetCurrentUser(callCtx, &compatv1.GetCurrentUserRequest{}); status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("unauthenticated GetCurrentUser error=%v, want Unauthenticated", err)
 	}
 	authed := metadata.AppendToOutgoingContext(callCtx, "authorization", "Bearer "+token)
-	user, err := client.GetCurrentUser(authed, &openshellv1.GetCurrentUserRequest{})
+	user, err := client.GetCurrentUser(authed, &compatv1.GetCurrentUserRequest{})
 	if err != nil || user.GetSubject() != "local-dev" {
 		t.Fatalf("authenticated GetCurrentUser response=%v err=%v", user, err)
 	}
-	if _, err := client.Health(callCtx, &openshellv1.HealthRequest{}); err != nil {
+	if _, err := client.Health(callCtx, &compatv1.HealthRequest{}); err != nil {
 		t.Fatalf("public OpenShell Health failed: %v", err)
 	}
-	stream, err := client.ExecSandbox(callCtx, &openshellv1.ExecSandboxRequest{})
+	stream, err := client.ExecSandbox(callCtx, &compatv1.ExecSandboxRequest{})
 	if err == nil {
 		_, err = stream.Recv()
 	}
@@ -213,7 +213,7 @@ func TestOpenShellGRPCExternalClientAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := wrongSupervisor.Send(&openshellv1.SupervisorMessage{Payload: &openshellv1.SupervisorMessage_Hello{Hello: &openshellv1.SupervisorHello{SandboxId: "another-sandbox", InstanceId: "wrong-instance"}}}); err != nil {
+	if err := wrongSupervisor.Send(&compatv1.SupervisorMessage{Payload: &compatv1.SupervisorMessage_Hello{Hello: &compatv1.SupervisorHello{SandboxId: "another-sandbox", InstanceId: "wrong-instance"}}}); err != nil {
 		t.Fatal(err)
 	}
 	rejected, err := wrongSupervisor.Recv()
@@ -228,7 +228,7 @@ func TestOpenShellGRPCExternalClientAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open supervisor stream: %v", err)
 	}
-	if err := supervisor.Send(&openshellv1.SupervisorMessage{Payload: &openshellv1.SupervisorMessage_Hello{Hello: &openshellv1.SupervisorHello{SandboxId: "sandbox-id-a", InstanceId: "test-instance"}}}); err != nil {
+	if err := supervisor.Send(&compatv1.SupervisorMessage{Payload: &compatv1.SupervisorMessage_Hello{Hello: &compatv1.SupervisorHello{SandboxId: "sandbox-id-a", InstanceId: "test-instance"}}}); err != nil {
 		t.Fatal(err)
 	}
 	accepted, err := supervisor.Recv()
@@ -256,7 +256,7 @@ func TestOpenShellGRPCExternalClientAuthentication(t *testing.T) {
 		t.Fatalf("open RelayStream: %v", err)
 	}
 	channelID := openRequest.GetRelayOpen().GetChannelId()
-	if err := dataStream.Send(&openshellv1.RelayFrame{Payload: &openshellv1.RelayFrame_Init{Init: &openshellv1.RelayInit{ChannelId: channelID}}}); err != nil {
+	if err := dataStream.Send(&compatv1.RelayFrame{Payload: &compatv1.RelayFrame_Init{Init: &compatv1.RelayInit{ChannelId: channelID}}}); err != nil {
 		t.Fatal(err)
 	}
 	var upstream net.Conn
@@ -277,7 +277,7 @@ func TestOpenShellGRPCExternalClientAuthentication(t *testing.T) {
 	if err != nil || string(frame.GetData()) != "from-gateway" {
 		t.Fatalf("supervisor received relay frame=%v err=%v", frame, err)
 	}
-	if err := dataStream.Send(&openshellv1.RelayFrame{Payload: &openshellv1.RelayFrame_Data{Data: []byte("request-body")}}); err != nil {
+	if err := dataStream.Send(&compatv1.RelayFrame{Payload: &compatv1.RelayFrame_Data{Data: []byte("request-body")}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := dataStream.CloseSend(); err != nil {
@@ -304,10 +304,10 @@ func TestOpenShellGRPCExternalClientAuthentication(t *testing.T) {
 	if _, err := dataStream.Recv(); err != io.EOF {
 		t.Fatalf("gateway response stream EOF=%v; want EOF", err)
 	}
-	if _, err := client.ReportMainProcessExit(supervisorCtx, &openshellv1.ReportMainProcessExitRequest{SandboxId: "sandbox-id-a", InstanceId: "test-instance", ExitCode: 0}); err != nil {
+	if _, err := client.ReportMainProcessExit(supervisorCtx, &compatv1.ReportMainProcessExitRequest{SandboxId: "sandbox-id-a", InstanceId: "test-instance", ExitCode: 0}); err != nil {
 		t.Fatalf("external OpenShell SDK ReportMainProcessExit: %v", err)
 	}
-	if _, err := client.FinalizeMainProcessExit(supervisorCtx, &openshellv1.FinalizeMainProcessExitRequest{SandboxId: "sandbox-id-a", InstanceId: "test-instance"}); err != nil {
+	if _, err := client.FinalizeMainProcessExit(supervisorCtx, &compatv1.FinalizeMainProcessExitRequest{SandboxId: "sandbox-id-a", InstanceId: "test-instance"}); err != nil {
 		t.Fatalf("external OpenShell SDK FinalizeMainProcessExit: %v", err)
 	}
 	if rec, ok := state.GetSandbox("sandbox-a"); !ok || rec.Status != "completed" || rec.MainProcessExitCode == nil || *rec.MainProcessExitCode != 0 || !rec.MainProcessFinalized {
@@ -325,7 +325,7 @@ func TestOpenShellGRPCExternalClientAuthentication(t *testing.T) {
 	}
 }
 
-func TestOpenShellGRPCAuthMapsMethodsToOpenShellScopes(t *testing.T) {
+func TestCompatGRPCAuthMapsMethodsToCompatibilityScopes(t *testing.T) {
 	tests := []struct {
 		method, wantMethod, wantPath string
 	}{

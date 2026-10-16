@@ -14,7 +14,6 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -38,7 +37,7 @@ const (
 // Phase-specific services share the same registration.
 type SupervisorMiddlewareClient interface {
 	// Describe returns the service manifest and declared bindings.
-	Describe(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MiddlewareManifest, error)
+	Describe(ctx context.Context, in *MiddlewareDescribeRequest, opts ...grpc.CallOption) (*MiddlewareManifest, error)
 	// ValidateConfig checks service-specific configuration for one binding.
 	ValidateConfig(ctx context.Context, in *ValidateConfigRequest, opts ...grpc.CallOption) (*ValidateConfigResponse, error)
 	// EvaluateHttpRequest returns an allow, deny, or mutation decision for one
@@ -62,7 +61,7 @@ func NewSupervisorMiddlewareClient(cc grpc.ClientConnInterface) SupervisorMiddle
 	return &supervisorMiddlewareClient{cc}
 }
 
-func (c *supervisorMiddlewareClient) Describe(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MiddlewareManifest, error) {
+func (c *supervisorMiddlewareClient) Describe(ctx context.Context, in *MiddlewareDescribeRequest, opts ...grpc.CallOption) (*MiddlewareManifest, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(MiddlewareManifest)
 	err := c.cc.Invoke(ctx, SupervisorMiddleware_Describe_FullMethodName, in, out, cOpts...)
@@ -114,7 +113,7 @@ type SupervisorMiddleware_EvaluateWebSocketSessionClient = grpc.BidiStreamingCli
 // Phase-specific services share the same registration.
 type SupervisorMiddlewareServer interface {
 	// Describe returns the service manifest and declared bindings.
-	Describe(context.Context, *emptypb.Empty) (*MiddlewareManifest, error)
+	Describe(context.Context, *MiddlewareDescribeRequest) (*MiddlewareManifest, error)
 	// ValidateConfig checks service-specific configuration for one binding.
 	ValidateConfig(context.Context, *ValidateConfigRequest) (*ValidateConfigResponse, error)
 	// EvaluateHttpRequest returns an allow, deny, or mutation decision for one
@@ -138,7 +137,7 @@ type SupervisorMiddlewareServer interface {
 // pointer dereference when methods are called.
 type UnimplementedSupervisorMiddlewareServer struct{}
 
-func (UnimplementedSupervisorMiddlewareServer) Describe(context.Context, *emptypb.Empty) (*MiddlewareManifest, error) {
+func (UnimplementedSupervisorMiddlewareServer) Describe(context.Context, *MiddlewareDescribeRequest) (*MiddlewareManifest, error) {
 	return nil, status.Error(codes.Unimplemented, "method Describe not implemented")
 }
 func (UnimplementedSupervisorMiddlewareServer) ValidateConfig(context.Context, *ValidateConfigRequest) (*ValidateConfigResponse, error) {
@@ -172,7 +171,7 @@ func RegisterSupervisorMiddlewareServer(s grpc.ServiceRegistrar, srv SupervisorM
 }
 
 func _SupervisorMiddleware_Describe_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
+	in := new(MiddlewareDescribeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -184,7 +183,7 @@ func _SupervisorMiddleware_Describe_Handler(srv interface{}, ctx context.Context
 		FullMethod: SupervisorMiddleware_Describe_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SupervisorMiddlewareServer).Describe(ctx, req.(*emptypb.Empty))
+		return srv.(SupervisorMiddlewareServer).Describe(ctx, req.(*MiddlewareDescribeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

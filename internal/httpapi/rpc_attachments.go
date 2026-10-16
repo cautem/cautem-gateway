@@ -5,28 +5,30 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	datamodelv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const maxSandboxProviders = 32
 
-func (s *openShellRPC) ListSandboxProviders(ctx context.Context, req *openshellv1.ListSandboxProvidersRequest) (*openshellv1.ListSandboxProvidersResponse, error) {
+func (s *compatRPCAdapter) ListSandboxProviders(ctx context.Context, req *compatv1.ListSandboxProvidersRequest) (*compatv1.ListSandboxProvidersResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return nil, status.Error(codes.Unavailable, "sandbox store is not initialized")
 	}
-	if req == nil || strings.TrimSpace(req.GetSandboxName()) == "" {
-		return nil, status.Error(codes.InvalidArgument, "sandbox_name is required")
+	if req == nil || strings.TrimSpace(req.GetSandbox()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "sandbox is required")
 	}
-	workspace := defaultWorkspace(req.GetWorkspace())
+	workspace := defaultWorkspace(requestWorkspace(req.GetWorkspaceScope()))
 	if err := s.requireSandboxReadWorkspace(ctx, workspace); err != nil {
 		return nil, err
 	}
-	sandbox, ok := s.runtime.st.GetSandbox(req.GetSandboxName())
+	sandbox, ok := s.runtime.st.GetSandbox(req.GetSandbox())
 	if !ok || defaultWorkspace(sandbox.Workspace) != workspace {
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
@@ -43,28 +45,28 @@ func (s *openShellRPC) ListSandboxProviders(ctx context.Context, req *openshellv
 		}
 		providers = append(providers, providerAttachmentToProto(record))
 	}
-	return &openshellv1.ListSandboxProvidersResponse{Providers: providers}, nil
+	return &compatv1.ListSandboxProvidersResponse{Providers: providers}, nil
 }
 
-func (s *openShellRPC) AttachSandboxProvider(ctx context.Context, req *openshellv1.AttachSandboxProviderRequest) (*openshellv1.AttachSandboxProviderResponse, error) {
-	if req == nil || strings.TrimSpace(req.GetSandboxName()) == "" || strings.TrimSpace(req.GetProviderName()) == "" {
-		return nil, status.Error(codes.InvalidArgument, "sandbox_name and provider_name are required")
+func (s *compatRPCAdapter) AttachSandboxProvider(ctx context.Context, req *compatv1.AttachSandboxProviderRequest) (*compatv1.AttachSandboxProviderResponse, error) {
+	if req == nil || strings.TrimSpace(req.GetSandbox()) == "" || strings.TrimSpace(req.GetProvider()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "sandbox and provider are required")
 	}
-	if len(req.GetProviderName()) > 253 {
+	if len(req.GetProvider()) > 253 {
 		return nil, status.Error(codes.InvalidArgument, "provider_name exceeds maximum length (253)")
 	}
-	workspace, sandbox, err := s.providerAttachmentTarget(ctx, req.GetWorkspace(), req.GetSandboxName(), true, true)
+	workspace, sandbox, err := s.providerAttachmentTarget(ctx, requestWorkspace(req.GetWorkspaceScope()), req.GetSandbox(), true, true)
 	if err != nil {
 		return nil, err
 	}
-	record, ok := s.runtime.st.GetProvider(req.GetProviderName())
+	record, ok := s.runtime.st.GetProvider(req.GetProvider())
 	if !ok || !providerInWorkspace(record, workspace) {
-		return nil, status.Errorf(codes.FailedPrecondition, "provider %q not found", req.GetProviderName())
+		return nil, status.Errorf(codes.FailedPrecondition, "provider %q not found", req.GetProvider())
 	}
-	if !containsString(sandbox.AttachedProviders, req.GetProviderName()) && len(sandbox.AttachedProviders) >= maxSandboxProviders {
+	if !containsString(sandbox.AttachedProviders, req.GetProvider()) && len(sandbox.AttachedProviders) >= maxSandboxProviders {
 		return nil, status.Errorf(codes.InvalidArgument, "providers list exceeds maximum (%d)", maxSandboxProviders)
 	}
-	updated, attached, err := s.runtime.st.ApplySandboxProvider(sandbox.Name, req.GetExpectedResourceVersion(), req.GetProviderName(), true)
+	updated, attached, err := s.runtime.st.ApplySandboxProvider(sandbox.Name, req.GetExpectedResourceVersion(), req.GetProvider(), true)
 	if err != nil {
 		return nil, sandboxProviderMutationError(err, "attach sandbox provider")
 	}
@@ -72,21 +74,21 @@ func (s *openShellRPC) AttachSandboxProvider(ctx context.Context, req *openshell
 	if err != nil {
 		return nil, status.Error(codes.FailedPrecondition, "stored sandbox spec is invalid")
 	}
-	return &openshellv1.AttachSandboxProviderResponse{Sandbox: response, Attached: attached}, nil
+	return &compatv1.AttachSandboxProviderResponse{Sandbox: response, Attached: attached}, nil
 }
 
-func (s *openShellRPC) DetachSandboxProvider(ctx context.Context, req *openshellv1.DetachSandboxProviderRequest) (*openshellv1.DetachSandboxProviderResponse, error) {
-	if req == nil || strings.TrimSpace(req.GetSandboxName()) == "" || strings.TrimSpace(req.GetProviderName()) == "" {
-		return nil, status.Error(codes.InvalidArgument, "sandbox_name and provider_name are required")
+func (s *compatRPCAdapter) DetachSandboxProvider(ctx context.Context, req *compatv1.DetachSandboxProviderRequest) (*compatv1.DetachSandboxProviderResponse, error) {
+	if req == nil || strings.TrimSpace(req.GetSandbox()) == "" || strings.TrimSpace(req.GetProvider()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "sandbox and provider are required")
 	}
-	if len(req.GetProviderName()) > 253 {
+	if len(req.GetProvider()) > 253 {
 		return nil, status.Error(codes.InvalidArgument, "provider_name exceeds maximum length (253)")
 	}
-	_, sandbox, err := s.providerAttachmentTarget(ctx, req.GetWorkspace(), req.GetSandboxName(), true, false)
+	_, sandbox, err := s.providerAttachmentTarget(ctx, requestWorkspace(req.GetWorkspaceScope()), req.GetSandbox(), true, false)
 	if err != nil {
 		return nil, err
 	}
-	updated, detached, err := s.runtime.st.ApplySandboxProvider(sandbox.Name, req.GetExpectedResourceVersion(), req.GetProviderName(), false)
+	updated, detached, err := s.runtime.st.ApplySandboxProvider(sandbox.Name, req.GetExpectedResourceVersion(), req.GetProvider(), false)
 	if err != nil {
 		return nil, sandboxProviderMutationError(err, "detach sandbox provider")
 	}
@@ -94,10 +96,10 @@ func (s *openShellRPC) DetachSandboxProvider(ctx context.Context, req *openshell
 	if err != nil {
 		return nil, status.Error(codes.FailedPrecondition, "stored sandbox spec is invalid")
 	}
-	return &openshellv1.DetachSandboxProviderResponse{Sandbox: response, Detached: detached}, nil
+	return &compatv1.DetachSandboxProviderResponse{Sandbox: response, Detached: detached}, nil
 }
 
-func (s *openShellRPC) providerAttachmentTarget(ctx context.Context, rawWorkspace, sandboxName string, write, requireActive bool) (string, store.Sandbox, error) {
+func (s *compatRPCAdapter) providerAttachmentTarget(ctx context.Context, rawWorkspace, sandboxName string, write, requireActive bool) (string, store.Sandbox, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return "", store.Sandbox{}, status.Error(codes.Unavailable, "sandbox store is not initialized")
 	}
@@ -129,17 +131,18 @@ func providerAttachmentToProto(record store.ProviderRecord) *datamodelv1.Provide
 	for _, key := range record.EnvVars {
 		credentials[key] = "REDACTED"
 	}
-	expires := make(map[string]int64, len(record.CredentialExpiresAtMS))
+	expires := make(map[string]*timestamppb.Timestamp, len(record.CredentialExpiresAtMS))
 	for key, value := range record.CredentialExpiresAtMS {
-		expires[key] = value
+		expires[key] = timestamppb.New(time.UnixMilli(value))
 	}
 	return &datamodelv1.Provider{
 		Metadata: &datamodelv1.ObjectMeta{
 			Id: record.Name, Name: record.Name, Workspace: record.Workspace,
+			Labels:      cloneStringMap(record.Labels),
 			Annotations: map[string]string{"cautem.io/runtime-credentials": strconv.FormatBool(record.RuntimeCredentials)},
 		},
 		Type: record.Type, Credentials: credentials, Config: cloneStringMap(record.Config),
-		CredentialExpiresAtMs: expires, ProfileWorkspace: record.Workspace,
+		CredentialExpirationTimes: expires, ProfileWorkspace: record.Workspace,
 	}
 }
 

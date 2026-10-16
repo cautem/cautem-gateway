@@ -6,21 +6,23 @@ import (
 	"encoding/hex"
 	"fmt"
 	"maps"
+	"strconv"
 	"strings"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	corepolicy "github.com/cautem/cautem-core/policy"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/yaml.v3"
 )
 
 const maxPolicyHistoryPage uint32 = 1000
 
-func (s *openShellRPC) GetSandboxPolicyStatus(ctx context.Context, req *openshellv1.GetSandboxPolicyStatusRequest) (*openshellv1.GetSandboxPolicyStatusResponse, error) {
+func (s *compatRPCAdapter) GetSandboxPolicyStatus(ctx context.Context, req *compatv1.GetSandboxPolicyStatusRequest) (*compatv1.GetSandboxPolicyStatusResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return nil, status.Error(codes.Unavailable, "policy store is not initialized")
 	}
@@ -47,9 +49,9 @@ func (s *openShellRPC) GetSandboxPolicyStatus(ctx context.Context, req *openshel
 		if err != nil {
 			return nil, status.Error(codes.FailedPrecondition, "stored global policy is invalid")
 		}
-		return &openshellv1.GetSandboxPolicyStatusResponse{Revision: item}, nil
+		return &compatv1.GetSandboxPolicyStatusResponse{Revision: item}, nil
 	}
-	sandbox, err := s.authorizePolicyHistory(ctx, req.GetName(), req.GetWorkspace())
+	sandbox, err := s.authorizePolicyHistory(ctx, req.GetSandbox(), requestWorkspace(req.GetWorkspaceScope()))
 	if err != nil {
 		return nil, err
 	}
@@ -76,10 +78,10 @@ func (s *openShellRPC) GetSandboxPolicyStatus(ctx context.Context, req *openshel
 		return nil, status.Error(codes.FailedPrecondition, "stored sandbox policy is invalid")
 	}
 	active := sandbox.ActivePolicyVersion
-	return &openshellv1.GetSandboxPolicyStatusResponse{Revision: item, ActiveVersion: active}, nil
+	return &compatv1.GetSandboxPolicyStatusResponse{Revision: item, ActiveVersion: active}, nil
 }
 
-func (s *openShellRPC) ListSandboxPolicies(ctx context.Context, req *openshellv1.ListSandboxPoliciesRequest) (*openshellv1.ListSandboxPoliciesResponse, error) {
+func (s *compatRPCAdapter) ListSandboxPolicies(ctx context.Context, req *compatv1.ListSandboxPoliciesRequest) (*compatv1.ListSandboxPoliciesResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return nil, status.Error(codes.Unavailable, "policy store is not initialized")
 	}
@@ -93,7 +95,7 @@ func (s *openShellRPC) ListSandboxPolicies(ctx context.Context, req *openshellv1
 		}
 		revisions = s.runtime.st.GlobalPolicyHistory()
 	} else {
-		sandbox, err := s.authorizePolicyHistory(ctx, req.GetName(), req.GetWorkspace())
+		sandbox, err := s.authorizePolicyHistory(ctx, req.GetSandbox(), requestWorkspace(req.GetWorkspaceScope()))
 		if err != nil {
 			return nil, err
 		}
@@ -102,22 +104,29 @@ func (s *openShellRPC) ListSandboxPolicies(ctx context.Context, req *openshellv1
 	for left, right := 0, len(revisions)-1; left < right; left, right = left+1, right-1 {
 		revisions[left], revisions[right] = revisions[right], revisions[left]
 	}
-	start := uint64(req.GetOffset())
-	if start >= uint64(len(revisions)) {
-		return &openshellv1.ListSandboxPoliciesResponse{}, nil
+	start := uint64(0)
+	if token := strings.TrimSpace(req.GetPageToken()); token != "" {
+		parsed, parseErr := strconv.ParseUint(token, 10, 64)
+		if parseErr != nil {
+			return nil, status.Error(codes.InvalidArgument, "invalid page_token")
+		}
+		start = parsed
 	}
-	limit := req.GetLimit()
+	if start >= uint64(len(revisions)) {
+		return &compatv1.ListSandboxPoliciesResponse{}, nil
+	}
+	limit := uint64(req.GetPageSize())
 	if limit == 0 {
 		limit = 50
 	}
-	if limit > maxPolicyHistoryPage {
-		limit = maxPolicyHistoryPage
+	if limit > uint64(maxPolicyHistoryPage) {
+		limit = uint64(maxPolicyHistoryPage)
 	}
-	end := start + uint64(limit)
+	end := start + limit
 	if end > uint64(len(revisions)) {
 		end = uint64(len(revisions))
 	}
-	response := &openshellv1.ListSandboxPoliciesResponse{Revisions: make([]*openshellv1.SandboxPolicyRevision, 0, end-start)}
+	response := &compatv1.ListSandboxPoliciesResponse{Revisions: make([]*compatv1.SandboxPolicyRevision, 0, end-start)}
 	for _, revision := range revisions[start:end] {
 		item, err := projectPolicyRevision(revision, false)
 		if err != nil {
@@ -125,10 +134,13 @@ func (s *openShellRPC) ListSandboxPolicies(ctx context.Context, req *openshellv1
 		}
 		response.Revisions = append(response.Revisions, item)
 	}
+	if end < uint64(len(revisions)) {
+		response.NextPageToken = strconv.FormatUint(end, 10)
+	}
 	return response, nil
 }
 
-func (s *openShellRPC) authorizePolicyHistory(ctx context.Context, name, workspace string) (store.Sandbox, error) {
+func (s *compatRPCAdapter) authorizePolicyHistory(ctx context.Context, name, workspace string) (store.Sandbox, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return store.Sandbox{}, status.Error(codes.InvalidArgument, "name is required")
@@ -171,43 +183,43 @@ func (s *openShellRPC) authorizePolicyHistory(ctx context.Context, name, workspa
 	return sandbox, nil
 }
 
-func projectPolicyRevision(revision store.PolicyRevision, includePolicy bool) (*openshellv1.SandboxPolicyRevision, error) {
-	item := &openshellv1.SandboxPolicyRevision{Version: uint32(revision.Rev), CreatedAtMs: revision.UpdatedAt.UnixMilli(), Provenance: maps.Clone(revision.Annotations), LoadError: revision.LoadError}
+func projectPolicyRevision(revision store.PolicyRevision, includePolicy bool) (*compatv1.SandboxPolicyRevision, error) {
+	item := &compatv1.SandboxPolicyRevision{Version: uint32(revision.Rev), CreatedTime: timestamppb.New(revision.UpdatedAt), Provenance: maps.Clone(revision.Annotations), LoadError: revision.LoadError}
 	if revision.Cleared || (revision.Bytes == 0 && revision.YAML == "" && revision.Status == store.PolicyStatusLoaded) {
 		if includePolicy {
 			item.Policy = &sandboxv1.SandboxPolicy{}
 		}
 		if !revision.LoadedAt.IsZero() {
-			item.LoadedAtMs = revision.LoadedAt.UnixMilli()
+			item.LoadedTime = timestamppb.New(revision.LoadedAt)
 		}
 		switch revision.Status {
 		case store.PolicyStatusPending:
-			item.Status = openshellv1.PolicyStatus_POLICY_STATUS_PENDING
+			item.Status = compatv1.PolicyStatus_POLICY_STATUS_PENDING
 		case store.PolicyStatusLoaded:
-			item.Status = openshellv1.PolicyStatus_POLICY_STATUS_LOADED
+			item.Status = compatv1.PolicyStatus_POLICY_STATUS_LOADED
 		case store.PolicyStatusFailed:
-			item.Status = openshellv1.PolicyStatus_POLICY_STATUS_FAILED
+			item.Status = compatv1.PolicyStatus_POLICY_STATUS_FAILED
 		case store.PolicyStatusSuperseded:
-			item.Status = openshellv1.PolicyStatus_POLICY_STATUS_SUPERSEDED
+			item.Status = compatv1.PolicyStatus_POLICY_STATUS_SUPERSEDED
 		}
 		return item, nil
 	}
 	if !revision.LoadedAt.IsZero() {
-		item.LoadedAtMs = revision.LoadedAt.UnixMilli()
+		item.LoadedTime = timestamppb.New(revision.LoadedAt)
 	}
 	switch revision.Status {
 	case store.PolicyStatusPending:
-		item.Status = openshellv1.PolicyStatus_POLICY_STATUS_PENDING
+		item.Status = compatv1.PolicyStatus_POLICY_STATUS_PENDING
 	case store.PolicyStatusLoaded:
-		item.Status = openshellv1.PolicyStatus_POLICY_STATUS_LOADED
+		item.Status = compatv1.PolicyStatus_POLICY_STATUS_LOADED
 	case store.PolicyStatusFailed:
-		item.Status = openshellv1.PolicyStatus_POLICY_STATUS_FAILED
+		item.Status = compatv1.PolicyStatus_POLICY_STATUS_FAILED
 	case store.PolicyStatusSuperseded:
-		item.Status = openshellv1.PolicyStatus_POLICY_STATUS_SUPERSEDED
+		item.Status = compatv1.PolicyStatus_POLICY_STATUS_SUPERSEDED
 	}
 	var doc corepolicy.Document
 	if strings.TrimSpace(revision.YAML) == "" || yaml.Unmarshal([]byte(revision.YAML), &doc) != nil || doc.Validate() != nil {
-		item.Status = openshellv1.PolicyStatus_POLICY_STATUS_FAILED
+		item.Status = compatv1.PolicyStatus_POLICY_STATUS_FAILED
 		item.LoadError = "policy revision is invalid under the current schema"
 		if includePolicy {
 			return nil, fmt.Errorf("invalid policy revision")
@@ -216,7 +228,7 @@ func projectPolicyRevision(revision store.PolicyRevision, includePolicy bool) (*
 	}
 	policyMessage, err := policyDocumentToProto(doc)
 	if err != nil {
-		item.Status = openshellv1.PolicyStatus_POLICY_STATUS_FAILED
+		item.Status = compatv1.PolicyStatus_POLICY_STATUS_FAILED
 		item.LoadError = "policy revision is invalid under the current schema"
 		if includePolicy {
 			return nil, err

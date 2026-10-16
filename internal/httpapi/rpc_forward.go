@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-core/relayproto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -52,7 +52,7 @@ func (r *grpcRuntime) acquireForward(sandbox string) (func(), bool) {
 	}, true
 }
 
-func (s *openShellRPC) ForwardTcp(stream grpc.BidiStreamingServer[openshellv1.TcpForwardFrame, openshellv1.TcpForwardFrame]) error {
+func (s *compatRPCAdapter) ForwardTcp(stream grpc.BidiStreamingServer[compatv1.TcpForwardFrame, compatv1.TcpForwardFrame]) error {
 	first, err := stream.Recv()
 	if err != nil {
 		if errors.Is(err, io.EOF) {
@@ -64,7 +64,7 @@ func (s *openShellRPC) ForwardTcp(stream grpc.BidiStreamingServer[openshellv1.Tc
 	if init == nil {
 		return status.Error(codes.InvalidArgument, "first TcpForwardFrame must contain init")
 	}
-	if strings.TrimSpace(init.GetSandboxId()) == "" {
+	if strings.TrimSpace(init.GetSandbox()) == "" {
 		return status.Error(codes.InvalidArgument, "sandbox_id is required")
 	}
 	if len(init.GetServiceId()) > 253 {
@@ -73,10 +73,10 @@ func (s *openShellRPC) ForwardTcp(stream grpc.BidiStreamingServer[openshellv1.Tc
 	if s.runtime == nil || s.runtime.st == nil || s.runtime.relay == nil {
 		return status.Error(codes.Unavailable, "TCP forwarding service is not initialized")
 	}
-	sandbox, ok := s.runtime.st.GetSandbox(init.GetSandboxId())
+	sandbox, ok := s.runtime.st.GetSandbox(init.GetSandbox())
 	if !ok {
 		for _, candidate := range s.runtime.st.ListSandboxes() {
-			if candidate.ID == init.GetSandboxId() {
+			if candidate.ID == init.GetSandbox() {
 				sandbox, ok = candidate, true
 				break
 			}
@@ -122,14 +122,14 @@ func (s *openShellRPC) ForwardTcp(stream grpc.BidiStreamingServer[openshellv1.Tc
 	return bridgeForwardTCP(stream, conn)
 }
 
-func validateForwardTarget(init *openshellv1.TcpForwardInit) (string, error) {
+func validateForwardTarget(init *compatv1.TcpForwardInit) (string, error) {
 	switch target := init.GetTarget().(type) {
-	case *openshellv1.TcpForwardInit_Ssh:
+	case *compatv1.TcpForwardInit_Ssh:
 		if target.Ssh == nil {
 			return "", status.Error(codes.InvalidArgument, "ssh target is required")
 		}
 		return relayproto.TargetSSH, nil
-	case *openshellv1.TcpForwardInit_Tcp:
+	case *compatv1.TcpForwardInit_Tcp:
 		if target.Tcp == nil {
 			return "", status.Error(codes.InvalidArgument, "tcp target is required")
 		}
@@ -151,10 +151,10 @@ func validateForwardTarget(init *openshellv1.TcpForwardInit) (string, error) {
 	}
 }
 
-func openShellRelayOpenMessage(channel, target string) (*openshellv1.GatewayMessage, error) {
-	relay := &openshellv1.RelayOpen{ChannelId: channel}
+func relayOpenMessage(channel, target string) (*compatv1.GatewayMessage, error) {
+	relay := &compatv1.RelayOpen{ChannelId: channel}
 	if target == relayproto.TargetSSH {
-		relay.Target = &openshellv1.RelayOpen_Ssh{Ssh: &openshellv1.SshRelayTarget{}}
+		relay.Target = &compatv1.RelayOpen_Ssh{Ssh: &compatv1.SshRelayTarget{}}
 	} else {
 		u, err := url.Parse(target)
 		if err != nil || u.Scheme != "tcp" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
@@ -169,12 +169,12 @@ func openShellRelayOpenMessage(channel, target string) (*openshellv1.GatewayMess
 		if ip == nil || !ip.IsLoopback() || err != nil || port == 0 {
 			return nil, fmt.Errorf("unsupported supervisor relay target")
 		}
-		relay.Target = &openshellv1.RelayOpen_Tcp{Tcp: &openshellv1.TcpRelayTarget{Host: ip.String(), Port: uint32(port)}}
+		relay.Target = &compatv1.RelayOpen_Tcp{Tcp: &compatv1.TcpRelayTarget{Host: ip.String(), Port: uint32(port)}}
 	}
-	return &openshellv1.GatewayMessage{Payload: &openshellv1.GatewayMessage_RelayOpen{RelayOpen: relay}}, nil
+	return &compatv1.GatewayMessage{Payload: &compatv1.GatewayMessage_RelayOpen{RelayOpen: relay}}, nil
 }
 
-func bridgeForwardTCP(stream grpc.BidiStreamingServer[openshellv1.TcpForwardFrame, openshellv1.TcpForwardFrame], conn net.Conn) error {
+func bridgeForwardTCP(stream grpc.BidiStreamingServer[compatv1.TcpForwardFrame, compatv1.TcpForwardFrame], conn net.Conn) error {
 	type bridgeResult struct {
 		err        error
 		fromClient bool
@@ -197,7 +197,7 @@ func bridgeForwardTCP(stream grpc.BidiStreamingServer[openshellv1.TcpForwardFram
 				results <- bridgeResult{err: err, fromClient: true}
 				return
 			}
-			if _, ok := frame.GetPayload().(*openshellv1.TcpForwardFrame_Data); !ok {
+			if _, ok := frame.GetPayload().(*compatv1.TcpForwardFrame_Data); !ok {
 				results <- bridgeResult{err: status.Error(codes.InvalidArgument, "data frame expected after init"), fromClient: true}
 				return
 			}
@@ -217,7 +217,7 @@ func bridgeForwardTCP(stream grpc.BidiStreamingServer[openshellv1.TcpForwardFram
 			n, err := conn.Read(buf)
 			if n > 0 {
 				data := append([]byte(nil), buf[:n]...)
-				if sendErr := stream.Send(&openshellv1.TcpForwardFrame{Payload: &openshellv1.TcpForwardFrame_Data{Data: data}}); sendErr != nil {
+				if sendErr := stream.Send(&compatv1.TcpForwardFrame{Payload: &compatv1.TcpForwardFrame_Data{Data: data}}); sendErr != nil {
 					results <- bridgeResult{err: sendErr}
 					return
 				}

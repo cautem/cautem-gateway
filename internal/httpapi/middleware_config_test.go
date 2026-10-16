@@ -61,9 +61,9 @@ func TestGetSandboxConfigReturnsOnlySelectedMiddlewareServices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{options: Options{SupervisorMiddlewareServices: services}, runtime: &grpcRuntime{st: st}}
+	rpc := &compatRPCAdapter{options: Options{SupervisorMiddlewareServices: services}, runtime: &grpcRuntime{st: st}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	response, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{SandboxId: "demo"})
+	response, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{Name: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestGetSandboxConfigReturnsOnlySelectedMiddlewareServices(t *testing.T) {
 		t.Fatalf("middleware services=%v", response.GetSupervisorMiddlewareServices())
 	}
 	rpc.options.SupervisorMiddlewareServices = nil
-	if _, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{SandboxId: "demo"}); status.Code(err) != codes.FailedPrecondition {
+	if _, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{Name: "demo"}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("unregistered policy middleware error=%v", err)
 	}
 }

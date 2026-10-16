@@ -37,13 +37,14 @@ func TestSnapshotIsIndependentAndOmitsAuthentication(t *testing.T) {
 	if _, err := st.EnsureAuthToken(); err != nil {
 		t.Fatal(err)
 	}
-	input := store.ProviderRecord{Name: "provider", Type: "openai", Config: map[string]string{"base_url": "original"}, Refresh: map[string]store.ProviderRefreshConfig{
+	input := store.ProviderRecord{Name: "provider", Type: "openai", Labels: map[string]string{"team": "original"}, Config: map[string]string{"base_url": "original"}, Refresh: map[string]store.ProviderRefreshConfig{
 		"key": {Material: map[string]string{"audience": "original"}, Outputs: map[string]string{"token": "KEY"}},
 	}}
 	if err := st.UpsertProvider(input); err != nil {
 		t.Fatal(err)
 	}
 	input.Refresh["key"].Material["audience"] = "input-mutated"
+	input.Labels["team"] = "input-mutated"
 	snapshot := st.Snapshot()
 	if snapshot.AuthToken != "" || snapshot.SandboxTokens != nil || snapshot.SSHSessions != nil {
 		t.Fatal("snapshot exposed authentication state")
@@ -52,10 +53,11 @@ func TestSnapshotIsIndependentAndOmitsAuthentication(t *testing.T) {
 		t.Fatal("provider retained caller-owned refresh metadata")
 	}
 	snapshot.Providers["provider"].Config["base_url"] = "snapshot-mutated"
+	snapshot.Providers["provider"].Labels["team"] = "snapshot-mutated"
 	snapshot.Providers["provider"].Refresh["key"].Material["audience"] = "snapshot-mutated"
 	snapshot.Providers["provider"].Refresh["key"].Outputs["token"] = "snapshot-mutated"
 	again := st.Snapshot().Providers["provider"]
-	if again.Config["base_url"] != "original" || again.Refresh["key"].Material["audience"] != "original" || again.Refresh["key"].Outputs["token"] != "KEY" {
+	if again.Config["base_url"] != "original" || again.Labels["team"] != "original" || again.Refresh["key"].Material["audience"] != "original" || again.Refresh["key"].Outputs["token"] != "KEY" {
 		t.Fatal("snapshot shared mutable provider metadata")
 	}
 }

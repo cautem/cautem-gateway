@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 
 	"connectrpc.com/connect"
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-driver/driver"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
@@ -45,7 +45,7 @@ type workspaceQuotaMetricCounters struct {
 
 var gatewayWorkspaceQuotaMetrics workspaceQuotaMetricCounters
 
-func allocationFromSandboxSpec(spec *openshellv1.SandboxSpec, driverName string) (workspaceAllocation, error) {
+func allocationFromSandboxSpec(spec *compatv1.SandboxSpec, driverName string) (workspaceAllocation, error) {
 	if spec == nil {
 		return workspaceAllocation{known: true}, nil
 	}
@@ -73,26 +73,26 @@ func allocationFromSandboxSpec(spec *openshellv1.SandboxSpec, driverName string)
 	return allocation, nil
 }
 
-func allocationFromDriverSpec(spec driver.Spec) workspaceAllocation {
+func allocationFromBackendCreateRequest(request driver.BackendCreateRequest) workspaceAllocation {
 	allocation := workspaceAllocation{known: true}
-	if spec.CPU > 0 {
-		millicores := math.Ceil(spec.CPU * 1000)
+	if request.Resources.CPUCores > 0 {
+		millicores := math.Ceil(request.Resources.CPUCores * 1000)
 		if millicores > float64(math.MaxUint64) {
 			allocation.cpuMillicores = math.MaxUint64
 		} else {
 			allocation.cpuMillicores = uint64(millicores)
 		}
 	}
-	if spec.MemoryBytes > 0 {
-		allocation.memoryBytes = uint64(spec.MemoryBytes)
+	if request.Resources.MemoryBytes > 0 {
+		allocation.memoryBytes = uint64(request.Resources.MemoryBytes)
 	}
-	if spec.GPU {
+	if request.Resources.GPU {
 		allocation.gpuCount = 1
-		if spec.GPUCount > 0 {
-			if uint64(spec.GPUCount) > math.MaxUint32 {
+		if request.Resources.GPUCount > 0 {
+			if uint64(request.Resources.GPUCount) > math.MaxUint32 {
 				allocation.gpuCount = math.MaxUint32
 			} else {
-				allocation.gpuCount = uint32(spec.GPUCount)
+				allocation.gpuCount = uint32(request.Resources.GPUCount)
 			}
 		}
 	}
@@ -109,7 +109,7 @@ func allocationFromSandboxRecord(record store.Sandbox) workspaceAllocation {
 	if strings.TrimSpace(record.SpecJSON) == "" {
 		return workspaceAllocation{}
 	}
-	var spec openshellv1.SandboxSpec
+	var spec compatv1.SandboxSpec
 	if err := protojson.Unmarshal([]byte(record.SpecJSON), &spec); err != nil {
 		return workspaceAllocation{}
 	}

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	datamodelv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	core "github.com/cautem/cautem-core"
 	"github.com/cautem/cautem-driver/driver"
@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestEngineConfigAddsPrivateCleanupManifestDirOnlyToLocalEngines(t *testing.T) {
@@ -90,9 +91,10 @@ type registryComputeServer struct {
 
 type registryLifecycleComputeServer struct {
 	computev1.UnimplementedComputeDriverServer
-	mu    sync.Mutex
-	seen  []string
-	image string
+	mu             sync.Mutex
+	seen           []string
+	image          string
+	platformConfig *structpb.Struct
 }
 
 func (s *registryLifecycleComputeServer) GetCapabilities(context.Context, *computev1.GetCapabilitiesRequest) (*computev1.GetCapabilitiesResponse, error) {
@@ -111,6 +113,7 @@ func (s *registryLifecycleComputeServer) CreateSandbox(_ context.Context, reques
 	defer s.mu.Unlock()
 	s.seen = append(s.seen, "create")
 	s.image = request.GetSandbox().GetSpec().GetTemplate().GetImage()
+	s.platformConfig = request.GetSandbox().GetSpec().GetTemplate().GetPlatformConfig()
 	return &computev1.CreateSandboxResponse{}, nil
 }
 
@@ -138,7 +141,7 @@ func (s *registryLifecycleComputeServer) DeleteSandbox(context.Context, *compute
 func (s *registryLifecycleComputeServer) WatchSandboxes(_ *computev1.WatchSandboxesRequest, stream computev1.ComputeDriver_WatchSandboxesServer) error {
 	return stream.Send(&computev1.WatchSandboxesEvent{Payload: &computev1.WatchSandboxesEvent_PlatformEvent{PlatformEvent: &computev1.WatchSandboxesPlatformEvent{
 		SandboxId: "sandbox-1",
-		Event:     &computev1.DriverPlatformEvent{TimestampMs: 1234, Source: "remote-test", Type: "Normal", Reason: "Started", Message: "remote sandbox started", Metadata: map[string]string{"attempt": "1"}},
+		Event:     &computev1.DriverPlatformEvent{EventTime: timestamppb.New(time.UnixMilli(1234)), Source: "remote-test", Type: "Normal", Reason: "Started", Message: "remote sandbox started", Metadata: map[string]string{"attempt": "1"}},
 	}}})
 }
 
@@ -186,7 +189,7 @@ func (s *lifecycleCredentialServer) StoreCredential(_ context.Context, request *
 	if s.storeErr != nil {
 		return nil, s.storeErr
 	}
-	handle := request.GetProviderName() + "/" + request.GetCredentialKey()
+	handle := request.GetProvider() + "/" + request.GetCredentialKey()
 	s.values[handle] = request.GetValue()
 	return &credentialsv1.StoreCredentialResponse{Handle: &datamodelv1.CredentialHandle{Driver: "remote-lifecycle", Handle: handle}}, nil
 }
@@ -209,7 +212,11 @@ func (s *lifecycleCredentialServer) ResolveCredentials(_ context.Context, reques
 	}
 	response := &credentialsv1.ResolveCredentialsResponse{}
 	for _, item := range request.GetCredentials() {
-		response.Credentials = append(response.Credentials, &credentialsv1.ResolvedCredential{RequestId: item.GetRequestId(), Value: s.values[item.GetHandle().GetHandle()], ExpiresAtMs: s.resolveExpiry[item.GetRequestId()]})
+		var expiration *timestamppb.Timestamp
+		if expiresAt := s.resolveExpiry[item.GetRequestId()]; expiresAt > 0 {
+			expiration = timestamppb.New(time.UnixMilli(expiresAt))
+		}
+		response.Credentials = append(response.Credentials, &credentialsv1.ResolvedCredential{RequestId: item.GetRequestId(), Value: s.values[item.GetHandle().GetHandle()], ExpirationTime: expiration})
 	}
 	return response, nil
 }
@@ -304,7 +311,7 @@ func TestRemoteComputeEngineDispatchesLifecycleThroughGeneratedClient(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	handle, err := engine.Create(context.Background(), driver.Spec{Name: "sandbox-1", Image: "alpine:3.22", Command: []string{"sleep", "infinity"}, Env: []string{"A=B"}, CPU: 0.5})
+	handle, err := engine.Create(context.Background(), driver.Spec{Name: "sandbox-1", Image: "alpine:3.22", Command: []string{"sleep", "infinity"}, Env: []string{"A=B"}, CPU: 0.5, PidsLimit: 512, CDIDevices: []string{"nvidia.com/gpu=0", "nvidia.com/gpu=1"}})
 	if err != nil || handle.ID != core.ID("sandbox-1") {
 		t.Fatalf("create handle=%+v err=%v", handle, err)
 	}
@@ -324,6 +331,14 @@ func TestRemoteComputeEngineDispatchesLifecycleThroughGeneratedClient(t *testing
 	}
 	if backend.image != "alpine:3.22" {
 		t.Fatalf("remote image=%q", backend.image)
+	}
+	if backend.platformConfig == nil {
+		t.Fatal("remote driver request omitted Cautem runtime options")
+	}
+	runtimeOptions := backend.platformConfig.AsMap()["cautem_runtime"].(map[string]any)
+	devices := runtimeOptions["cdi_devices"].([]any)
+	if runtimeOptions["pids_limit"] != "512" || len(devices) != 2 || devices[0] != "nvidia.com/gpu=0" || devices[1] != "nvidia.com/gpu=1" {
+		t.Fatalf("remote platform runtime options=%v", runtimeOptions)
 	}
 }
 
@@ -466,9 +481,9 @@ func TestExternalCredentialDriverErrorsAreRedactedAtGatewayBoundary(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, sec: sec, drivers: registry, opt: opt}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, sec: sec, drivers: registry, opt: opt}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local"})
-	_, err = rpc.CreateProvider(ctx, &openshellv1.CreateProviderRequest{Provider: &datamodelv1.Provider{Metadata: &datamodelv1.ObjectMeta{Name: "provider", Workspace: "default"}, Type: "test", Credentials: map[string]string{"API_TOKEN": "credential-secret"}}})
+	_, err = rpc.CreateProvider(ctx, &compatv1.CreateProviderRequest{Provider: &datamodelv1.Provider{Metadata: &datamodelv1.ObjectMeta{Name: "provider", Workspace: "default"}, Type: "test", Credentials: map[string]string{"API_TOKEN": "credential-secret"}}})
 	if err == nil || strings.Contains(err.Error(), "credential-secret") {
 		t.Fatalf("store error leaked secret: %v", err)
 	}
@@ -478,26 +493,36 @@ func TestExternalCredentialDriverErrorsAreRedactedAtGatewayBoundary(t *testing.T
 	backend.values["provider/API_TOKEN"] = "credential-secret"
 	backend.resolveErr = fmt.Errorf("resolve failed for credential-secret")
 	backend.mu.Unlock()
-	if err := st.UpsertProvider(store.ProviderRecord{Name: "provider", Workspace: "default", CredentialDriver: "remote-lifecycle", EnvVars: []string{"API_TOKEN"}, CredentialHandles: map[string]store.CredentialHandle{"API_TOKEN": {Driver: "remote-lifecycle", Handle: "provider/API_TOKEN"}}}); err != nil {
+	if err := st.UpsertProfile("test-profile", `id: test-profile
+credentials:
+  - name: api
+    env_vars: [API_TOKEN]
+`); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertSandbox(store.Sandbox{Name: "sandbox", ID: "sandbox-id", Workspace: "default", AttachedProviders: []string{"provider"}}); err != nil {
+	if err := st.UpsertProvider(store.ProviderRecord{Name: "provider", Type: "test-profile", Workspace: "default", CredentialDriver: "remote-lifecycle", EnvVars: []string{"API_TOKEN"}, CredentialHandles: map[string]store.CredentialHandle{"API_TOKEN": {Driver: "remote-lifecycle", Handle: "provider/API_TOKEN"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertSandbox(store.Sandbox{
+		Name: "sandbox", ID: "sandbox-id", Workspace: "default", AttachedProviders: []string{"provider"},
+		BasePolicyYAML: "version: 1\nnetwork_policies:\n  api:\n    endpoints:\n      - host: api.example.com\n        port: 443\n        credential_keys: [API_TOKEN]\n",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	sandboxCtx := withPrincipal(context.Background(), Principal{Kind: PrincipalSandbox, Sandbox: "sandbox"})
-	_, err = rpc.GetSandboxProviderEnvironment(sandboxCtx, &openshellv1.GetSandboxProviderEnvironmentRequest{SandboxId: "sandbox"})
-	if err == nil || strings.Contains(err.Error(), "credential-secret") {
-		t.Fatalf("resolve error leaked secret: %v", err)
+	response, err := rpc.GetSandboxProviderEnvironment(sandboxCtx, &compatv1.GetSandboxProviderEnvironmentRequest{SandboxId: "sandbox", SupportsStaticCredentialBindings: true})
+	if err == nil || strings.Contains(err.Error(), "credential-secret") || response != nil {
+		t.Fatalf("credential driver error was not redacted: response=%v err=%v", response, err)
 	}
 	backend.mu.Lock()
 	backend.deleteErr = fmt.Errorf("delete failed for credential-secret")
 	backend.mu.Unlock()
-	if _, err = rpc.DeleteProvider(ctx, &openshellv1.DeleteProviderRequest{Name: "provider", Workspace: "default"}); err == nil || strings.Contains(err.Error(), "credential-secret") {
+	if _, err = rpc.DeleteProvider(ctx, &compatv1.DeleteProviderRequest{Name: "provider", WorkspaceScope: workspaceScope("default")}); err == nil || strings.Contains(err.Error(), "credential-secret") {
 		t.Fatalf("delete error leaked secret: %v", err)
 	}
 }
 
-func TestCredentialDriverResolutionFlowsThroughSandboxEnvironmentRPC(t *testing.T) {
+func TestCredentialDriverResolutionRemainsBackendOwnedUntilBindingDeliveryIsSupported(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -538,11 +563,11 @@ func TestCredentialDriverResolutionFlowsThroughSandboxEnvironmentRPC(t *testing.
 	if resolved, resolveErr := registry.resolveProviderCredentials(context.Background(), store.ProviderRecord{Name: "provider", Workspace: "default", CredentialDriver: driverName, CredentialHandles: handles}, []string{"API_TOKEN"}, sec); resolveErr != nil || resolved["API_TOKEN"] != "external-secret" {
 		t.Fatalf("direct external resolve=%v err=%v", resolved, resolveErr)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, sec: sec, drivers: registry, opt: opt}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, sec: sec, drivers: registry, opt: opt}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalSandbox, Sandbox: "sandbox"})
-	response, err := rpc.GetSandboxProviderEnvironment(ctx, &openshellv1.GetSandboxProviderEnvironmentRequest{SandboxId: "sandbox"})
-	if err != nil || response.GetEnvironment()["API_TOKEN"] != "external-secret" {
-		t.Fatalf("external environment=%v err=%v", response.GetEnvironment(), err)
+	response, err := rpc.GetSandboxProviderEnvironment(ctx, &compatv1.GetSandboxProviderEnvironmentRequest{SandboxId: "sandbox"})
+	if err != nil || len(response.GetEnvironment()) != 0 || response.GetReadinessReason() != compatv1.ProviderReadinessReason_PROVIDER_READINESS_REASON_UNSUPPORTED_SUPERVISOR {
+		t.Fatalf("unbound external environment must be withheld: response=%v err=%v", response, err)
 	}
 	if localValues, err := sec.GetProviderCredentials(context.Background(), "provider", []string{"API_TOKEN"}); err != nil || localValues["API_TOKEN"] != "" {
 		t.Fatal("external credential was copied into local encrypted storage")
@@ -553,7 +578,7 @@ type registryMiddlewareServer struct {
 	middlewarev1.UnimplementedSupervisorMiddlewareServer
 }
 
-func (registryMiddlewareServer) Describe(context.Context, *emptypb.Empty) (*middlewarev1.MiddlewareManifest, error) {
+func (registryMiddlewareServer) Describe(context.Context, *middlewarev1.MiddlewareDescribeRequest) (*middlewarev1.MiddlewareManifest, error) {
 	return &middlewarev1.MiddlewareManifest{ServiceVersion: "test", Bindings: []*middlewarev1.MiddlewareBinding{{Operation: middlewarev1.SupervisorMiddlewareOperation_SUPERVISOR_MIDDLEWARE_OPERATION_HTTP_REQUEST, Phase: middlewarev1.SupervisorMiddlewarePhase_SUPERVISOR_MIDDLEWARE_PHASE_PRE_CREDENTIALS, MaxPayloadBytes: 1024}}}, nil
 }
 
@@ -686,12 +711,12 @@ func TestGatewayInterceptorModifyOperationAppliesBeforeGatewayWork(t *testing.T)
 	if err := registry.probe(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	request := &openshellv1.CreateSandboxRequest{Name: "original"}
+	request := &compatv1.CreateSandboxRequest{Name: "original"}
 	modified, err := registry.evaluateGatewayInterceptorPhases(context.Background(), "openshell.v1.OpenShell", "CreateSandbox", nil, request, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := modified.(*openshellv1.CreateSandboxRequest).GetName(); got != "patched" {
+	if got := modified.(*compatv1.CreateSandboxRequest).GetName(); got != "patched" {
 		t.Fatalf("modified request name=%q, want patched", got)
 	}
 }

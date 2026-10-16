@@ -45,12 +45,13 @@ jobs:
         with:
           repository: cautem/cautem-core
           path: cautem-core
+          ref: 59fec9b4e887827515979fe01303f2d7152a96f6
       - name: Checkout cautem-proto
         uses: actions/checkout@v4
         with:
           repository: cautem/cautem-proto
           path: cautem-proto
-          ref: 35501bd8a5e06cf5fe1a948cec2cabb86827b8d5
+          ref: 0297d796a01ee3ef2c22aacb57d72080cde8add7
       - uses: actions/checkout@v4
         with:
           repository: cautem/cautem-cli
@@ -60,33 +61,39 @@ jobs:
         with:
           repository: cautem/cautem-display
           path: cautem-display
+          ref: c58f1a09dd5e0c01ecb96aad5645ecfddbd1d636
       - uses: actions/checkout@v4
         with:
           repository: cautem/cautem-providers
           path: cautem-providers
+          ref: 27c1b456c976a0b0ea2535ba66b4faa3d355f933
       - uses: actions/checkout@v4
         with:
           repository: cautem/cautem-runtime
           path: cautem-runtime
+          ref: 58cca1e35b2b8d7eddc0cbddfefaf6e7172fc215
       - uses: actions/checkout@v4
         with:
           repository: cautem/cautem-proxy
           path: cautem-proxy
+          ref: db748905153b6d7483034d2f20e96c4509996c84
       - uses: actions/checkout@v4
         with:
           repository: cautem/cautem-driver
           path: cautem-driver
+          ref: 2bfed8c08c9c2a3d900980e8b80dcf0898bc17a4
       - uses: actions/checkout@v4
         with:
           repository: cautem/cautem-sdk
           path: cautem-sdk
-          ref: 202de046bd183ccfe16afd2cd9702771e1fa335b
+          ref: 26cf7232e8f7c1d51da4b8f89a62a7bd229703d6
 
       - name: Checkout slogx
         uses: actions/checkout@v4
         with:
           repository: cautem/slogx
           path: cautem-slogx
+          ref: 82f30eca1d1ff2a61cf8d5d24103cf613fc731db
       - name: Write go.work
         working-directory: ${{ github.workspace }}
         shell: bash

@@ -298,6 +298,9 @@ func oidcRouteAuthorized(principal Principal, method string, target *url.URL, se
 	if target.Path == "/v1/workspaces/write" {
 		adminOnly = false
 	}
+	if strings.HasPrefix(target.Path, "/v1/rootfs-tar/") {
+		adminOnly = false // workspace membership is checked by the upload handler.
+	}
 	if !adminOnly {
 		// These reads expose gateway-wide credentials, sessions, or mutable policy state.
 		switch target.Path {
@@ -328,6 +331,8 @@ func oidcRouteScope(method, path string) string {
 		return "workspace:write"
 	case path == "/v1/workspaces/admin":
 		return "workspace:write"
+	case strings.HasPrefix(path, "/v1/rootfs-tar/"):
+		return "sandbox:write"
 	case path == "/v1/workspaces" || strings.HasPrefix(path, "/v1/workspaces/"):
 		if read {
 			return "workspace:read"

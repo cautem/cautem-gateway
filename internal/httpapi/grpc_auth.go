@@ -52,6 +52,9 @@ func authenticateGRPC(ctx context.Context, fullMethod string, opt Options) (cont
 	if isPublicRoute(fullMethod) {
 		return ctx, nil
 	}
+	if fullMethod == "/openshell.v1.OpenShell/GetProviderCredentials" {
+		return authenticateProviderCredentialOperator(ctx, opt)
+	}
 	runtime := opt.grpcRuntime
 	if runtime == nil || runtime.st == nil {
 		return nil, status.Error(codes.Unauthenticated, "gateway authentication runtime is unavailable")
@@ -100,6 +103,12 @@ func authenticateGRPC(ctx context.Context, fullMethod string, opt Options) (cont
 		}
 		p = Principal{Kind: PrincipalUser, Subject: "local-dev", IDP: "local_dev", Roles: []string{"platform_admin", "platform-admin", "user"}}
 	}
+	if grpcPeerMethod(fullMethod) {
+		// Peer RPCs require a gateway-to-gateway identity. This deployment does
+		// not yet configure peer authentication, so operator and sandbox tokens
+		// must never be accepted as a substitute.
+		return nil, status.Error(codes.PermissionDenied, "gateway peer authentication is not configured")
+	}
 	if fullMethod == "/openshell.v1.OpenShell/GetSandboxConfig" || fullMethod == "/openshell.v1.OpenShell/UpdateConfig" {
 		if p.Kind != PrincipalSandbox && p.Kind != PrincipalUser {
 			return nil, status.Error(codes.PermissionDenied, "sandbox or user principal is required for this RPC")
@@ -123,6 +132,36 @@ func authenticateGRPC(ctx context.Context, fullMethod string, opt Options) (cont
 	return withPrincipal(ctx, p), nil
 }
 
+// GetProviderCredentials is an operator export API. It deliberately bypasses
+// bearer, OIDC, and local-development authentication: only a verified client
+// certificate carrying the operator role may reach the handler.
+func authenticateProviderCredentialOperator(ctx context.Context, opt Options) (context.Context, error) {
+	md, _ := metadata.FromIncomingContext(ctx)
+	if len(md.Get("authorization")) != 0 {
+		return nil, status.Error(codes.Unauthenticated, "provider credential export requires direct mTLS authentication")
+	}
+	if !opt.EnableMTLSAuth {
+		return nil, status.Error(codes.Unauthenticated, "verified mTLS operator authentication is required")
+	}
+	remote, ok := peer.FromContext(ctx)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "verified mTLS operator authentication is required")
+	}
+	tlsInfo, ok := remote.AuthInfo.(credentials.TLSInfo)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "verified mTLS operator authentication is required")
+	}
+	r := &http.Request{TLS: &tlsInfo.State}
+	principal := mtlsPrincipal(r)
+	if principal.Kind != PrincipalUser || principal.IDP != "mtls" {
+		return nil, status.Error(codes.Unauthenticated, "verified mTLS operator authentication is required")
+	}
+	if !containsString(principal.Roles, "operator") {
+		return nil, status.Error(codes.PermissionDenied, "verified mTLS operator role is required")
+	}
+	return withPrincipal(ctx, principal), nil
+}
+
 func grpcAuthRoute(fullMethod string) (string, string) {
 	parts := strings.Split(strings.Trim(fullMethod, "/"), "/")
 	if len(parts) != 2 || parts[0] != "openshell.v1.OpenShell" {
@@ -134,8 +173,10 @@ func grpcAuthRoute(fullMethod string) (string, string) {
 		return http.MethodGet, "/v1/whoami"
 	case "GetGatewayInfo", "GetGatewayConfig", "GetSandboxConfig":
 		return http.MethodGet, "/v1/settings"
-	case "GetProvider", "ListProviders", "ListProviderProfiles", "GetProviderProfile", "GetProviderRefreshStatus":
+	case "GetProvider", "ListProviders", "ListProviderProfiles", "GetProviderProfile", "GetProviderRefreshStatus", "GetSandboxProviderStatus":
 		return http.MethodGet, "/v1/providers"
+	case "GetProviderCredentials":
+		return http.MethodGet, "/v1/providers/credentials"
 	case "CreateProvider", "UpdateProvider", "ImportProviderProfiles", "UpdateProviderProfiles", "LintProviderProfiles", "ConfigureProviderRefresh", "RotateProviderCredential":
 		return http.MethodPost, "/v1/providers"
 	case "DeleteProvider", "DeleteProviderProfile", "DeleteProviderRefresh":
@@ -174,6 +215,10 @@ func grpcAuthRoute(fullMethod string) (string, string) {
 		return http.MethodPost, "/v1/settings"
 	case "SubmitPolicyAnalysis":
 		return http.MethodPost, "/v1/sandboxes"
+	case "ReportEndpointStatus", "ReportProviderReadiness", "ReportSandboxConfiguration":
+		return http.MethodPost, "/v1/sandboxes"
+	case "PeerRelay", "PeerReportProviderReadiness", "PeerReportEndpointStatus", "PeerGetSandboxProviderStatus":
+		return http.MethodPost, "/v1/peer"
 	default:
 		return "", ""
 	}
@@ -190,8 +235,23 @@ func grpcSandboxMethodAllowed(method string) bool {
 		"/openshell.v1.OpenShell/FinalizeMainProcessExit",
 		"/openshell.v1.OpenShell/RelayStream",
 		"/openshell.v1.OpenShell/SubmitPolicyAnalysis",
+		"/openshell.v1.OpenShell/ReportEndpointStatus",
+		"/openshell.v1.OpenShell/ReportProviderReadiness",
+		"/openshell.v1.OpenShell/ReportSandboxConfiguration",
 		"/openshell.v1.OpenShell/IssueSandboxToken",
 		"/openshell.v1.OpenShell/RefreshSandboxToken":
+		return true
+	default:
+		return false
+	}
+}
+
+func grpcPeerMethod(method string) bool {
+	switch strings.TrimSpace(method) {
+	case "/openshell.v1.OpenShell/PeerRelay",
+		"/openshell.v1.OpenShell/PeerReportProviderReadiness",
+		"/openshell.v1.OpenShell/PeerReportEndpointStatus",
+		"/openshell.v1.OpenShell/PeerGetSandboxProviderStatus":
 		return true
 	default:
 		return false

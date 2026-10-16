@@ -89,9 +89,9 @@ func Parse(data []byte) (File, error) {
 	if err := file.validate(); err != nil {
 		return File{}, err
 	}
-	rawTables := []any{file.OpenShell.Drivers, file.OpenShell.CredentialDrivers}
-	if file.OpenShell.Gateway.CredentialStorage != nil {
-		rawTables = append(rawTables, *file.OpenShell.Gateway.CredentialStorage)
+	rawTables := []any{file.Compatibility.Drivers, file.Compatibility.CredentialDrivers}
+	if file.Compatibility.Gateway.CredentialStorage != nil {
+		rawTables = append(rawTables, *file.Compatibility.Gateway.CredentialStorage)
 	}
 	for _, raw := range rawTables {
 		if err := validateRawDepth(raw); err != nil {
@@ -116,16 +116,19 @@ func required(path string, fields map[string]bool) error {
 }
 
 func (file *File) validate() error {
-	root := &file.OpenShell
+	root := &file.Compatibility
 	g := &root.Gateway
-	if root.Version != nil && *root.Version > 1 {
-		return fmt.Errorf("gateway config: unsupported openshell.version (maximum 1)")
+	if root.Version != nil && *root.Version != 1 && *root.Version != 2 {
+		return fmt.Errorf("gateway config: unsupported openshell.version (supported versions: 1, 2)")
 	}
 	if g.DatabaseURL != nil {
 		return fmt.Errorf("gateway config: database_url is env/CLI-only; use OPENSHELL_DB_URL or --db-url")
 	}
 	if g.CredentialDrivers != nil && len(*g.CredentialDrivers) == 0 {
 		return fmt.Errorf("gateway config: openshell.gateway.credential_drivers must be omitted or select an external driver")
+	}
+	if g.ComputeDriver != nil && (strings.TrimSpace(*g.ComputeDriver) == "" || g.ComputeDrivers != nil) {
+		return fmt.Errorf("gateway config: compute_driver must be non-empty and cannot be combined with compute_drivers")
 	}
 	for key, addr := range map[string]*string{"bind_address": g.BindAddress, "health_bind_address": g.HealthBindAddress, "metrics_bind_address": g.MetricsBindAddress} {
 		if addr != nil {
@@ -248,12 +251,12 @@ func failurePolicy(value *string) error {
 // Driver-specific keys take precedence; tables remain owned by driver schemas.
 func (file File) DriverTable(name string, keys []string) map[string]any {
 	result := map[string]any{}
-	if raw, ok := file.OpenShell.Drivers[name].(map[string]any); ok {
+	if raw, ok := file.Compatibility.Drivers[name].(map[string]any); ok {
 		for key, value := range raw {
 			result[key] = cloneValue(value)
 		}
 	}
-	value := reflect.ValueOf(file.OpenShell.Gateway)
+	value := reflect.ValueOf(file.Compatibility.Gateway)
 	typ := value.Type()
 	for _, key := range keys {
 		if _, exists := result[key]; exists {

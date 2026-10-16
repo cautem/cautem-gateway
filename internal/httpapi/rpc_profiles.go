@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"github.com/cautem/cautem-providers/provider"
 	"google.golang.org/grpc/codes"
@@ -15,11 +16,11 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-func (s *openShellRPC) ListProviderProfiles(ctx context.Context, req *openshellv1.ListProviderProfilesRequest) (*openshellv1.ListProviderProfilesResponse, error) {
+func (s *compatRPCAdapter) ListProviderProfiles(ctx context.Context, req *compatv1.ListProviderProfilesRequest) (*compatv1.ListProviderProfilesResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request is required")
 	}
-	workspace := strings.TrimSpace(req.GetWorkspace())
+	workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope()))
 	authWorkspace := workspace
 	if authWorkspace == "" {
 		authWorkspace = "default"
@@ -29,22 +30,29 @@ func (s *openShellRPC) ListProviderProfiles(ctx context.Context, req *openshellv
 	}
 	items := listProfilesWithSources(s.runtime.st, BuiltinProvidersDir(), workspace, s.runtime.opt.ProviderProfileSources)
 	sort.Slice(items, func(i, j int) bool { return items[i]["id"] < items[j]["id"] })
-	limit := req.GetLimit()
+	limit := uint32(req.GetPageSize())
 	if limit == 0 {
 		limit = 100
 	}
 	if limit > 1000 {
 		limit = 1000
 	}
-	start := int(req.GetOffset())
+	start := 0
+	if token := strings.TrimSpace(req.GetPageToken()); token != "" {
+		parsed, parseErr := strconv.Atoi(token)
+		if parseErr != nil || parsed < 0 {
+			return nil, status.Error(codes.InvalidArgument, "invalid page_token")
+		}
+		start = parsed
+	}
 	if start >= len(items) {
-		return &openshellv1.ListProviderProfilesResponse{}, nil
+		return &compatv1.ListProviderProfilesResponse{}, nil
 	}
 	end := start + int(limit)
 	if end > len(items) {
 		end = len(items)
 	}
-	response := &openshellv1.ListProviderProfilesResponse{Profiles: make([]*openshellv1.ProviderProfile, 0, end-start)}
+	response := &compatv1.ListProviderProfilesResponse{Profiles: make([]*compatv1.ProviderProfile, 0, end-start)}
 	for _, item := range items[start:end] {
 		profile, source, err := resolveProfileForWorkspaceWithSources(s.runtime.st, BuiltinProvidersDir(), item["id"], workspace, s.runtime.opt.ProviderProfileSources)
 		if err != nil {
@@ -52,14 +60,17 @@ func (s *openShellRPC) ListProviderProfiles(ctx context.Context, req *openshellv
 		}
 		response.Profiles = append(response.Profiles, profileToProto(profile, source, profileScope(profile, source), profileResourceVersion(s.runtime.st, profile, workspace, source)))
 	}
+	if end < len(items) {
+		response.NextPageToken = strconv.Itoa(end)
+	}
 	return response, nil
 }
 
-func (s *openShellRPC) GetProviderProfile(ctx context.Context, req *openshellv1.GetProviderProfileRequest) (*openshellv1.ProviderProfileResponse, error) {
+func (s *compatRPCAdapter) GetProviderProfile(ctx context.Context, req *compatv1.GetProviderProfileRequest) (*compatv1.ProviderProfileResponse, error) {
 	if req == nil || strings.TrimSpace(req.GetId()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
-	workspace := strings.TrimSpace(req.GetWorkspace())
+	workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope()))
 	authWorkspace := workspace
 	if authWorkspace == "" {
 		authWorkspace = "default"
@@ -71,25 +82,25 @@ func (s *openShellRPC) GetProviderProfile(ctx context.Context, req *openshellv1.
 	if err != nil {
 		return nil, status.Error(codes.NotFound, "provider profile not found")
 	}
-	return &openshellv1.ProviderProfileResponse{Profile: profileToProto(profile, source, profileScope(profile, source), profileResourceVersion(s.runtime.st, profile, workspace, source))}, nil
+	return &compatv1.ProviderProfileResponse{Profile: profileToProto(profile, source, profileScope(profile, source), profileResourceVersion(s.runtime.st, profile, workspace, source))}, nil
 }
 
-func (s *openShellRPC) ImportProviderProfiles(ctx context.Context, req *openshellv1.ImportProviderProfilesRequest) (*openshellv1.ImportProviderProfilesResponse, error) {
+func (s *compatRPCAdapter) ImportProviderProfiles(ctx context.Context, req *compatv1.ImportProviderProfilesRequest) (*compatv1.ImportProviderProfilesResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request is required")
 	}
-	workspace := strings.TrimSpace(req.GetWorkspace())
+	workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope()))
 	if workspace == "" {
 		workspace = "default"
 	}
 	if err := s.requireProviderAccess(ctx, workspace, true); err != nil {
 		return nil, err
 	}
-	diagnostics := make([]*openshellv1.ProviderProfileDiagnostic, 0)
-	profiles := make([]*openshellv1.ProviderProfile, 0, len(req.GetProfiles()))
+	diagnostics := make([]*compatv1.ProviderProfileDiagnostic, 0)
+	profiles := make([]*compatv1.ProviderProfile, 0, len(req.GetProfiles()))
 	for _, item := range req.GetProfiles() {
 		if item == nil || item.GetProfile() == nil || strings.TrimSpace(item.GetProfile().GetId()) == "" {
-			diagnostics = append(diagnostics, &openshellv1.ProviderProfileDiagnostic{Message: "profile id is required", Severity: "error"})
+			diagnostics = append(diagnostics, &compatv1.ProviderProfileDiagnostic{Message: "profile id is required", Severity: "error"})
 			continue
 		}
 		id := item.GetProfile().GetId()
@@ -103,7 +114,7 @@ func (s *openShellRPC) ImportProviderProfiles(ctx context.Context, req *openshel
 			continue
 		}
 		scope, scopeWorkspace := "workspace", workspace
-		if req.GetWorkspace() == "" {
+		if req.GetWorkspaceScope() == nil {
 			scope, scopeWorkspace = "global", ""
 		}
 		if err := s.runtime.st.CreateProfileScoped(scope, scopeWorkspace, id, yaml); err != nil {
@@ -114,10 +125,10 @@ func (s *openShellRPC) ImportProviderProfiles(ctx context.Context, req *openshel
 		parsed, _ := provider.ParseYAML([]byte(yaml))
 		profiles = append(profiles, profileToProto(parsed, "user", scope, stored.Version))
 	}
-	return &openshellv1.ImportProviderProfilesResponse{Diagnostics: diagnostics, Profiles: profiles, Imported: len(diagnostics) == 0}, nil
+	return &compatv1.ImportProviderProfilesResponse{Diagnostics: diagnostics, Profiles: profiles, Imported: len(diagnostics) == 0}, nil
 }
 
-func (s *openShellRPC) UpdateProviderProfiles(ctx context.Context, req *openshellv1.UpdateProviderProfilesRequest) (*openshellv1.UpdateProviderProfilesResponse, error) {
+func (s *compatRPCAdapter) UpdateProviderProfiles(ctx context.Context, req *compatv1.UpdateProviderProfilesRequest) (*compatv1.UpdateProviderProfilesResponse, error) {
 	if req == nil || req.GetProfile() == nil || req.GetProfile().GetProfile() == nil {
 		return nil, status.Error(codes.InvalidArgument, "profile is required")
 	}
@@ -128,7 +139,7 @@ func (s *openShellRPC) UpdateProviderProfiles(ctx context.Context, req *openshel
 	if id == "" {
 		return nil, status.Error(codes.InvalidArgument, "profile id is required")
 	}
-	workspace := strings.TrimSpace(req.GetWorkspace())
+	workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope()))
 	if workspace == "" {
 		workspace = "default"
 	}
@@ -143,7 +154,7 @@ func (s *openShellRPC) UpdateProviderProfiles(ctx context.Context, req *openshel
 		return nil, status.Errorf(codes.InvalidArgument, "profile is invalid: %v", err)
 	}
 	scope, scopeWorkspace := "workspace", workspace
-	if req.GetWorkspace() == "" {
+	if req.GetWorkspaceScope() == nil {
 		scope, scopeWorkspace = "global", ""
 	}
 	expected := ""
@@ -158,24 +169,24 @@ func (s *openShellRPC) UpdateProviderProfiles(ctx context.Context, req *openshel
 	}
 	stored, _ := s.runtime.st.GetProfileInScope(scope, scopeWorkspace, id)
 	parsed, _ := provider.ParseYAML([]byte(yaml))
-	return &openshellv1.UpdateProviderProfilesResponse{Profile: profileToProto(parsed, "user", scope, stored.Version), Updated: true}, nil
+	return &compatv1.UpdateProviderProfilesResponse{Profile: profileToProto(parsed, "user", scope, stored.Version), Updated: true}, nil
 }
 
-func (s *openShellRPC) LintProviderProfiles(ctx context.Context, req *openshellv1.LintProviderProfilesRequest) (*openshellv1.LintProviderProfilesResponse, error) {
+func (s *compatRPCAdapter) LintProviderProfiles(ctx context.Context, req *compatv1.LintProviderProfilesRequest) (*compatv1.LintProviderProfilesResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request is required")
 	}
-	workspace := strings.TrimSpace(req.GetWorkspace())
+	workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope()))
 	if workspace == "" {
 		workspace = "default"
 	}
 	if err := s.requireProviderAccess(ctx, workspace, true); err != nil {
 		return nil, err
 	}
-	diagnostics := make([]*openshellv1.ProviderProfileDiagnostic, 0)
+	diagnostics := make([]*compatv1.ProviderProfileDiagnostic, 0)
 	for _, item := range req.GetProfiles() {
 		if item == nil || item.GetProfile() == nil {
-			diagnostics = append(diagnostics, &openshellv1.ProviderProfileDiagnostic{Message: "profile is required", Severity: "error"})
+			diagnostics = append(diagnostics, &compatv1.ProviderProfileDiagnostic{Message: "profile is required", Severity: "error"})
 			continue
 		}
 		yaml, err := profileToYAML(item.GetProfile())
@@ -186,14 +197,14 @@ func (s *openShellRPC) LintProviderProfiles(ctx context.Context, req *openshellv
 			diagnostics = append(diagnostics, profileDiagnostic(item.GetProfile().GetId(), err))
 		}
 	}
-	return &openshellv1.LintProviderProfilesResponse{Diagnostics: diagnostics, Valid: len(diagnostics) == 0}, nil
+	return &compatv1.LintProviderProfilesResponse{Diagnostics: diagnostics, Valid: len(diagnostics) == 0, SupportsStablePlaceholder: false}, nil
 }
 
-func (s *openShellRPC) DeleteProviderProfile(ctx context.Context, req *openshellv1.DeleteProviderProfileRequest) (*openshellv1.DeleteProviderProfileResponse, error) {
+func (s *compatRPCAdapter) DeleteProviderProfile(ctx context.Context, req *compatv1.DeleteProviderProfileRequest) (*compatv1.DeleteProviderProfileResponse, error) {
 	if req == nil || strings.TrimSpace(req.GetId()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
-	workspace := strings.TrimSpace(req.GetWorkspace())
+	workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope()))
 	if workspace == "" {
 		workspace = "default"
 	}
@@ -201,23 +212,23 @@ func (s *openShellRPC) DeleteProviderProfile(ctx context.Context, req *openshell
 		return nil, err
 	}
 	scope, scopeWorkspace := "workspace", workspace
-	if req.GetWorkspace() == "" {
+	if req.GetWorkspaceScope() == nil {
 		scope, scopeWorkspace = "global", ""
 	}
 	if _, ok := s.runtime.st.GetProfileInScope(scope, scopeWorkspace, req.GetId()); !ok {
-		return &openshellv1.DeleteProviderProfileResponse{Deleted: false}, nil
+		return &compatv1.DeleteProviderProfileResponse{Outcome: compatv1.DeletionOutcome_DELETION_OUTCOME_ALREADY_ABSENT}, nil
 	}
 	if err := s.runtime.st.DeleteProfileScoped(scope, scopeWorkspace, req.GetId()); err != nil {
 		return nil, status.Error(codes.Internal, "could not delete provider profile")
 	}
-	return &openshellv1.DeleteProviderProfileResponse{Deleted: true}, nil
+	return &compatv1.DeleteProviderProfileResponse{Outcome: compatv1.DeletionOutcome_DELETION_OUTCOME_COMPLETED}, nil
 }
 
-func profileDiagnostic(id string, err error) *openshellv1.ProviderProfileDiagnostic {
-	return &openshellv1.ProviderProfileDiagnostic{ProfileId: id, Message: err.Error(), Severity: "error"}
+func profileDiagnostic(id string, err error) *compatv1.ProviderProfileDiagnostic {
+	return &compatv1.ProviderProfileDiagnostic{ProfileId: id, Message: err.Error(), Severity: "error"}
 }
 
-func profileToYAML(profile *openshellv1.ProviderProfile) (string, error) {
+func profileToYAML(profile *compatv1.ProviderProfile) (string, error) {
 	if profile == nil {
 		return "", fmt.Errorf("profile is required")
 	}
@@ -240,7 +251,7 @@ func profileToYAML(profile *openshellv1.ProviderProfile) (string, error) {
 	return string(b), nil
 }
 
-func profileToProto(profile provider.Profile, source, scope string, resourceVersion uint64) *openshellv1.ProviderProfile {
+func profileToProto(profile provider.Profile, source, scope string, resourceVersion uint64) *compatv1.ProviderProfile {
 	b, _ := json.Marshal(profile)
 	var values map[string]any
 	_ = json.Unmarshal(b, &values)
@@ -248,7 +259,7 @@ func profileToProto(profile provider.Profile, source, scope string, resourceVers
 		values["category"] = "PROVIDER_PROFILE_CATEGORY_" + strings.ToUpper(strings.ReplaceAll(category, "-", "_"))
 	}
 	b, _ = json.Marshal(values)
-	out := &openshellv1.ProviderProfile{}
+	out := &compatv1.ProviderProfile{}
 	_ = protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(b, out)
 	out.Id = profile.ID
 	out.Source = source
