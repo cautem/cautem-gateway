@@ -39,7 +39,7 @@ COPY --from=build /src/cautem-runtime/LICENSE /src/cautem-runtime/NOTICE /usr/sh
 LABEL org.opencontainers.image.title="cautem-gateway" \
       org.opencontainers.image.description="cautem control-plane gateway" \
       org.opencontainers.image.licenses="Apache-2.0" \
-      org.opencontainers.image.source="https://github.com/cautem/cautem-gateway"
+      org.opencontainers.image.source="https://github.com/cautem/quarshell-gateway"
 ENV CAUTEM_GATEWAY_DATA=/var/lib/cautem-gateway
 VOLUME ["/var/lib/cautem-gateway"]
 EXPOSE 7443

@@ -8,7 +8,7 @@ import (
 
 	"github.com/cautem/cautem-core"
 	"github.com/cautem/cautem-driver/driver"
-	"github.com/cautem/cautem-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"log/slog"
 )
 

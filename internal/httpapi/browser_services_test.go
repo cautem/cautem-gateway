@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cautem/cautem-gateway/internal/sshrelay"
-	"github.com/cautem/cautem-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-gateway/internal/sshrelay"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"github.com/coder/websocket"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

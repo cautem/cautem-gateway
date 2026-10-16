@@ -12,7 +12,7 @@ import (
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-driver/driver"
 	_ "github.com/cautem/cautem-driver/driver/all"
-	"github.com/cautem/cautem-gateway/internal/sshrelay"
+	"github.com/cautem/quarshell-gateway/internal/sshrelay"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

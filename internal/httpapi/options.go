@@ -17,10 +17,10 @@ import (
 	"time"
 
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
-	"github.com/cautem/cautem-gateway/internal/gatewayconfig"
+	"github.com/cautem/quarshell-gateway/internal/gatewayconfig"
 	"google.golang.org/grpc"
 
-	"github.com/cautem/cautem-gateway/internal/logger"
+	"github.com/cautem/quarshell-gateway/internal/logger"
 	"github.com/cautem/slogx"
 )
 

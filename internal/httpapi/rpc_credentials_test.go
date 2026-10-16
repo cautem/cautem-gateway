@@ -15,8 +15,8 @@ import (
 	"time"
 
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"github.com/cautem/cautem-runtime/secrets"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
 )
 
 func TestGetSandboxProviderEnvironmentRequiresMatchingSupervisorAndWithholdsWithoutBindingCapability(t *testing.T) {

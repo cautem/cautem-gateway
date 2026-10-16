@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cautem/cautem-gateway/internal/httpapi"
+	"github.com/cautem/quarshell-gateway/internal/httpapi"
 	"gopkg.in/yaml.v3"
 )
 

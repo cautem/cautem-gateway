@@ -7,8 +7,8 @@ import (
 	"time"
 
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	"github.com/cautem/cautem-gateway/internal/logbuf"
-	"github.com/cautem/cautem-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-gateway/internal/logbuf"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/timestamppb"

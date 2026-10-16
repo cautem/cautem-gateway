@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cautem/cautem-gateway/internal/gatewayconfig"
-	interceptorv1 "github.com/cautem/cautem-gateway/internal/upstreamproto/interceptorv1"
+	"github.com/cautem/quarshell-gateway/internal/gatewayconfig"
+	interceptorv1 "github.com/cautem/quarshell-gateway/internal/upstreamproto/interceptorv1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"

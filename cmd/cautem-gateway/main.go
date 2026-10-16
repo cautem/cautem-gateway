@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cautem/cautem-gateway/internal/app/gateway"
+	"github.com/cautem/quarshell-gateway/internal/app/gateway"
 )
 
 func main() {

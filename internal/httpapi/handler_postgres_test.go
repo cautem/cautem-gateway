@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cautem/cautem-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
 )
 
 func TestNewHandlerReleasesPostgresLockOnContextCancel(t *testing.T) {

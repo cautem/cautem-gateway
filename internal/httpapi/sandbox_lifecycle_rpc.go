@@ -15,7 +15,7 @@ import (
 	core "github.com/cautem/cautem-core"
 	"github.com/cautem/cautem-driver/driver"
 	_ "github.com/cautem/cautem-driver/driver/all"
-	"github.com/cautem/cautem-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"

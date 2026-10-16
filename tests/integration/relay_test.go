@@ -16,10 +16,10 @@ import (
 
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-core/relayproto"
-	"github.com/cautem/cautem-gateway/internal/httpapi"
 	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
 	"github.com/cautem/cautem-runtime/relayclient"
 	"github.com/cautem/cautem-runtime/sshserver"
+	"github.com/cautem/quarshell-gateway/internal/httpapi"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

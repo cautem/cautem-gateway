@@ -2,7 +2,7 @@
 package gateway
 
 import (
-	"github.com/cautem/cautem-gateway/internal/httpapi"
+	"github.com/cautem/quarshell-gateway/internal/httpapi"
 )
 
 // Run is the composition root for cautem-gateway.

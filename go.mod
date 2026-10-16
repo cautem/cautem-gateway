@@ -1,4 +1,4 @@
-module github.com/cautem/cautem-gateway
+module github.com/cautem/quarshell-gateway
 
 go 1.27.0
 

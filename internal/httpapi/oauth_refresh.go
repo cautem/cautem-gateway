@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"github.com/cautem/cautem-runtime/secrets"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
 )
 
 var providerCredentialRefreshMu sync.Mutex

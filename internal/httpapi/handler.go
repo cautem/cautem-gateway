@@ -10,11 +10,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cautem/cautem-gateway/internal/logbuf"
-	"github.com/cautem/cautem-gateway/internal/logger"
-	"github.com/cautem/cautem-gateway/internal/sshrelay"
-	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"github.com/cautem/cautem-runtime/secrets"
+	"github.com/cautem/quarshell-gateway/internal/logbuf"
+	"github.com/cautem/quarshell-gateway/internal/logger"
+	"github.com/cautem/quarshell-gateway/internal/sshrelay"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"github.com/cautem/slogx"
 )
 
