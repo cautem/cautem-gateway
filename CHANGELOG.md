@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [v0.3.1] - 2026-10-16
+
+### Changed
+
+- Publish the module under `github.com/cautem/quarshell-gateway`; earlier tags keep their original module path.
+- Pin `quarshell-core` v0.3.1, `quarshell-proto` v0.2.1, `quarshell-providers` v0.1.9, `quarshell-driver` and `quarshell-runtime` to v0.3.1, and `quarshell-slogx` to v0.1.4.
+
 ## [v0.3.0] - 2026-10-16
 
 ### Added

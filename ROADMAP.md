@@ -1,6 +1,6 @@
 # Roadmap — cautem-gateway
 
-Status: **v0.3.0** (release prepared) · Depends on core / driver `v0.3.0`, runtime `v0.3.0`, providers `v0.1.8`, proto `v0.2.0`; slogx `v0.1.3`
+Status: **v0.3.1** (release prepared) · Depends on quarshell-core `v0.3.1`, proto `v0.2.1`, providers `v0.1.9`, runtime/driver `v0.3.1`
 
 ## This module
 
