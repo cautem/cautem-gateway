@@ -98,8 +98,8 @@
       "area": "release",
       "field_or_method": "Go modules resolved from published tags without local replacements",
       "backend": "all",
-      "status": "blocked",
-      "evidence": "The gate was executed after publishing core v0.3.0, proto v0.2.0, providers v0.1.8, proxy v0.3.0 and runtime v0.3.0. CLI go.mod still pins runtime v0.2.1 (missing heartbeat/log fields) and SDK v0.2.0 (old provider/service API); Gateway pins driver v0.2.0 (no Backend SPI) and proto v0.1.0 (no AttachMainProcess/current control fields), so the published consumer gate still fails. SDK v0.3.0 release PR is merged pending its tag; driver v0.3.0 remains pending. Tests/evidence: scripts/check-published-deps.sh, Taskfile.yml.",
+      "status": "verified",
+      "evidence": "GOWORK=off task release:standalone and task release:published pass across all modules using only published dependency tags and no go.mod replace directives. SDK v0.3.0 is published at 26cf723; CLI and Gateway consumers resolve published runtime, SDK, driver, proto, provider and proxy versions. Tests/evidence: scripts/check-published-deps.sh, cautem-gateway/go.mod, cautem-cli/go.mod, Taskfile.yml.",
       "owner": "release"
     },
     {
@@ -117,7 +117,7 @@
       "field_or_method": "native host-gateway blackhole route on Podman 6.x",
       "backend": "podman-rootful,podman-rootless",
       "status": "open",
-      "evidence": "Podman 5.8.7 rejects proxy-backed create because blackhole route support is absent. Podman 6.1.3 nested Docker acceptance passes lifecycle, service recovery, pull policy, digest pinning and rootless service recovery; the complete nested user-namespace matrix fails because host cgroup memory.max is unavailable, and the Podman 6 rootless Gateway relay lane remains open. A dedicated Linux host runner is required for rootful/rootless host-gateway enforcement. The installed Podman 6.1.4 macOS VM failed Ignition or host SSH/API forwarding before its API became usable, so it is not target-host acceptance. Tests/evidence: cautem-driver/internal/podman/libpod_create_test.go, cautem-driver/tests/e2e/podman/podman_test.go, cautem-driver/tests/e2e/podman/Containerfile.podman6, cautem-driver/.github/workflows/podman-e2e.yml, cautem-driver/.github/workflows/podman-rootless-e2e.yml, cautem-gateway/tests/e2e/engine_connect_test.go.",
+      "evidence": "Podman 5.8.7 rejects proxy-backed create because blackhole route support is absent. The Podman 6.1.3 nested Docker Desktop attempt could not complete its rootful user-namespace matrix because host cgroup memory.max was unavailable. Merged driver v0.3.0 CI passed rootful Podman 6.1.3 lifecycle, service recovery, pull-policy and digest-pinning tests, and rootless lifecycle, service recovery and auto/host/keep-id/no-map user-namespace tests on Ubuntu runners. These CI lanes do not execute proxy-backed host-gateway denial or Gateway relay probes. The full Podman 6 rootless Gateway relay lane remains open, and the installed Podman 6.1.4 macOS VM failed Ignition or host SSH/API forwarding before its API became usable. Native Linux target-host acceptance of rootful/rootless host-gateway enforcement is still required. Tests/evidence: cautem-driver/internal/podman/libpod_create_test.go, cautem-driver/tests/e2e/podman/podman_test.go, cautem-driver/tests/e2e/podman/Containerfile.podman6, cautem-driver/.github/workflows/podman-e2e.yml, cautem-driver/.github/workflows/podman-rootless-e2e.yml, cautem-gateway/tests/e2e/engine_connect_test.go.",
       "owner": "driver"
     },
     {
