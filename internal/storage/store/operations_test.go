@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cautem/cautem-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
 )
 
 func TestOperationsDeduplicateAndSurviveRestart(t *testing.T) {

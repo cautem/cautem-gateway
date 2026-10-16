@@ -12,7 +12,7 @@ import (
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	core "github.com/cautem/cautem-core"
 	"github.com/cautem/cautem-driver/driver"
-	"github.com/cautem/cautem-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 

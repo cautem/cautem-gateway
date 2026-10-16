@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/cautem/cautem-core/defaults"
-	"github.com/cautem/cautem-gateway/internal/gatewayconfig"
+	"github.com/cautem/quarshell-gateway/internal/gatewayconfig"
 )
 
 // configStartup resolves file values and environment before command flags.

@@ -43,48 +43,48 @@ jobs:
       - name: Checkout deps
         uses: actions/checkout@v4
         with:
-          repository: cautem/cautem-core
+          repository: cautem/quarshell-core
           path: cautem-core
           ref: 59fec9b4e887827515979fe01303f2d7152a96f6
       - name: Checkout cautem-proto
         uses: actions/checkout@v4
         with:
-          repository: cautem/cautem-proto
+          repository: cautem/quarshell-proto
           path: cautem-proto
           ref: 0297d796a01ee3ef2c22aacb57d72080cde8add7
       - uses: actions/checkout@v4
         with:
-          repository: cautem/cautem-cli
+          repository: cautem/quarshell-cli
           path: cautem-cli
           ref: 51345f24dcb3e34aa30155eac22f5838cc249bc2
       - uses: actions/checkout@v4
         with:
-          repository: cautem/cautem-display
+          repository: cautem/quarshell-display
           path: cautem-display
           ref: c58f1a09dd5e0c01ecb96aad5645ecfddbd1d636
       - uses: actions/checkout@v4
         with:
-          repository: cautem/cautem-providers
+          repository: cautem/quarshell-providers
           path: cautem-providers
           ref: 27c1b456c976a0b0ea2535ba66b4faa3d355f933
       - uses: actions/checkout@v4
         with:
-          repository: cautem/cautem-runtime
+          repository: cautem/quarshell-runtime
           path: cautem-runtime
           ref: 58cca1e35b2b8d7eddc0cbddfefaf6e7172fc215
       - uses: actions/checkout@v4
         with:
-          repository: cautem/cautem-proxy
+          repository: cautem/quarshell-proxy
           path: cautem-proxy
           ref: db748905153b6d7483034d2f20e96c4509996c84
       - uses: actions/checkout@v4
         with:
-          repository: cautem/cautem-driver
+          repository: cautem/quarshell-driver
           path: cautem-driver
           ref: 2bfed8c08c9c2a3d900980e8b80dcf0898bc17a4
       - uses: actions/checkout@v4
         with:
-          repository: cautem/cautem-sdk
+          repository: cautem/quarshell-sdk
           path: cautem-sdk
           ref: 26cf7232e8f7c1d51da4b8f89a62a7bd229703d6
 

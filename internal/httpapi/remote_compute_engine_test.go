@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/cautem/cautem-driver/driver"
-	computev1 "github.com/cautem/cautem-gateway/internal/upstreamproto/computev1"
+	computev1 "github.com/cautem/quarshell-gateway/internal/upstreamproto/computev1"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

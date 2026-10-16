@@ -12,7 +12,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/cautem/cautem-gateway/internal/logger"
+	"github.com/cautem/quarshell-gateway/internal/logger"
 	"github.com/cautem/slogx"
 )
 

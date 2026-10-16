@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/cautem/cautem-gateway/internal/logbuf"
 	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
+	"github.com/cautem/quarshell-gateway/internal/logbuf"
 )
 
 const maxConsoleLogLines = 1000

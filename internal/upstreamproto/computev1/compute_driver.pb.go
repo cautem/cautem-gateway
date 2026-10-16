@@ -12,7 +12,7 @@ package computev1
 import (
 	_ "github.com/NVIDIA/OpenShell/sdk/go/proto/optionsv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
-	extensionv1 "github.com/cautem/cautem-gateway/internal/upstreamproto/extensionv1"
+	extensionv1 "github.com/cautem/quarshell-gateway/internal/upstreamproto/extensionv1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	structpb "google.golang.org/protobuf/types/known/structpb"

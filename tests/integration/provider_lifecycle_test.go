@@ -11,9 +11,9 @@ import (
 	"connectrpc.com/connect"
 	datamodelv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	"github.com/cautem/cautem-gateway/internal/httpapi"
 	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
 	"github.com/cautem/cautem-proto/gen/go/cautem/control/v1/controlv1connect"
+	"github.com/cautem/quarshell-gateway/internal/httpapi"
 )
 
 func TestProviderCredentialLifecycleThroughCompatRPC(t *testing.T) {

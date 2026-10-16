@@ -5,12 +5,12 @@
   OpenShell and cautem RPC APIs with HTTP health, auth bootstrap, and streaming relay transport.
 </p>
 <p align="center">
-  <a href="https://github.com/cautem/cautem-gateway/actions/workflows/ci.yml"><img src="https://github.com/cautem/cautem-gateway/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://pkg.go.dev/github.com/cautem/cautem-gateway"><img src="https://pkg.go.dev/badge/github.com/cautem/cautem-gateway.svg" alt="Go Reference"></a>
+  <a href="https://github.com/cautem/quarshell-gateway/actions/workflows/ci.yml"><img src="https://github.com/cautem/quarshell-gateway/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://pkg.go.dev/github.com/cautem/quarshell-gateway"><img src="https://pkg.go.dev/badge/github.com/cautem/quarshell-gateway.svg" alt="Go Reference"></a>
   <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" alt="License"></a>
-  <a href="https://github.com/cautem/cautem-gateway"><img src="https://img.shields.io/badge/Go-1.27+-00ADD8?logo=go" alt="Go Version"></a>
+  <a href="https://github.com/cautem/quarshell-gateway"><img src="https://img.shields.io/badge/Go-1.27+-00ADD8?logo=go" alt="Go Version"></a>
 
-  <a href="https://github.com/cautem/cautem-gateway/actions/workflows/images-gateway.yml"><img src="https://github.com/cautem/cautem-gateway/actions/workflows/images-gateway.yml/badge.svg" alt="images-gateway"></a>
+  <a href="https://github.com/cautem/quarshell-gateway/actions/workflows/images-gateway.yml"><img src="https://github.com/cautem/quarshell-gateway/actions/workflows/images-gateway.yml/badge.svg" alt="images-gateway"></a>
 </p>
 <p align="center">
   <sub>Part of the <a href="https://github.com/cautem">cautem / cautem</a> ecosystem</sub>
@@ -133,7 +133,7 @@ per sandbox. Archived logs are workspace-scoped and can be read with
 | Roadmap | [ROADMAP.md](./ROADMAP.md) |
 | Organization | [https://github.com/cautem](https://github.com/cautem) |
 | Organization overview | [github.com/cautem](https://github.com/cautem) |
-| pkg.go.dev | [`github.com/cautem/cautem-gateway`](https://pkg.go.dev/github.com/cautem/cautem-gateway) |
+| pkg.go.dev | [`github.com/cautem/quarshell-gateway`](https://pkg.go.dev/github.com/cautem/quarshell-gateway) |
 
 ## License
 

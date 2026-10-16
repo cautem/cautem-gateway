@@ -11,7 +11,7 @@ package interceptorv1
 
 import (
 	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	extensionv1 "github.com/cautem/cautem-gateway/internal/upstreamproto/extensionv1"
+	extensionv1 "github.com/cautem/quarshell-gateway/internal/upstreamproto/extensionv1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	structpb "google.golang.org/protobuf/types/known/structpb"

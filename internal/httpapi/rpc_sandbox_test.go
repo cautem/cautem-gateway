@@ -18,8 +18,8 @@ import (
 	"github.com/cautem/cautem-core"
 	"github.com/cautem/cautem-core/policy"
 	"github.com/cautem/cautem-driver/driver"
-	"github.com/cautem/cautem-gateway/internal/sshrelay"
-	"github.com/cautem/cautem-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-gateway/internal/sshrelay"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/structpb"
 )

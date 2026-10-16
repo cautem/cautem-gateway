@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cautem/cautem-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
 )
 
 // mountLocalAuthAPI keeps the loopback-only token hand-off used by the CLI.

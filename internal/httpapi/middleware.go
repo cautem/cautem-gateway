@@ -11,7 +11,7 @@ import (
 	"time"
 
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
-	middlewarev1 "github.com/cautem/cautem-gateway/internal/upstreamproto/middlewarev1"
+	middlewarev1 "github.com/cautem/quarshell-gateway/internal/upstreamproto/middlewarev1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"

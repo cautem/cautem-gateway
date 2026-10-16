@@ -7,8 +7,8 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/cautem/cautem-core/policy"
-	"github.com/cautem/cautem-gateway/internal/storage/store"
 	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"gopkg.in/yaml.v3"
 )
 

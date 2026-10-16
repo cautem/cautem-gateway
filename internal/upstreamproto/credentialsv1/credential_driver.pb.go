@@ -11,7 +11,7 @@ package credentialsv1
 
 import (
 	datamodelv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
-	extensionv1 "github.com/cautem/cautem-gateway/internal/upstreamproto/extensionv1"
+	extensionv1 "github.com/cautem/quarshell-gateway/internal/upstreamproto/extensionv1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"

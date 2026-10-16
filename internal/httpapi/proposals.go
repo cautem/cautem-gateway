@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/cautem/cautem-core/policy"
-	"github.com/cautem/cautem-gateway/internal/storage/store"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
 	"gopkg.in/yaml.v3"
 )
 

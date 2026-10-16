@@ -12,7 +12,7 @@ import (
 	"time"
 
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
-	"github.com/cautem/cautem-gateway/internal/gatewayconfig"
+	"github.com/cautem/quarshell-gateway/internal/gatewayconfig"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 

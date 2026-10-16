@@ -8,9 +8,9 @@ import (
 	"time"
 
 	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
-	"github.com/cautem/cautem-gateway/internal/logbuf"
-	"github.com/cautem/cautem-gateway/internal/storage/store"
-	computev1 "github.com/cautem/cautem-gateway/internal/upstreamproto/computev1"
+	"github.com/cautem/quarshell-gateway/internal/logbuf"
+	"github.com/cautem/quarshell-gateway/internal/storage/store"
+	computev1 "github.com/cautem/quarshell-gateway/internal/upstreamproto/computev1"
 	"google.golang.org/grpc"
 )
 
