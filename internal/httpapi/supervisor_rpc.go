@@ -9,23 +9,24 @@ import (
 	"sync"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-driver/driver"
 	_ "github.com/cautem/cautem-driver/driver/all"
 	"github.com/cautem/cautem-gateway/internal/sshrelay"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
-// openShellRPC exposes the pinned OpenShell protobuf service. Backend-specific
+// compatRPCAdapter exposes the pinned OpenShell protobuf service. Backend-specific
 // capabilities that have no safe implementation return an explicit status
 // rather than silently accepting an ineffective request.
 
 // ConnectSupervisor accepts the pinned OpenShell supervisor control protocol.
 // Sandbox identity is bound by the gRPC auth interceptor and checked against
 // the mandatory first Hello payload before the session is registered.
-func (s *openShellRPC) ConnectSupervisor(stream grpc.BidiStreamingServer[openshellv1.SupervisorMessage, openshellv1.GatewayMessage]) error {
+func (s *compatRPCAdapter) ConnectSupervisor(stream grpc.BidiStreamingServer[compatv1.SupervisorMessage, compatv1.GatewayMessage]) error {
 	principal := PrincipalFrom(stream.Context())
 	if principal.Kind != PrincipalSandbox || s.runtime == nil || s.runtime.st == nil || s.runtime.relay == nil {
 		return status.Error(codes.PermissionDenied, "sandbox supervisor identity required")
@@ -36,7 +37,7 @@ func (s *openShellRPC) ConnectSupervisor(stream grpc.BidiStreamingServer[openshe
 	}
 	hello := first.GetHello()
 	if hello == nil || strings.TrimSpace(hello.GetInstanceId()) == "" {
-		_ = stream.Send(&openshellv1.GatewayMessage{Payload: &openshellv1.GatewayMessage_SessionRejected{SessionRejected: &openshellv1.SessionRejected{Reason: "supervisor Hello is incomplete"}}})
+		_ = stream.Send(&compatv1.GatewayMessage{Payload: &compatv1.GatewayMessage_SessionRejected{SessionRejected: &compatv1.SessionRejected{Reason: "supervisor Hello is incomplete"}}})
 		return status.Error(codes.PermissionDenied, "supervisor Hello requires an instance id")
 	}
 	sandbox, ok := s.runtime.st.GetSandbox(principal.Sandbox)
@@ -47,7 +48,7 @@ func (s *openShellRPC) ConnectSupervisor(stream grpc.BidiStreamingServer[openshe
 		return status.Error(codes.NotFound, "sandbox not found")
 	}
 	if hello.GetSandboxId() != sandbox.Name && hello.GetSandboxId() != sandbox.ID {
-		_ = stream.Send(&openshellv1.GatewayMessage{Payload: &openshellv1.GatewayMessage_SessionRejected{SessionRejected: &openshellv1.SessionRejected{Reason: "supervisor sandbox identity mismatch"}}})
+		_ = stream.Send(&compatv1.GatewayMessage{Payload: &compatv1.GatewayMessage_SessionRejected{SessionRejected: &compatv1.SessionRejected{Reason: "supervisor sandbox identity mismatch"}}})
 		return status.Error(codes.PermissionDenied, "supervisor Hello sandbox does not match token")
 	}
 	if sandbox.PolicyRev > 0 {
@@ -58,13 +59,13 @@ func (s *openShellRPC) ConnectSupervisor(stream grpc.BidiStreamingServer[openshe
 	if _, err := s.runtime.st.SetSupervisorInstance(sandbox.Name, hello.GetInstanceId()); err != nil {
 		return status.Error(codes.Internal, "could not record supervisor instance")
 	}
-	openRequests := make(chan *openshellv1.GatewayMessage, 32)
+	openRequests := make(chan *compatv1.GatewayMessage, 32)
 	done := make(chan struct{})
 	var closeOnce sync.Once
 	closeDone := func() { closeOnce.Do(func() { close(done) }) }
 	defer closeDone()
-	remove := s.runtime.relay.RegisterOpenShellSupervisor(sandbox.Name, hello.GetInstanceId(), func(channel, target string) error {
-		msg, targetErr := openShellRelayOpenMessage(channel, target)
+	remove := s.runtime.relay.RegisterSupervisor(sandbox.Name, hello.GetInstanceId(), func(channel, target string) error {
+		msg, targetErr := relayOpenMessage(channel, target)
 		if targetErr != nil {
 			return targetErr
 		}
@@ -76,11 +77,11 @@ func (s *openShellRPC) ConnectSupervisor(stream grpc.BidiStreamingServer[openshe
 		}
 	}, done, closeDone)
 	defer remove()
-	if err := stream.Send(&openshellv1.GatewayMessage{Payload: &openshellv1.GatewayMessage_SessionAccepted{SessionAccepted: &openshellv1.SessionAccepted{SessionId: newGatewayID(), HeartbeatIntervalSecs: 15}}}); err != nil {
+	if err := stream.Send(&compatv1.GatewayMessage{Payload: &compatv1.GatewayMessage_SessionAccepted{SessionAccepted: &compatv1.SessionAccepted{SessionId: newGatewayID(), HeartbeatInterval: durationpb.New(15 * time.Second)}}}); err != nil {
 		return err
 	}
 	type recvResult struct {
-		msg *openshellv1.SupervisorMessage
+		msg *compatv1.SupervisorMessage
 		err error
 	}
 	recv := make(chan recvResult, 1)
@@ -116,12 +117,12 @@ func (s *openShellRPC) ConnectSupervisor(stream grpc.BidiStreamingServer[openshe
 				if strings.TrimSpace(relayClose.GetChannelId()) == "" {
 					return status.Error(codes.InvalidArgument, "relay_close requires channel_id")
 				}
-				s.runtime.relay.CloseOpenShellRelay(principal.Sandbox, relayClose.GetChannelId(), errors.New("supervisor aborted relay"))
+				s.runtime.relay.CloseRelay(principal.Sandbox, relayClose.GetChannelId(), errors.New("supervisor aborted relay"))
 				continue
 			}
 			if openResult := result.msg.GetRelayOpenResult(); openResult != nil {
 				if !openResult.GetSuccess() {
-					s.runtime.relay.RejectOpenShellRelay(principal.Sandbox, openResult.GetChannelId(), fmt.Errorf("supervisor rejected relay open: %s", openResult.GetError()))
+					s.runtime.relay.RejectRelay(principal.Sandbox, openResult.GetChannelId(), fmt.Errorf("supervisor rejected relay open: %s", openResult.GetError()))
 				}
 				continue
 			}
@@ -131,7 +132,7 @@ func (s *openShellRPC) ConnectSupervisor(stream grpc.BidiStreamingServer[openshe
 				return err
 			}
 		case <-ticker.C:
-			if err := stream.Send(&openshellv1.GatewayMessage{Payload: &openshellv1.GatewayMessage_Heartbeat{Heartbeat: &openshellv1.GatewayHeartbeat{}}}); err != nil {
+			if err := stream.Send(&compatv1.GatewayMessage{Payload: &compatv1.GatewayMessage_Heartbeat{Heartbeat: &compatv1.GatewayHeartbeat{}}}); err != nil {
 				return err
 			}
 		}
@@ -143,7 +144,7 @@ func (s *openShellRPC) ConnectSupervisor(stream grpc.BidiStreamingServer[openshe
 
 // RelayStream binds a supervisor's outbound data stream to the pending channel
 // created by the gateway. The first frame must claim a channel with RelayInit.
-func (s *openShellRPC) RelayStream(stream grpc.BidiStreamingServer[openshellv1.RelayFrame, openshellv1.RelayFrame]) error {
+func (s *compatRPCAdapter) RelayStream(stream grpc.BidiStreamingServer[compatv1.RelayFrame, compatv1.RelayFrame]) error {
 	p := PrincipalFrom(stream.Context())
 	if p.Kind != PrincipalSandbox || s.runtime == nil || s.runtime.relay == nil {
 		return status.Error(codes.PermissionDenied, "sandbox supervisor identity required")
@@ -155,12 +156,12 @@ func (s *openShellRPC) RelayStream(stream grpc.BidiStreamingServer[openshellv1.R
 	if first.GetInit() == nil || strings.TrimSpace(first.GetInit().GetChannelId()) == "" {
 		return status.Error(codes.InvalidArgument, "first relay frame must contain init.channel_id")
 	}
-	conn, err := s.runtime.relay.AcceptOpenShellRelay(p.Sandbox, first.GetInit().GetChannelId())
+	conn, err := s.runtime.relay.AcceptRelay(p.Sandbox, first.GetInit().GetChannelId())
 	if err != nil {
 		return status.Error(codes.NotFound, "relay channel is not pending for this sandbox")
 	}
 	defer conn.Close()
-	defer s.runtime.relay.CloseOpenShellRelay(p.Sandbox, first.GetInit().GetChannelId(), nil)
+	defer s.runtime.relay.CloseRelay(p.Sandbox, first.GetInit().GetChannelId(), nil)
 	readDone := make(chan error, 1)
 	go func() {
 		for {
@@ -176,7 +177,7 @@ func (s *openShellRPC) RelayStream(stream grpc.BidiStreamingServer[openshellv1.R
 				readDone <- recvErr
 				return
 			}
-			if _, ok := frame.GetPayload().(*openshellv1.RelayFrame_Data); !ok {
+			if _, ok := frame.GetPayload().(*compatv1.RelayFrame_Data); !ok {
 				_ = conn.Close()
 				readDone <- status.Error(codes.InvalidArgument, "relay data frame expected after init")
 				return
@@ -222,7 +223,7 @@ func (s *openShellRPC) RelayStream(stream grpc.BidiStreamingServer[openshellv1.R
 		select {
 		case event := <-readFrames:
 			if len(event.data) > 0 {
-				if err := stream.Send(&openshellv1.RelayFrame{Payload: &openshellv1.RelayFrame_Data{Data: event.data}}); err != nil {
+				if err := stream.Send(&compatv1.RelayFrame{Payload: &compatv1.RelayFrame_Data{Data: event.data}}); err != nil {
 					return err
 				}
 			}
@@ -263,7 +264,7 @@ func (s *openShellRPC) RelayStream(stream grpc.BidiStreamingServer[openshellv1.R
 // CreateSandbox provisions a named workspace-backed sandbox through the selected
 // gateway compute engine and records the resulting runtime identity.
 
-func (s *openShellRPC) waitForSupervisorReady(ctx context.Context, sandbox string) error {
+func (s *compatRPCAdapter) waitForSupervisorReady(ctx context.Context, sandbox string) error {
 	if s.runtime.waitSupervisorReady != nil {
 		return s.runtime.waitSupervisorReady(ctx, sandbox)
 	}
@@ -287,16 +288,20 @@ func validSandboxName(name string) bool {
 	return true
 }
 
-func awaitProxySidecar(ctx context.Context, engine driver.Engine, sandbox string) error {
-	if readiness, ok := engine.(driver.ProxyReadiness); ok {
+func awaitProxySidecar(ctx context.Context, backend driver.Backend, sandbox string) error {
+	readiness, err := driver.RequireExtension[driver.RuntimeProxyReadiness](ctx, backend, driver.CapabilityProxyReadiness, "wait for the runtime proxy")
+	if err == nil {
 		return readiness.WaitProxyReady(ctx, sandbox)
+	}
+	if !errors.Is(err, driver.ErrUnsupported) {
+		return fmt.Errorf("inspect runtime proxy readiness capability: %w", err)
 	}
 	deadline := time.NewTimer(10 * time.Second)
 	defer deadline.Stop()
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		info, err := engine.Inspect(ctx, "cautem-proxy-"+sandbox)
+		info, err := backend.Inspect(ctx, "cautem-proxy-"+sandbox)
 		if err == nil {
 			state := strings.ToLower(strings.TrimSpace(info.Status))
 			if strings.Contains(state, "running") || strings.HasPrefix(state, "up ") {

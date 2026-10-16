@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,7 +11,7 @@ import (
 	"time"
 
 	datamodelv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	core "github.com/cautem/cautem-core"
 	"github.com/cautem/cautem-driver/driver"
 	_ "github.com/cautem/cautem-driver/driver/all"
@@ -21,19 +20,21 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// openShellRPC exposes the pinned OpenShell protobuf service. Backend-specific
+// compatRPCAdapter exposes the pinned OpenShell protobuf service. Backend-specific
 // capabilities that have no safe implementation return an explicit status
 // rather than silently accepting an ineffective request.
 
 // CreateSandbox provisions a named workspace-backed sandbox through the selected
 // gateway compute engine and records the resulting runtime identity.
-func (s *openShellRPC) CreateSandbox(ctx context.Context, req *openshellv1.CreateSandboxRequest) (*openshellv1.SandboxResponse, error) {
+func (s *compatRPCAdapter) CreateSandbox(ctx context.Context, req *compatv1.CreateSandboxRequest) (*compatv1.SandboxResponse, error) {
 	return (&sandboxLifecycle{rpc: s}).Create(ctx, req)
 }
 
-func (l *sandboxLifecycle) Create(ctx context.Context, req *openshellv1.CreateSandboxRequest) (*openshellv1.SandboxResponse, error) {
+func (l *sandboxLifecycle) Create(ctx context.Context, req *compatv1.CreateSandboxRequest) (*compatv1.SandboxResponse, error) {
 	s := l.rpc
 	if s.runtime == nil || s.runtime.st == nil || s.runtime.compute == nil {
 		return nil, status.Error(codes.Unavailable, "compute runtime is not initialized")
@@ -45,9 +46,9 @@ func (l *sandboxLifecycle) Create(ctx context.Context, req *openshellv1.CreateSa
 	if p.Kind != PrincipalUser {
 		return nil, status.Error(codes.Unauthenticated, "authenticated user required")
 	}
-	workspace := strings.TrimSpace(req.GetWorkspace())
+	workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope()))
 	if workspace == "" {
-		workspace = "default"
+		return nil, status.Error(codes.InvalidArgument, "a named workspace is required")
 	}
 	if !validSandboxName(workspace) {
 		return nil, status.Error(codes.InvalidArgument, "workspace must be a simple name")
@@ -59,8 +60,8 @@ func (l *sandboxLifecycle) Create(ctx context.Context, req *openshellv1.CreateSa
 		return nil, err
 	}
 	requestedSpec := req.GetSpec()
-	workloadTemplateName := strings.TrimSpace(req.GetWorkloadTemplateName())
-	var spec *openshellv1.SandboxSpec
+	workloadTemplateName := strings.TrimSpace(req.GetWorkloadTemplate())
+	var spec *compatv1.SandboxSpec
 	if workloadTemplateName != "" {
 		if !validDNSLabel(workloadTemplateName) {
 			return nil, status.Error(codes.InvalidArgument, "workload_template_name must be a DNS label")
@@ -88,6 +89,7 @@ func (l *sandboxLifecycle) Create(ctx context.Context, req *openshellv1.CreateSa
 			resolved.Providers = append([]string(nil), requestedSpec.GetProviders()...)
 			resolved.Command = append([]string(nil), requestedSpec.GetCommand()...)
 			resolved.Tty = requestedSpec.GetTty()
+			resolved.RestartPolicy = requestedSpec.GetRestartPolicy()
 		}
 		spec = resolved
 	} else {
@@ -97,42 +99,24 @@ func (l *sandboxLifecycle) Create(ctx context.Context, req *openshellv1.CreateSa
 		spec = requestedSpec
 	}
 	tmpl := spec.GetTemplate()
-	if req.GetAwaitMainProcessAttachment() || spec.GetTty() {
-		return nil, status.Error(codes.Unimplemented, "interactive supervisor lifecycle is not available in gateway compute runtime")
+	if req.GetAwaitMainProcessAttachment() {
+		return nil, status.Error(codes.Unimplemented, "initial main-process attachment waiting is not available in gateway compute runtime")
 	}
 	if tmpl.GetRuntimeClassName() != "" || tmpl.GetAgentSocket() != "" || tmpl.UserNamespaces != nil {
 		return nil, status.Error(codes.Unimplemented, "requested template isolation/socket fields are not supported by this engine")
 	}
-	driverName := "docker"
-	if _, ok := s.runtime.compute.configured[driverName]; !ok {
-		names := make([]string, 0, len(s.runtime.compute.configured))
-		for name := range s.runtime.compute.configured {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		if len(names) == 0 {
-			return nil, status.Error(codes.FailedPrecondition, "no compute driver is configured")
-		}
-		driverName = names[0]
-	}
-	if tmpl.GetDriverConfig() != nil {
-		allCfg := tmpl.GetDriverConfig().AsMap()
-		selected, ok := allCfg[driverName].(map[string]any)
-		if !ok {
-			return nil, status.Errorf(codes.InvalidArgument, "template.driver_config has no %q configuration", driverName)
-		}
-		if _, err := json.Marshal(selected); err != nil {
-			return nil, status.Error(codes.InvalidArgument, "template driver config is invalid")
-		}
+	driverName, err := selectCreateComputeDriver(s.runtime.compute.configured, tmpl.GetDriverConfig())
+	if err != nil {
+		return nil, err
 	}
 	name := strings.TrimSpace(req.GetName())
 	if name == "" {
 		name = newGatewayID()
 	}
-	if err := validateOpenShellCreateSandbox(name, req.GetLabels(), req.GetAnnotations(), spec, driverName); err != nil {
+	if err := validateSandboxCreate(name, req.GetLabels(), req.GetAnnotations(), spec, driverName); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	effectiveReq := proto.Clone(req).(*openshellv1.CreateSandboxRequest)
+	effectiveReq := proto.Clone(req).(*compatv1.CreateSandboxRequest)
 	effectiveReq.Spec = spec
 	principal := PrincipalFrom(ctx)
 	modified, err := s.runtime.drivers.evaluateGatewayInterceptorPhases(ctx, "openshell.v1.OpenShell", "CreateSandbox", map[string]string{
@@ -143,9 +127,20 @@ func (l *sandboxLifecycle) Create(ctx context.Context, req *openshellv1.CreateSa
 	if err != nil {
 		return nil, err
 	}
-	effectiveReq = modified.(*openshellv1.CreateSandboxRequest)
+	effectiveReq = modified.(*compatv1.CreateSandboxRequest)
 	spec = effectiveReq.GetSpec()
 	tmpl = spec.GetTemplate()
+	driverConfig, err := selectedGatewayDriverConfig(tmpl, driverName)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	backend, err := s.runtime.compute.backend(driverName)
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "compute backend %q unavailable: %v", driverName, err)
+	}
+	if err := validateGatewayRuntime(ctx, backend); err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "compute driver %q cannot satisfy Gateway runtime requirements: %v", driverName, err)
+	}
 	stagedRootfs, err := s.resolveRootfsTarStaging(ctx, effectiveReq, driverName, workspace)
 	if err != nil {
 		return nil, err
@@ -157,10 +152,6 @@ func (l *sandboxLifecycle) Create(ctx context.Context, req *openshellv1.CreateSa
 		if _, policyErr := parseGlobalPolicyYAML(globalYAML); policyErr != nil {
 			return nil, status.Errorf(codes.FailedPrecondition, "global policy is invalid: %v", policyErr)
 		}
-	}
-	engine, err := s.runtime.compute.engine(driverName)
-	if err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "compute driver %q unavailable: %v", driverName, err)
 	}
 	s.runtime.sandboxMu.Lock()
 	defer s.runtime.sandboxMu.Unlock()
@@ -178,9 +169,6 @@ func (l *sandboxLifecycle) Create(ctx context.Context, req *openshellv1.CreateSa
 		return nil, status.Error(codes.InvalidArgument, "spec.template.image is required")
 	}
 	workspaceRoot := filepath.Join(s.runtime.opt.DataDir, "workspaces", workspace)
-	if err := os.MkdirAll(workspaceRoot, 0o700); err != nil {
-		return nil, status.Error(codes.Internal, "workspace storage could not be prepared")
-	}
 	runtimeInputs, err := s.prepareSandboxRuntime(effectiveReq, driverName, name, workspace)
 	if err != nil {
 		_ = os.RemoveAll(filepath.Join(s.runtime.opt.DataDir, "sandboxes", name))
@@ -193,32 +181,26 @@ func (l *sandboxLifecycle) Create(ctx context.Context, req *openshellv1.CreateSa
 	for k, v := range req.GetLabels() {
 		labels[k] = v
 	}
-	command := append([]string(nil), spec.GetCommand()...)
-	if len(command) == 0 {
-		command = []string{"/bin/sh"}
-	}
-	var driverConfigJSON string
-	if tmpl.GetDriverConfig() != nil {
-		if selected, ok := tmpl.GetDriverConfig().AsMap()[driverName].(map[string]any); ok {
-			b, e := json.Marshal(selected)
-			if e != nil {
-				return nil, status.Error(codes.InvalidArgument, "template driver config is invalid")
-			}
-			driverConfigJSON = string(b)
-		}
-	}
-	driverSpec, err := buildGatewayDriverSpec(effectiveReq, runtimeInputs, name, image, workspaceRoot, driverName, driverConfigJSON)
+	backendRequest, err := buildGatewayBackendCreateRequest(effectiveReq, runtimeInputs, name, image, workspace, workspaceRoot, driverName, driverConfig)
 	if err != nil {
 		_ = os.RemoveAll(filepath.Join(s.runtime.opt.DataDir, "sandboxes", name))
 		return nil, status.Errorf(codes.InvalidArgument, "sandbox resource settings are invalid: %v", err)
 	}
-	allocation := allocationFromDriverSpec(driverSpec)
+	backendRequest.Labels = driverLabels(labels, workspace, runtimeInputs.gatewayID)
+	if backendRequest.Network.Proxy == nil {
+		return nil, status.Error(codes.FailedPrecondition, "compute backend request has no policy proxy configuration")
+	}
+	if err := backend.ValidateCreate(ctx, backendRequest); err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "compute driver %q cannot honor sandbox configuration: %v", driverName, err)
+	}
+	if err := os.MkdirAll(workspaceRoot, 0o700); err != nil {
+		return nil, status.Error(codes.Internal, "workspace storage could not be prepared")
+	}
+	allocation := allocationFromBackendCreateRequest(backendRequest)
 	if err := checkWorkspaceSandboxQuota(s.runtime.st, workspace, allocation, true); err != nil {
 		_ = os.RemoveAll(filepath.Join(s.runtime.opt.DataDir, "sandboxes", name))
 		return nil, err
 	}
-	driverSpec.Command = command
-	driverSpec.Labels = driverLabels(labels, workspace, runtimeInputs.gatewayID)
 	now := time.Now().UTC()
 	specJSON, err := protojson.Marshal(spec)
 	if err != nil {
@@ -260,10 +242,14 @@ func (l *sandboxLifecycle) Create(ctx context.Context, req *openshellv1.CreateSa
 		_ = os.RemoveAll(filepath.Join(s.runtime.opt.DataDir, "sandboxes", name))
 		return nil, status.Error(codes.Internal, "sandbox lifecycle transition failed")
 	}
-	driverSpec.ProxyEnv = append(driverSpec.ProxyEnv, "CAUTEM_GATEWAY_URL="+runtimeInputs.gatewayURL, "CAUTEM_SANDBOX="+name, "CAUTEM_SANDBOX_TOKEN="+token, "CAUTEM_LOG_DIR=/var/log")
-	h, err := engine.Create(ctx, driverSpec)
+	backendRequest.Network.Proxy.Environment = append(backendRequest.Network.Proxy.Environment,
+		"CAUTEM_GATEWAY_URL="+runtimeInputs.gatewayURL,
+		"CAUTEM_SANDBOX="+name,
+		"CAUTEM_SANDBOX_TOKEN="+token,
+		"CAUTEM_LOG_DIR=/var/log")
+	h, err := backend.Create(ctx, backendRequest)
 	if err != nil {
-		cleanupErr := s.rollbackSandboxCreate(ctx, engine, record, h)
+		cleanupErr := s.rollbackSandboxCreate(ctx, backend, record, h)
 		return nil, status.Errorf(codes.FailedPrecondition, "sandbox create failed: %v", withSandboxCleanupError(err, cleanupErr))
 	}
 	if persisted, ok := s.runtime.st.GetSandbox(name); ok {
@@ -273,24 +259,24 @@ func (l *sandboxLifecycle) Create(ctx context.Context, req *openshellv1.CreateSa
 	record.Network = h.Network
 	record.UpdatedAt = time.Now().UTC()
 	if err = s.runtime.st.UpsertSandbox(record); err != nil {
-		cleanupErr := s.rollbackSandboxCreate(ctx, engine, record, h)
+		cleanupErr := s.rollbackSandboxCreate(ctx, backend, record, h)
 		return nil, status.Errorf(codes.Internal, "sandbox runtime identity could not be persisted: %v", withSandboxCleanupError(err, cleanupErr))
 	}
-	if err = engine.Start(ctx, h.ID); err != nil {
-		cleanupErr := s.rollbackSandboxCreate(ctx, engine, record, h)
+	if err = backend.Start(ctx, h.ID); err != nil {
+		cleanupErr := s.rollbackSandboxCreate(ctx, backend, record, h)
 		return nil, status.Errorf(codes.FailedPrecondition, "sandbox start failed: %v", withSandboxCleanupError(err, cleanupErr))
 	}
 	if !s.runtime.compute.isRemote(driverName) {
-		if err = awaitProxySidecar(ctx, engine, name); err != nil {
+		if err = awaitProxySidecar(ctx, backend, name); err != nil {
 			cause := fmt.Errorf("sandbox proxy supervisor did not start: %w", err)
-			cleanupErr := s.rollbackSandboxCreate(ctx, engine, record, h)
+			cleanupErr := s.rollbackSandboxCreate(ctx, backend, record, h)
 			return nil, status.Errorf(codes.FailedPrecondition, "%v", withSandboxCleanupError(cause, cleanupErr))
 		}
 	}
 	if !s.runtime.compute.isRemote(driverName) {
 		if err = s.waitForSupervisorReady(ctx, name); err != nil {
 			cause := errors.New("sandbox supervisor relay did not become ready; check that compute driver's grpc_endpoint is reachable from the container and that guest TLS settings are complete (Docker Desktop/WSL2 typically uses host.docker.internal)")
-			cleanupErr := s.rollbackSandboxCreate(ctx, engine, record, h)
+			cleanupErr := s.rollbackSandboxCreate(ctx, backend, record, h)
 			return nil, status.Errorf(codes.FailedPrecondition, "%v", withSandboxCleanupError(cause, cleanupErr))
 		}
 	}
@@ -302,11 +288,11 @@ func (l *sandboxLifecycle) Create(ctx context.Context, req *openshellv1.CreateSa
 	record.Status = "running"
 	record.UpdatedAt = time.Now().UTC()
 	if err = s.runtime.st.UpsertSandbox(record); err != nil {
-		cleanupErr := s.rollbackSandboxCreate(ctx, engine, record, h)
+		cleanupErr := s.rollbackSandboxCreate(ctx, backend, record, h)
 		return nil, status.Errorf(codes.Internal, "sandbox registry update failed: %v", withSandboxCleanupError(err, cleanupErr))
 	}
-	metadata := &datamodelv1.ObjectMeta{Id: record.ID, Name: name, CreatedAtMs: record.CreatedAt.UnixMilli(), Labels: labels, Annotations: record.Annotations, Workspace: workspace, ResourceVersion: record.ResourceVersion}
-	response := &openshellv1.SandboxResponse{Sandbox: &openshellv1.Sandbox{Metadata: metadata, Spec: effectiveReq.GetSpec(), Status: &openshellv1.SandboxStatus{SandboxName: name, Phase: openshellv1.SandboxPhase_SANDBOX_PHASE_PROVISIONING, CurrentPolicyVersion: uint32(record.PolicyRev)}}}
+	metadata := &datamodelv1.ObjectMeta{Id: record.ID, Name: name, CreatedTime: timestamppb.New(record.CreatedAt), Labels: labels, Annotations: record.Annotations, Workspace: workspace, ResourceVersion: record.ResourceVersion}
+	response := &compatv1.SandboxResponse{Sandbox: &compatv1.Sandbox{Metadata: metadata, Spec: effectiveReq.GetSpec(), Status: &compatv1.SandboxStatus{Phase: compatv1.SandboxPhase_SANDBOX_PHASE_PROVISIONING, CurrentPolicyVersion: uint32(record.PolicyRev)}}}
 	// post_commit is observational by contract: the sandbox is already durable
 	// and running, so an unavailable interceptor must not roll it back.
 	_, _ = s.runtime.drivers.evaluateGatewayInterceptorPhases(ctx, "openshell.v1.OpenShell", "CreateSandbox", map[string]string{
@@ -317,7 +303,34 @@ func (l *sandboxLifecycle) Create(ctx context.Context, req *openshellv1.CreateSa
 	return response, nil
 }
 
-func (s *openShellRPC) requireSandboxWrite(ctx context.Context, workspace string) error {
+func selectCreateComputeDriver(configured map[string]map[string]any, driverConfig *structpb.Struct) (string, error) {
+	names := make([]string, 0, len(configured))
+	for name := range configured {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		return "", status.Error(codes.FailedPrecondition, "no compute driver is configured")
+	}
+	if driverConfig != nil {
+		allConfig := driverConfig.AsMap()
+		var selected []string
+		for _, name := range names {
+			if _, ok := allConfig[name].(map[string]any); ok {
+				selected = append(selected, name)
+			}
+		}
+		if len(selected) == 1 {
+			return selected[0], nil
+		}
+	}
+	if _, ok := configured["docker"]; ok {
+		return "docker", nil
+	}
+	return names[0], nil
+}
+
+func (s *compatRPCAdapter) requireSandboxWrite(ctx context.Context, workspace string) error {
 	p := PrincipalFrom(ctx)
 	_, workspaceExists := s.runtime.st.GetWorkspace(workspace)
 	if !workspaceExists && workspace != "default" {
@@ -344,7 +357,7 @@ func (s *openShellRPC) requireSandboxWrite(ctx context.Context, workspace string
 	return status.Error(codes.PermissionDenied, "workspace sandbox access required")
 }
 
-func (s *openShellRPC) loadSandboxForMutation(ctx context.Context, name, workspace string) (store.Sandbox, driver.Engine, error) {
+func (s *compatRPCAdapter) loadSandboxForMutation(ctx context.Context, name, workspace string) (store.Sandbox, driver.Backend, error) {
 	if s.runtime == nil || s.runtime.st == nil || s.runtime.compute == nil {
 		return store.Sandbox{}, nil, status.Error(codes.Unavailable, "compute runtime is not initialized")
 	}
@@ -369,20 +382,20 @@ func (s *openShellRPC) loadSandboxForMutation(ctx context.Context, name, workspa
 	if err := s.requireSandboxWrite(ctx, workspace); err != nil {
 		return store.Sandbox{}, nil, err
 	}
-	engine, err := s.runtime.compute.engine(rec.ComputeDriver)
+	backend, err := s.runtime.compute.backend(rec.ComputeDriver)
 	if err != nil {
-		return store.Sandbox{}, nil, status.Errorf(codes.FailedPrecondition, "compute driver unavailable: %v", err)
+		return store.Sandbox{}, nil, status.Errorf(codes.FailedPrecondition, "compute backend unavailable: %v", err)
 	}
-	return rec, engine, nil
+	return rec, backend, nil
 }
 
-func sandboxLifecycleResponse(rec store.Sandbox, phase openshellv1.SandboxPhase) *openshellv1.SandboxResponse {
-	status := &openshellv1.SandboxStatus{SandboxName: rec.Name, Phase: phase, MainProcessInstanceId: rec.MainProcessInstanceID}
+func sandboxLifecycleResponse(rec store.Sandbox, phase compatv1.SandboxPhase) *compatv1.SandboxResponse {
+	status := &compatv1.SandboxStatus{Phase: phase, MainProcessInstanceId: rec.MainProcessInstanceID}
 	if rec.MainProcessExitCode != nil {
 		code := *rec.MainProcessExitCode
 		status.ExitCode = &code
 	}
-	return &openshellv1.SandboxResponse{Sandbox: &openshellv1.Sandbox{Metadata: &datamodelv1.ObjectMeta{Id: rec.ID, Name: rec.Name, Labels: rec.Labels, Annotations: rec.Annotations, Workspace: rec.Workspace, ResourceVersion: rec.ResourceVersion}, Status: status}}
+	return &compatv1.SandboxResponse{Sandbox: &compatv1.Sandbox{Metadata: &datamodelv1.ObjectMeta{Id: rec.ID, Name: rec.Name, CreatedTime: timestamppb.New(rec.CreatedAt), Labels: rec.Labels, Annotations: rec.Annotations, Workspace: rec.Workspace, ResourceVersion: rec.ResourceVersion}, Status: status}}
 }
 
 // sandboxLifecycle owns the runtime transitions shared by the OpenShell and
@@ -392,20 +405,20 @@ func sandboxLifecycleResponse(rec store.Sandbox, phase openshellv1.SandboxPhase)
 // sandboxLifecycle owns the runtime transitions shared by the OpenShell and
 // user-facing control transports. expectedVersion is zero only for legacy
 // OpenShell callers, whose pinned request schema has no version field.
-type sandboxLifecycle struct{ rpc *openShellRPC }
+type sandboxLifecycle struct{ rpc *compatRPCAdapter }
 
-func (s *openShellRPC) StartSandbox(ctx context.Context, req *openshellv1.StartSandboxRequest) (*openshellv1.SandboxResponse, error) {
+func (s *compatRPCAdapter) StartSandbox(ctx context.Context, req *compatv1.StartSandboxRequest) (*compatv1.SandboxResponse, error) {
 	return (&sandboxLifecycle{rpc: s}).Start(ctx, req, 0)
 }
 
-func (l *sandboxLifecycle) Start(ctx context.Context, req *openshellv1.StartSandboxRequest, expectedVersion uint64) (*openshellv1.SandboxResponse, error) {
+func (l *sandboxLifecycle) Start(ctx context.Context, req *compatv1.StartSandboxRequest, expectedVersion uint64) (*compatv1.SandboxResponse, error) {
 	s := l.rpc
 	if s.runtime == nil {
 		return nil, status.Error(codes.Unavailable, "compute runtime is not initialized")
 	}
 	s.runtime.sandboxMu.Lock()
 	defer s.runtime.sandboxMu.Unlock()
-	rec, engine, err := s.loadSandboxForMutation(ctx, req.GetName(), req.GetWorkspace())
+	rec, backend, err := s.loadSandboxForMutation(ctx, req.GetName(), requestWorkspace(req.GetWorkspaceScope()))
 	if err != nil {
 		return nil, err
 	}
@@ -421,16 +434,19 @@ func (l *sandboxLifecycle) Start(ctx context.Context, req *openshellv1.StartSand
 		}
 	}
 	if rec.RuntimeID == "" {
-		rec, err = s.recreateMissingSandboxRuntime(ctx, rec, engine)
+		rec, err = s.recreateMissingSandboxRuntime(ctx, rec, backend)
 		if err != nil {
 			return nil, status.Errorf(codes.FailedPrecondition, "sandbox recovery failed: %v", err)
 		}
-		return sandboxLifecycleResponse(rec, openshellv1.SandboxPhase_SANDBOX_PHASE_READY), nil
+		return sandboxLifecycleResponse(rec, compatv1.SandboxPhase_SANDBOX_PHASE_READY), nil
 	}
 	if rec.PolicyRev > 0 {
 		if err := s.syncSandboxRuntimePolicy(ctx, rec.Name, rec.PolicyRev); err != nil {
 			return nil, status.Error(codes.FailedPrecondition, "current sandbox policy could not be synchronized")
 		}
+	}
+	if err := s.restoreSandboxLaunchSpec(ctx, rec, backend); err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "sandbox workload could not be restored: %v", err)
 	}
 	previousStatus := rec.Status
 	rec, err = s.runtime.st.BeginSandboxStartCAS(rec.Name, expectedVersion)
@@ -440,10 +456,17 @@ func (l *sandboxLifecycle) Start(ctx context.Context, req *openshellv1.StartSand
 		}
 		return nil, status.Error(codes.Internal, "sandbox registry update failed")
 	}
-	var tokenStarter driver.TokenAwareStarter
+	var tokenStarter driver.RuntimeTokenStarter
 	var startToken string
 	if previousStatus != "running" {
-		tokenStarter, _ = engine.(driver.TokenAwareStarter)
+		tokenStarter, err = driver.RequireExtension[driver.RuntimeTokenStarter](ctx, backend, driver.CapabilityTokenAwareStart, "start with a rotated runtime token")
+		if errors.Is(err, driver.ErrUnsupported) {
+			tokenStarter = nil
+		} else if err != nil {
+			rec.Status = "error"
+			_ = s.runtime.st.UpsertSandbox(rec)
+			return nil, status.Error(codes.Unavailable, "compute backend capabilities could not be read")
+		}
 	}
 	if tokenStarter != nil {
 		startToken, err = s.runtime.st.IssueSandboxToken(rec.Name)
@@ -455,7 +478,7 @@ func (l *sandboxLifecycle) Start(ctx context.Context, req *openshellv1.StartSand
 		}
 		err = tokenStarter.StartWithToken(ctx, core.ID(rec.RuntimeID), startToken)
 	} else {
-		err = engine.Start(ctx, core.ID(rec.RuntimeID))
+		err = backend.Start(ctx, core.ID(rec.RuntimeID))
 	}
 	if err != nil {
 		if tokenStarter != nil {
@@ -468,7 +491,7 @@ func (l *sandboxLifecycle) Start(ctx context.Context, req *openshellv1.StartSand
 	if err = s.waitForSupervisorReady(ctx, rec.Name); err != nil {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
-		_ = engine.Stop(cleanupCtx, core.ID(rec.RuntimeID))
+		_ = backend.Stop(cleanupCtx, core.ID(rec.RuntimeID))
 		if tokenStarter != nil {
 			_ = s.runtime.st.RevokeSandboxToken(rec.Name)
 		}
@@ -480,28 +503,28 @@ func (l *sandboxLifecycle) Start(ctx context.Context, req *openshellv1.StartSand
 	if err != nil {
 		return nil, status.Error(codes.Internal, "sandbox registry update failed")
 	}
-	phase := openshellv1.SandboxPhase_SANDBOX_PHASE_READY
+	phase := compatv1.SandboxPhase_SANDBOX_PHASE_READY
 	switch rec.Status {
 	case "completed":
-		phase = openshellv1.SandboxPhase_SANDBOX_PHASE_COMPLETED
+		phase = compatv1.SandboxPhase_SANDBOX_PHASE_COMPLETED
 	case "error", "failed":
-		phase = openshellv1.SandboxPhase_SANDBOX_PHASE_ERROR
+		phase = compatv1.SandboxPhase_SANDBOX_PHASE_ERROR
 	}
 	return sandboxLifecycleResponse(rec, phase), nil
 }
 
-func (s *openShellRPC) StopSandbox(ctx context.Context, req *openshellv1.StopSandboxRequest) (*openshellv1.SandboxResponse, error) {
+func (s *compatRPCAdapter) StopSandbox(ctx context.Context, req *compatv1.StopSandboxRequest) (*compatv1.SandboxResponse, error) {
 	return (&sandboxLifecycle{rpc: s}).Stop(ctx, req, 0)
 }
 
-func (l *sandboxLifecycle) Stop(ctx context.Context, req *openshellv1.StopSandboxRequest, expectedVersion uint64) (*openshellv1.SandboxResponse, error) {
+func (l *sandboxLifecycle) Stop(ctx context.Context, req *compatv1.StopSandboxRequest, expectedVersion uint64) (*compatv1.SandboxResponse, error) {
 	s := l.rpc
 	if s.runtime == nil {
 		return nil, status.Error(codes.Unavailable, "compute runtime is not initialized")
 	}
 	s.runtime.sandboxMu.Lock()
 	defer s.runtime.sandboxMu.Unlock()
-	rec, engine, err := s.loadSandboxForMutation(ctx, req.GetName(), req.GetWorkspace())
+	rec, backend, err := s.loadSandboxForMutation(ctx, req.GetName(), requestWorkspace(req.GetWorkspaceScope()))
 	if err != nil {
 		return nil, err
 	}
@@ -518,13 +541,19 @@ func (l *sandboxLifecycle) Stop(ctx context.Context, req *openshellv1.StopSandbo
 		}
 		return nil, status.Error(codes.Internal, "sandbox registry update failed")
 	}
-	if err = engine.Stop(ctx, core.ID(rec.RuntimeID)); err != nil {
+	if err = backend.Stop(ctx, core.ID(rec.RuntimeID)); err != nil {
 		if _, restoreErr := s.runtime.st.RestoreSandboxStatusCAS(rec.Name, rec.ResourceVersion, previousStatus); restoreErr != nil {
 			return nil, status.Error(codes.Internal, "sandbox stop failed and registry state could not be restored")
 		}
 		return nil, status.Errorf(codes.FailedPrecondition, "sandbox stop failed: %v", err)
 	}
-	if _, ok := engine.(driver.TokenAwareStarter); ok {
+	_, capabilityErr := driver.RequireExtension[driver.RuntimeTokenStarter](context.WithoutCancel(ctx), backend, driver.CapabilityTokenAwareStart, "revoke stopped runtime token")
+	if capabilityErr != nil && !errors.Is(capabilityErr, driver.ErrUnsupported) {
+		rec.Status = "error"
+		_ = s.runtime.st.UpsertSandbox(rec)
+		return nil, status.Error(codes.Unavailable, "compute backend capabilities could not be read")
+	}
+	if capabilityErr == nil {
 		if err = s.runtime.st.RevokeSandboxToken(rec.Name); err != nil {
 			rec.Status = "error"
 			_ = s.runtime.st.UpsertSandbox(rec)
@@ -537,14 +566,14 @@ func (l *sandboxLifecycle) Stop(ctx context.Context, req *openshellv1.StopSandbo
 	if rec, err = s.runtime.st.MarkSandboxStopped(rec.Name); err != nil {
 		return nil, status.Error(codes.Internal, "sandbox registry update failed")
 	}
-	return sandboxLifecycleResponse(rec, openshellv1.SandboxPhase_SANDBOX_PHASE_STOPPED), nil
+	return sandboxLifecycleResponse(rec, compatv1.SandboxPhase_SANDBOX_PHASE_STOPPED), nil
 }
 
-func (s *openShellRPC) DeleteSandbox(ctx context.Context, req *openshellv1.DeleteSandboxRequest) (*openshellv1.DeleteSandboxResponse, error) {
+func (s *compatRPCAdapter) DeleteSandbox(ctx context.Context, req *compatv1.DeleteSandboxRequest) (*compatv1.DeleteSandboxResponse, error) {
 	return (&sandboxLifecycle{rpc: s}).Delete(ctx, req, 0)
 }
 
-func (l *sandboxLifecycle) Delete(ctx context.Context, req *openshellv1.DeleteSandboxRequest, expectedVersion uint64) (*openshellv1.DeleteSandboxResponse, error) {
+func (l *sandboxLifecycle) Delete(ctx context.Context, req *compatv1.DeleteSandboxRequest, expectedVersion uint64) (*compatv1.DeleteSandboxResponse, error) {
 	s := l.rpc
 	if req == nil || strings.TrimSpace(req.GetName()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
@@ -559,7 +588,7 @@ func (l *sandboxLifecycle) Delete(ctx context.Context, req *openshellv1.DeleteSa
 	// record without trying to call a backend that no longer owns it.
 	if s.runtime != nil && s.runtime.st != nil {
 		if orphan, ok := s.runtime.st.GetSandbox(req.GetName()); ok && orphan.RuntimeID == "" {
-			workspace := defaultWorkspace(req.GetWorkspace())
+			workspace := defaultWorkspace(requestWorkspace(req.GetWorkspaceScope()))
 			if defaultWorkspace(orphan.Workspace) == workspace {
 				if err := s.requireSandboxWrite(ctx, workspace); err != nil {
 					return nil, err
@@ -580,11 +609,11 @@ func (l *sandboxLifecycle) Delete(ctx context.Context, req *openshellv1.DeleteSa
 					s.runtime.relay.Disconnect(orphan.Name)
 				}
 				_ = os.RemoveAll(filepath.Join(s.runtime.opt.DataDir, "sandboxes", orphan.Name))
-				return &openshellv1.DeleteSandboxResponse{Deleted: true}, nil
+				return &compatv1.DeleteSandboxResponse{Outcome: compatv1.DeletionOutcome_DELETION_OUTCOME_COMPLETED}, nil
 			}
 		}
 	}
-	rec, engine, err := s.loadSandboxForMutation(ctx, req.GetName(), req.GetWorkspace())
+	rec, backend, err := s.loadSandboxForMutation(ctx, req.GetName(), requestWorkspace(req.GetWorkspaceScope()))
 	if err != nil {
 		return nil, err
 	}
@@ -598,7 +627,7 @@ func (l *sandboxLifecycle) Delete(ctx context.Context, req *openshellv1.DeleteSa
 		}
 		return nil, status.Error(codes.FailedPrecondition, "sandbox deletion could not begin")
 	}
-	deleted, cleanupErr := cleanupEngineSandbox(ctx, engine, core.ID(rec.RuntimeID), true)
+	deleted, cleanupErr := cleanupSandboxRuntime(ctx, backend, core.ID(rec.RuntimeID), true)
 	if !deleted {
 		rec.Status = "error"
 		persistErr := s.runtime.st.UpsertSandbox(rec)
@@ -613,5 +642,5 @@ func (l *sandboxLifecycle) Delete(ctx context.Context, req *openshellv1.DeleteSa
 	if err = s.runtime.st.DeleteSandbox(rec.Name); err != nil {
 		return nil, status.Error(codes.Internal, "sandbox registry update failed")
 	}
-	return &openshellv1.DeleteSandboxResponse{Deleted: true}, nil
+	return &compatv1.DeleteSandboxResponse{Outcome: compatv1.DeletionOutcome_DELETION_OUTCOME_COMPLETED}, nil
 }

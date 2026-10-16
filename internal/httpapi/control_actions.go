@@ -4,17 +4,21 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 
 	"connectrpc.com/connect"
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type sandboxNamedTarget interface {
@@ -96,7 +100,7 @@ func (a *controlAPI) prepareSandboxAction(ctx context.Context, req sandboxAction
 	if a.opt.grpcRuntime == nil || a.opt.grpcRuntime.compute == nil {
 		return "", "", nil, connect.NewError(connect.CodeUnavailable, errors.New("sandbox runtime is unavailable"))
 	}
-	rpc := &openShellRPC{options: a.opt, runtime: a.opt.grpcRuntime}
+	rpc := &compatRPCAdapter{options: a.opt, runtime: a.opt.grpcRuntime}
 	if err := rpc.requireSandboxWrite(ctx, workspace); err != nil {
 		return "", "", nil, controlActionError(err)
 	}
@@ -153,8 +157,15 @@ func (a *controlAPI) CreateSandbox(ctx context.Context, req *connect.Request[con
 	name := strings.TrimSpace(req.Msg.GetName())
 	image := strings.TrimSpace(req.Msg.GetImage())
 	template := strings.TrimSpace(req.Msg.GetWorkloadTemplateName())
-	if !validSandboxName(workspace) || len(name) > 19 || !validDNSLabel(name) || (image == "") == (template == "") || len(image) > 1024 || len(template) > 63 || len(req.Msg.GetCommand()) > 128 {
+	if !validSandboxName(workspace) || len(name) > 19 || !validDNSLabel(name) || (image == "") == (template == "") || len(image) > 1024 || len(template) > 63 || len(req.Msg.GetCommand()) > 128 || req.Msg.GetCpuMillis() > 1_000_000 || req.Msg.GetMemoryBytes() > 1<<50 || req.Msg.GetGpuCount() > 1024 || req.Msg.GetPidsLimit() < -1 || len(req.Msg.GetCdiDevices()) > 1024 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid sandbox creation request"))
+	}
+	if template != "" && (req.Msg.GetCpuMillis() != 0 || req.Msg.GetMemoryBytes() != 0 || req.Msg.GetGpuCount() != 0 || len(req.Msg.GetEnvironment()) != 0 || strings.TrimSpace(req.Msg.GetDriverConfigJson()) != "" || req.Msg.GetPidsLimit() != 0 || len(req.Msg.GetCdiDevices()) != 0) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("inline workload options cannot override a shared template"))
+	}
+	cdiDevices, err := normalizeControlCDIDevices(req.Msg.GetGpuCount(), req.Msg.GetCdiDevices())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	for _, arg := range req.Msg.GetCommand() {
 		if len(arg) > 8192 {
@@ -164,7 +175,7 @@ func (a *controlAPI) CreateSandbox(ctx context.Context, req *connect.Request[con
 	if a.opt.grpcRuntime == nil || a.opt.grpcRuntime.compute == nil {
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New("sandbox runtime is unavailable"))
 	}
-	rpc := &openShellRPC{options: a.opt, runtime: a.opt.grpcRuntime}
+	rpc := &compatRPCAdapter{options: a.opt, runtime: a.opt.grpcRuntime}
 	if err := rpc.requireSandboxWrite(ctx, workspace); err != nil {
 		return nil, controlActionError(err)
 	}
@@ -177,12 +188,56 @@ func (a *controlAPI) CreateSandbox(ctx context.Context, req *connect.Request[con
 			response, resultErr = nil, err
 		}
 	}()
-	spec := &openshellv1.SandboxSpec{Policy: &sandboxv1.SandboxPolicy{Version: 1}, Command: append([]string(nil), req.Msg.GetCommand()...)}
+	spec := &compatv1.SandboxSpec{Policy: &sandboxv1.SandboxPolicy{Version: 1}, Command: append([]string(nil), req.Msg.GetCommand()...), Environment: cloneStringMap(req.Msg.GetEnvironment()), Tty: req.Msg.GetTty()}
 	if image != "" {
-		spec.Template = &openshellv1.SandboxTemplate{Image: image}
+		spec.Template = &compatv1.SandboxTemplate{Image: image}
+		resourceLimits := map[string]any{}
+		if req.Msg.GetCpuMillis() > 0 {
+			resourceLimits["cpu"] = fmt.Sprintf("%dm", req.Msg.GetCpuMillis())
+		}
+		if req.Msg.GetMemoryBytes() > 0 {
+			resourceLimits["memory"] = strconv.FormatUint(req.Msg.GetMemoryBytes(), 10)
+		}
+		if len(resourceLimits) > 0 {
+			resources, err := structpb.NewStruct(map[string]any{"limits": resourceLimits})
+			if err != nil {
+				return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("workload resource limits are invalid"))
+			}
+			spec.Template.Resources = resources
+		}
+		gpuCount := req.Msg.GetGpuCount()
+		if gpuCount == 0 && len(cdiDevices) > 0 {
+			gpuCount = uint32(len(cdiDevices))
+		}
+		if gpuCount > 0 {
+			count := gpuCount
+			spec.ResourceRequirements = &compatv1.ResourceRequirements{Gpu: &compatv1.GpuResourceRequirements{Count: &count}}
+		}
+		if raw := strings.TrimSpace(req.Msg.GetDriverConfigJson()); raw != "" {
+			var config map[string]any
+			if err := json.Unmarshal([]byte(raw), &config); err != nil || config == nil {
+				return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("driver config must be a JSON object keyed by compute driver"))
+			}
+			driverConfig, err := structpb.NewStruct(config)
+			if err != nil {
+				return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("driver config contains unsupported JSON values"))
+			}
+			spec.Template.DriverConfig = driverConfig
+		}
 	}
-	_, err = (&sandboxLifecycle{rpc: rpc}).Create(ctx, &openshellv1.CreateSandboxRequest{
-		Workspace: workspace, Name: name, Labels: req.Msg.GetLabels(), WorkloadTemplateName: template, Spec: spec,
+	annotations := map[string]string{}
+	if req.Msg.GetPidsLimit() != 0 {
+		annotations[annotationQuarshellPidsLimit] = strconv.FormatInt(req.Msg.GetPidsLimit(), 10)
+	}
+	if len(cdiDevices) > 0 {
+		encoded, encodeErr := json.Marshal(cdiDevices)
+		if encodeErr != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("CDI device list is invalid"))
+		}
+		annotations[annotationQuarshellCDIDevices] = string(encoded)
+	}
+	_, err = (&sandboxLifecycle{rpc: rpc}).Create(ctx, &compatv1.CreateSandboxRequest{
+		WorkspaceScope: workspaceScope(workspace), Name: name, Labels: req.Msg.GetLabels(), Annotations: annotations, WorkloadTemplate: template, Spec: spec,
 	})
 	if err != nil {
 		return nil, controlActionError(err)
@@ -193,6 +248,26 @@ func (a *controlAPI) CreateSandbox(ctx context.Context, req *connect.Request[con
 	}
 	a.invalidateRuntimeStatus()
 	return connect.NewResponse(&controlv1.CreateSandboxResponse{Sandbox: a.sandboxSummary(ctx, record), Completed: true, OperationId: operation.ID}), nil
+}
+
+func normalizeControlCDIDevices(gpuCount uint32, devices []string) ([]string, error) {
+	normalized := make([]string, 0, len(devices))
+	seen := make(map[string]struct{}, len(devices))
+	for _, device := range devices {
+		device = strings.TrimSpace(device)
+		if device == "" {
+			return nil, errors.New("CDI device ID cannot be empty")
+		}
+		if _, ok := seen[device]; ok {
+			return nil, fmt.Errorf("duplicate CDI device ID %q", device)
+		}
+		seen[device] = struct{}{}
+		normalized = append(normalized, device)
+	}
+	if gpuCount > 0 && len(normalized) > 0 && uint32(len(normalized)) != gpuCount {
+		return nil, fmt.Errorf("GPU count %d does not match %d explicit CDI devices", gpuCount, len(normalized))
+	}
+	return normalized, nil
 }
 
 func (a *controlAPI) StartSandbox(ctx context.Context, req *connect.Request[controlv1.StartSandboxRequest]) (response *connect.Response[controlv1.StartSandboxResponse], resultErr error) {
@@ -221,7 +296,7 @@ func (a *controlAPI) StartSandbox(ctx context.Context, req *connect.Request[cont
 			response, resultErr = nil, err
 		}
 	}()
-	_, err = lifecycle.Start(ctx, &openshellv1.StartSandboxRequest{Name: name, Workspace: workspace}, req.Msg.GetExpectedResourceVersion())
+	_, err = lifecycle.Start(ctx, &compatv1.StartSandboxRequest{Name: name, WorkspaceScope: workspaceScope(workspace)}, req.Msg.GetExpectedResourceVersion())
 	if err != nil {
 		return nil, controlActionError(err)
 	}
@@ -259,7 +334,7 @@ func (a *controlAPI) StopSandbox(ctx context.Context, req *connect.Request[contr
 			response, resultErr = nil, err
 		}
 	}()
-	_, err = lifecycle.Stop(ctx, &openshellv1.StopSandboxRequest{Name: name, Workspace: workspace}, req.Msg.GetExpectedResourceVersion())
+	_, err = lifecycle.Stop(ctx, &compatv1.StopSandboxRequest{Name: name, WorkspaceScope: workspaceScope(workspace)}, req.Msg.GetExpectedResourceVersion())
 	if err != nil {
 		return nil, controlActionError(err)
 	}
@@ -297,11 +372,11 @@ func (a *controlAPI) DeleteSandbox(ctx context.Context, req *connect.Request[con
 			response, resultErr = nil, err
 		}
 	}()
-	result, err := lifecycle.Delete(ctx, &openshellv1.DeleteSandboxRequest{Name: name, Workspace: workspace}, req.Msg.GetExpectedResourceVersion())
+	result, err := lifecycle.Delete(ctx, &compatv1.DeleteSandboxRequest{Name: name, WorkspaceScope: workspaceScope(workspace)}, req.Msg.GetExpectedResourceVersion())
 	if err != nil {
 		return nil, controlActionError(err)
 	}
-	if !result.GetDeleted() {
+	if result.GetOutcome() == compatv1.DeletionOutcome_DELETION_OUTCOME_ALREADY_ABSENT || result.GetOutcome() == compatv1.DeletionOutcome_DELETION_OUTCOME_UNSPECIFIED {
 		return nil, connect.NewError(connect.CodeInternal, errors.New("sandbox deletion was not confirmed"))
 	}
 	return connect.NewResponse(&controlv1.DeleteSandboxResponse{Deleted: true, OperationId: operation.ID}), nil

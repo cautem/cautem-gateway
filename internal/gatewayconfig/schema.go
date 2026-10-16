@@ -1,8 +1,8 @@
-// Package gatewayconfig implements the pinned OpenShell gateway TOML schema.
+// Package gatewayconfig implements the pinned compatibility gateway TOML schema.
 package gatewayconfig
 
 type File struct {
-	OpenShell Root `toml:"openshell"`
+	Compatibility Root `toml:"openshell"`
 }
 
 type Root struct {
@@ -14,11 +14,14 @@ type Root struct {
 }
 
 type Gateway struct {
-	Name                        *string          `toml:"name"`
-	BindAddress                 *string          `toml:"bind_address"`
-	HealthBindAddress           *string          `toml:"health_bind_address"`
-	MetricsBindAddress          *string          `toml:"metrics_bind_address"`
-	LogLevel                    *string          `toml:"log_level"`
+	Name               *string `toml:"name"`
+	BindAddress        *string `toml:"bind_address"`
+	HealthBindAddress  *string `toml:"health_bind_address"`
+	MetricsBindAddress *string `toml:"metrics_bind_address"`
+	LogLevel           *string `toml:"log_level"`
+	// ComputeDriver is the pinned OpenShell v0.1.4 single-backend selector.
+	// ComputeDrivers remains available for existing Cautem multi-backend files.
+	ComputeDriver               *string          `toml:"compute_driver"`
 	ComputeDrivers              *[]string        `toml:"compute_drivers"`
 	CredentialDrivers           *[]string        `toml:"credential_drivers"`
 	DefaultCredentialDriver     *string          `toml:"default_credential_driver"`

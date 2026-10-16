@@ -49,18 +49,22 @@ func refreshRuntimeCredentials(ctx context.Context, st *store.Store, registry *c
 		if sandbox.RuntimeID == "" || !strings.EqualFold(strings.TrimSpace(sandbox.Status), "running") || !isKubernetesComputeDriver(sandbox.ComputeDriver) {
 			continue
 		}
-		engine, err := registry.engine(sandbox.ComputeDriver)
+		backend, err := registry.backend(sandbox.ComputeDriver)
 		if err != nil {
 			failures = append(failures, err)
 			log.Warn("runtime credential refresh skipped", slog.String("op", "gateway.runtime.credentials"), slog.String("driver", sandbox.ComputeDriver), slog.String("sandbox", sandbox.Name), slogx.Err(err))
 			continue
 		}
-		refresher, ok := engine.(driver.SandboxRuntimeCredentialRefresher)
-		if !ok {
+		refresher, err := driver.RequireExtension[driver.RuntimeCredentialRefresher](ctx, backend, driver.CapabilityCredentialRefresh, "refresh runtime credentials")
+		if errors.Is(err, driver.ErrUnsupported) {
+			continue
+		}
+		if err != nil {
+			failures = append(failures, fmt.Errorf("inspect credential refresh capability for sandbox %q: %w", sandbox.Name, err))
 			continue
 		}
 		refreshCtx, cancel := context.WithTimeout(ctx, runtimeCredentialRefreshTimeout)
-		err = refresher.RefreshSandboxRuntimeCredentials(refreshCtx, core.ID(sandbox.RuntimeID))
+		err = refresher.RefreshRuntimeCredentials(refreshCtx, core.ID(sandbox.RuntimeID))
 		cancel()
 		if err != nil {
 			failures = append(failures, fmt.Errorf("refresh credentials for sandbox %q: %w", sandbox.Name, err))

@@ -24,11 +24,11 @@ import (
 
 // GetSandboxConfig returns the effective policy/settings snapshot and selected
 // statically configured supervisor middleware services.
-func (s *openShellRPC) GetSandboxConfig(ctx context.Context, req *sandboxv1.GetSandboxConfigRequest) (*sandboxv1.GetSandboxConfigResponse, error) {
+func (s *compatRPCAdapter) GetSandboxConfig(ctx context.Context, req *sandboxv1.GetSandboxConfigRequest) (*sandboxv1.GetSandboxConfigResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return nil, status.Error(codes.Unavailable, "sandbox config runtime is not initialized")
 	}
-	id := strings.TrimSpace(req.GetSandboxId())
+	id := strings.TrimSpace(req.GetName())
 	if id == "" {
 		return nil, status.Error(codes.InvalidArgument, "sandbox_id is required")
 	}
@@ -121,8 +121,8 @@ func (s *openShellRPC) GetSandboxConfig(ctx context.Context, req *sandboxv1.GetS
 	}
 
 	globalSettings, _ := s.runtime.st.SettingsSnapshot()
-	effective := make(map[string]*sandboxv1.EffectiveSetting, len(registeredOpenShellSettings))
-	for key, kind := range registeredOpenShellSettings {
+	effective := make(map[string]*sandboxv1.EffectiveSetting, len(registeredGatewaySettings))
+	for key, kind := range registeredGatewaySettings {
 		item := &sandboxv1.EffectiveSetting{Scope: sandboxv1.SettingScope_SETTING_SCOPE_UNSPECIFIED, Value: &sandboxv1.SettingValue{}}
 		if raw, exists := sandbox.Settings[key]; exists {
 			value, err := settingValue(kind, raw)
@@ -307,7 +307,7 @@ func providerEnvironmentRevision(ctx context.Context, st *store.Store, sec *secr
 	return revision, nil
 }
 
-func (s *openShellRPC) requireSandboxConfigRead(p Principal, workspace string) error {
+func (s *compatRPCAdapter) requireSandboxConfigRead(p Principal, workspace string) error {
 	if p.Kind != PrincipalUser {
 		return status.Error(codes.Unauthenticated, "authenticated user required")
 	}
@@ -335,7 +335,7 @@ func (s *openShellRPC) requireSandboxConfigRead(p Principal, workspace string) e
 	return status.Error(codes.PermissionDenied, "workspace sandbox config access required")
 }
 
-var registeredOpenShellSettings = map[string]string{
+var registeredGatewaySettings = map[string]string{
 	"ocsf_json_enabled":              "bool",
 	"ocsf_schema_version":            "string",
 	"agent_policy_proposals_enabled": "bool",

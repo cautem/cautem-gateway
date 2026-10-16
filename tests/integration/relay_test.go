@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-core/relayproto"
 	"github.com/cautem/cautem-gateway/internal/httpapi"
 	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
@@ -93,10 +93,10 @@ func (g *testGateway) sshSession(name string) sshSessionResp {
 	client, _ := g.openShellClient()
 	ctx := g.rpcContext(context.Background(), g.token)
 	deadline := time.Now().Add(2 * time.Second)
-	var session *openshellv1.CreateSshSessionResponse
+	var session *compatv1.CreateSshSessionResponse
 	var err error
 	for {
-		session, err = client.CreateSshSession(ctx, &openshellv1.CreateSshSessionRequest{SandboxId: name})
+		session, err = client.CreateSshSession(ctx, &compatv1.CreateSshSessionRequest{Sandbox: name})
 		if err == nil {
 			break
 		}
@@ -105,7 +105,11 @@ func (g *testGateway) sshSession(name string) sshSessionResp {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	return sshSessionResp{SandboxID: session.GetSandboxId(), Token: session.GetToken(), Scheme: session.GetGatewayScheme(), Host: session.GetGatewayHost(), Port: int(session.GetGatewayPort()), ExpiresAt: session.GetExpiresAtMs()}
+	var expiresAt int64
+	if expiration := session.GetExpirationTime(); expiration != nil {
+		expiresAt = expiration.AsTime().UnixMilli()
+	}
+	return sshSessionResp{SandboxID: session.GetSandboxId(), Token: session.GetToken(), Scheme: session.GetGatewayScheme(), Host: session.GetGatewayHost(), Port: int(session.GetGatewayPort()), ExpiresAt: expiresAt}
 }
 
 func (g *testGateway) dialSSH(sandbox, sessionToken string) (*ssh.Client, error) {
@@ -163,8 +167,8 @@ func TestRelaySSHSessionEndToEnd(t *testing.T) {
 	_ = client.Close()
 
 	rpcClient, _ := g.openShellClient()
-	revoked, err := rpcClient.RevokeSshSession(g.rpcContext(context.Background(), g.token), &openshellv1.RevokeSshSessionRequest{Token: s.Token})
-	if err != nil || !revoked.GetRevoked() {
+	revoked, err := rpcClient.RevokeSshSession(g.rpcContext(context.Background(), g.token), &compatv1.RevokeSshSessionRequest{Token: s.Token})
+	if err != nil || revoked.GetOutcome() != compatv1.DeletionOutcome_DELETION_OUTCOME_COMPLETED {
 		t.Fatalf("revoke SSH session over OpenShell RPC: response=%v err=%v", revoked, err)
 	}
 	if _, err := g.dialSSH("demo", s.Token); statusOf(err) != http.StatusUnauthorized {
@@ -209,13 +213,13 @@ func TestRelayNotReady(t *testing.T) {
 	g.createSandbox("cold")
 	client, _ := g.openShellClient()
 	ctx := g.rpcContext(context.Background(), g.token)
-	if _, err := client.CreateSshSession(ctx, &openshellv1.CreateSshSessionRequest{SandboxId: "cold"}); status.Code(err) != codes.FailedPrecondition {
+	if _, err := client.CreateSshSession(ctx, &compatv1.CreateSshSessionRequest{Sandbox: "cold"}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("CreateSshSession without supervisor code=%s err=%v", status.Code(err), err)
 	}
-	if _, err := client.CreateSshSession(ctx, &openshellv1.CreateSshSessionRequest{SandboxId: "ghost"}); status.Code(err) != codes.NotFound {
+	if _, err := client.CreateSshSession(ctx, &compatv1.CreateSshSessionRequest{Sandbox: "ghost"}); status.Code(err) != codes.NotFound {
 		t.Fatalf("CreateSshSession for missing sandbox code=%s err=%v", status.Code(err), err)
 	}
-	exec, err := client.ExecSandbox(ctx, &openshellv1.ExecSandboxRequest{SandboxId: "cold", Command: []string{"true"}})
+	exec, err := client.ExecSandbox(ctx, &compatv1.ExecSandboxRequest{Sandbox: "cold", Command: []string{"true"}})
 	if err == nil {
 		_, err = exec.Recv()
 	}
@@ -232,7 +236,7 @@ func TestRelayExec(t *testing.T) {
 
 	client, _ := g.openShellClient()
 	ctx := g.rpcContext(context.Background(), g.token)
-	stream, err := client.ExecSandbox(ctx, &openshellv1.ExecSandboxRequest{SandboxId: "demo", Command: []string{"sh", "-c", `echo "it's fine"; exit 4`}})
+	stream, err := client.ExecSandbox(ctx, &compatv1.ExecSandboxRequest{Sandbox: "demo", Command: []string{"sh", "-c", `echo "it's fine"; exit 4`}})
 	if err != nil {
 		t.Fatalf("ExecSandbox: %v", err)
 	}

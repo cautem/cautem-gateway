@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -48,7 +48,7 @@ type browserTerminalEvent struct {
 type browserTerminalStream struct {
 	ctx   context.Context
 	conn  *websocket.Conn
-	start *openshellv1.ExecSandboxInput
+	start *compatv1.ExecSandboxInput
 	mu    sync.Mutex
 }
 
@@ -113,10 +113,16 @@ func serveBrowserTerminal(w http.ResponseWriter, r *http.Request, appCtx context
 		_ = conn.Close(websocket.StatusPolicyViolation, "authentication failed")
 		return
 	}
+	sandbox, ok := st.GetSandbox(name)
+	if !ok {
+		writeTerminalError(appCtx, conn, "sandbox not found")
+		_ = conn.Close(websocket.StatusPolicyViolation, "sandbox not found")
+		return
+	}
 
 	cols, rows := terminalDimensions(frame.Cols, frame.Rows)
-	start := &openshellv1.ExecSandboxRequest{SandboxId: name, Command: []string{"/bin/sh"}, Tty: true, Cols: cols, Rows: rows}
-	rpc := &openShellRPC{options: opt, runtime: runtime}
+	start := &compatv1.ExecSandboxRequest{Sandbox: name, WorkspaceScope: workspaceScope(defaultWorkspace(sandbox.Workspace)), Command: []string{"/bin/sh"}, Tty: true, Cols: cols, Rows: rows}
+	rpc := &compatRPCAdapter{options: opt, runtime: runtime}
 	principalCtx := withPrincipal(appCtx, principal)
 	if err := validateBrowserTerminalAccess(principalCtx, principal, name, st, runtime, opt, start); err != nil {
 		writeTerminalError(appCtx, conn, terminalErrorMessage(err))
@@ -134,7 +140,7 @@ func serveBrowserTerminal(w http.ResponseWriter, r *http.Request, appCtx context
 	stream := &browserTerminalStream{
 		ctx:   sessionCtx,
 		conn:  conn,
-		start: &openshellv1.ExecSandboxInput{Payload: &openshellv1.ExecSandboxInput_Start{Start: start}},
+		start: &compatv1.ExecSandboxInput{Payload: &compatv1.ExecSandboxInput_Start{Start: start}},
 	}
 	if err := rpc.ExecSandboxInteractive(stream); err != nil && !errors.Is(err, context.Canceled) {
 		_ = wsjson.Write(sessionCtx, conn, browserTerminalEvent{Type: "error", Message: terminalErrorMessage(err)})
@@ -170,7 +176,7 @@ func oidcUserRoleAllowed(principal Principal, settings OIDCOptions) bool {
 	return containsString(principal.Roles, settings.UserRole) || containsString(principal.Roles, settings.AdminRole)
 }
 
-func monitorBrowserTerminal(ctx context.Context, cancel context.CancelFunc, conn *websocket.Conn, authRequest *http.Request, token string, initial Principal, sandboxName string, st *store.Store, runtime *grpcRuntime, opt Options, auth AuthOptions, start *openshellv1.ExecSandboxRequest) {
+func monitorBrowserTerminal(ctx context.Context, cancel context.CancelFunc, conn *websocket.Conn, authRequest *http.Request, token string, initial Principal, sandboxName string, st *store.Store, runtime *grpcRuntime, opt Options, auth AuthOptions, start *compatv1.ExecSandboxRequest) {
 	ticker := time.NewTicker(terminalRecheckInterval)
 	defer ticker.Stop()
 	for {
@@ -198,14 +204,14 @@ func monitorBrowserTerminal(ctx context.Context, cancel context.CancelFunc, conn
 	}
 }
 
-func validateBrowserTerminalAccess(ctx context.Context, principal Principal, sandboxName string, st *store.Store, runtime *grpcRuntime, opt Options, start *openshellv1.ExecSandboxRequest) error {
+func validateBrowserTerminalAccess(ctx context.Context, principal Principal, sandboxName string, st *store.Store, runtime *grpcRuntime, opt Options, start *compatv1.ExecSandboxRequest) error {
 	if runtime == nil || st == nil {
 		return status.Error(codes.Unavailable, "terminal service unavailable")
 	}
 	if principal.Kind != PrincipalUser {
 		return status.Error(codes.Unauthenticated, "authenticated user required")
 	}
-	sandbox, err := (&openShellRPC{options: opt, runtime: runtime}).validateExecSandboxRequest(withPrincipal(ctx, principal), start)
+	sandbox, err := (&compatRPCAdapter{options: opt, runtime: runtime}).validateExecSandboxRequest(withPrincipal(ctx, principal), start)
 	if err != nil {
 		return err
 	}
@@ -263,7 +269,7 @@ func (s *browserTerminalStream) RecvMsg(any) error {
 	return status.Error(codes.Unimplemented, "RecvMsg is unsupported")
 }
 
-func (s *browserTerminalStream) Recv() (*openshellv1.ExecSandboxInput, error) {
+func (s *browserTerminalStream) Recv() (*compatv1.ExecSandboxInput, error) {
 	s.mu.Lock()
 	if s.start != nil {
 		start := s.start
@@ -278,10 +284,10 @@ func (s *browserTerminalStream) Recv() (*openshellv1.ExecSandboxInput, error) {
 	}
 	switch frame.Type {
 	case "stdin":
-		return &openshellv1.ExecSandboxInput{Payload: &openshellv1.ExecSandboxInput_Stdin{Stdin: []byte(frame.Data)}}, nil
+		return &compatv1.ExecSandboxInput{Payload: &compatv1.ExecSandboxInput_Stdin{Stdin: []byte(frame.Data)}}, nil
 	case "resize":
 		cols, rows := terminalDimensions(frame.Cols, frame.Rows)
-		return &openshellv1.ExecSandboxInput{Payload: &openshellv1.ExecSandboxInput_Resize{Resize: &openshellv1.ExecSandboxWindowResize{Cols: cols, Rows: rows}}}, nil
+		return &compatv1.ExecSandboxInput{Payload: &compatv1.ExecSandboxInput_Resize{Resize: &compatv1.ExecSandboxWindowResize{Cols: cols, Rows: rows}}}, nil
 	case "close":
 		return nil, io.EOF
 	default:
@@ -289,19 +295,19 @@ func (s *browserTerminalStream) Recv() (*openshellv1.ExecSandboxInput, error) {
 	}
 }
 
-func (s *browserTerminalStream) Send(event *openshellv1.ExecSandboxEvent) error {
+func (s *browserTerminalStream) Send(event *compatv1.ExecSandboxEvent) error {
 	if event == nil {
 		return status.Error(codes.InvalidArgument, "empty terminal event")
 	}
 	frame := browserTerminalEvent{}
 	switch payload := event.GetPayload().(type) {
-	case *openshellv1.ExecSandboxEvent_Stdout:
+	case *compatv1.ExecSandboxEvent_Stdout:
 		frame.Type = "stdout"
 		frame.Data = base64.StdEncoding.EncodeToString(payload.Stdout.GetData())
-	case *openshellv1.ExecSandboxEvent_Stderr:
+	case *compatv1.ExecSandboxEvent_Stderr:
 		frame.Type = "stderr"
 		frame.Data = base64.StdEncoding.EncodeToString(payload.Stderr.GetData())
-	case *openshellv1.ExecSandboxEvent_Exit:
+	case *compatv1.ExecSandboxEvent_Exit:
 		frame.Type = "exit"
 		frame.ExitCode = payload.Exit.GetExitCode()
 	default:
@@ -315,6 +321,6 @@ var _ interface {
 	SetHeader(metadata.MD) error
 	SendHeader(metadata.MD) error
 	SetTrailer(metadata.MD)
-	Recv() (*openshellv1.ExecSandboxInput, error)
-	Send(*openshellv1.ExecSandboxEvent) error
+	Recv() (*compatv1.ExecSandboxInput, error)
+	Send(*compatv1.ExecSandboxEvent) error
 } = (*browserTerminalStream)(nil)

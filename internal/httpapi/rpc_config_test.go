@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	"github.com/cautem/cautem-gateway/internal/sshrelay"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
@@ -36,7 +36,7 @@ func TestGetGatewayConfigReturnsRegisteredTypedSettingsAndRevision(t *testing.T)
 			t.Fatal(err)
 		}
 	}
-	handler := &openShellRPC{runtime: &grpcRuntime{st: st}}
+	handler := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
 	resp, err := handler.GetGatewayConfig(context.Background(), &sandboxv1.GetGatewayConfigRequest{})
 	if err != nil {
 		t.Fatal(err)
@@ -93,13 +93,13 @@ func TestGetSandboxConfigReturnsStablePolicySettingsAndWorkspace(t *testing.T) {
 	if err := sec.PutProviderCredentials(ctx, "provider", map[string]string{"GITHUB_TOKEN": "secret-one"}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, sec: sec}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, sec: sec}}
 	ctx = withPrincipal(ctx, Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	first, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{SandboxId: "sandbox-123"})
+	first, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{Name: "sandbox-123"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{SandboxId: "demo"})
+	second, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{Name: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestGetSandboxConfigReturnsStablePolicySettingsAndWorkspace(t *testing.T) {
 	if err := st.UpsertProvider(store.ProviderRecord{Name: "provider", Type: "github", Workspace: "team", EnvVars: []string{"GITHUB_TOKEN"}, CredentialExpiresAtMS: map[string]int64{"GITHUB_TOKEN": 2000}}); err != nil {
 		t.Fatal(err)
 	}
-	updated, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{SandboxId: "demo"})
+	updated, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{Name: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestGetSandboxConfigReturnsStablePolicySettingsAndWorkspace(t *testing.T) {
 	if err := sec.PutProviderCredentials(ctx, "provider", map[string]string{"GITHUB_TOKEN": "secret-two"}); err != nil {
 		t.Fatal(err)
 	}
-	credentialUpdated, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{SandboxId: "demo"})
+	credentialUpdated, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{Name: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,23 +170,23 @@ func TestUpdateConfigMutatesGlobalAndSandboxSettings(t *testing.T) {
 	if err := st.UpsertWorkspace(store.WorkspaceRecord{Name: "team", Members: []store.WorkspaceMember{{Subject: "admin", Role: "admin"}}}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	sandboxResp, err := rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{
-		Name: "demo", Workspace: "team", SettingKey: "proposal_approval_mode",
+	sandboxResp, err := rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{
+		Sandbox: "demo", WorkspaceScope: workspaceScope("team"), SettingKey: "proposal_approval_mode",
 		SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_StringValue{StringValue: "auto"}},
 	})
 	if err != nil || sandboxResp.GetSettingsRevision() != 1 {
 		t.Fatalf("sandbox update resp=%v err=%v", sandboxResp, err)
 	}
-	globalResp, err := rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{
+	globalResp, err := rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{
 		Global: true, SettingKey: "proposal_approval_mode",
 		SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_StringValue{StringValue: "manual"}},
 	})
 	if err != nil || globalResp.GetSettingsRevision() != 1 {
 		t.Fatalf("global update resp=%v err=%v", globalResp, err)
 	}
-	config, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{SandboxId: "demo"})
+	config, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{Name: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,11 +194,11 @@ func TestUpdateConfigMutatesGlobalAndSandboxSettings(t *testing.T) {
 	if setting.GetValue().GetStringValue() != "manual" || setting.GetScope() != sandboxv1.SettingScope_SETTING_SCOPE_GLOBAL {
 		t.Fatalf("global setting did not override sandbox value: %v", setting)
 	}
-	deleted, err := rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{Global: true, SettingKey: "proposal_approval_mode", DeleteSetting: true})
+	deleted, err := rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{Global: true, SettingKey: "proposal_approval_mode", DeleteSetting: true})
 	if err != nil || !deleted.GetDeleted() || deleted.GetSettingsRevision() != 2 {
 		t.Fatalf("global delete resp=%v err=%v", deleted, err)
 	}
-	config, err = rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{SandboxId: "demo"})
+	config, err = rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{Name: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,12 +218,12 @@ func TestUpdateConfigRejectsGlobalPolicyWithConnectedRuntime(t *testing.T) {
 	}
 	hub := sshrelay.NewHub()
 	done := make(chan struct{})
-	remove := hub.RegisterOpenShellSupervisor("demo", "instance-1", func(string, string) error { return nil }, done, nil)
+	remove := hub.RegisterSupervisor("demo", "instance-1", func(string, string) error { return nil }, done, nil)
 	defer func() { close(done); remove() }()
 	dataDir := t.TempDir()
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, relay: hub, opt: Options{DataDir: dataDir}, policyApplyTimeout: 20 * time.Millisecond}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, relay: hub, opt: Options{DataDir: dataDir}, policyApplyTimeout: 20 * time.Millisecond}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	if _, err := rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{
+	if _, err := rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{
 		Global: true, Policy: &sandboxv1.SandboxPolicy{Version: 1},
 	}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("global policy update error=%v; want FailedPrecondition", err)
@@ -256,12 +256,12 @@ func TestUpdateConfigRejectsUnacknowledgedConnectedRuntime(t *testing.T) {
 	dataDir := t.TempDir()
 	hub := sshrelay.NewHub()
 	done := make(chan struct{})
-	remove := hub.RegisterOpenShellSupervisor("demo", "instance-1", func(string, string) error { return nil }, done, nil)
+	remove := hub.RegisterSupervisor("demo", "instance-1", func(string, string) error { return nil }, done, nil)
 	defer func() { close(done); remove() }()
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, relay: hub, opt: Options{DataDir: dataDir}, policyApplyTimeout: 20 * time.Millisecond}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, relay: hub, opt: Options{DataDir: dataDir}, policyApplyTimeout: 20 * time.Millisecond}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	_, err = rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{
-		Name: "demo", Workspace: "default", Policy: &sandboxv1.SandboxPolicy{Version: 1},
+	_, err = rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{
+		Sandbox: "demo", WorkspaceScope: workspaceScope("default"), Policy: &sandboxv1.SandboxPolicy{Version: 1},
 	})
 	if status.Code(err) != codes.FailedPrecondition || !strings.Contains(err.Error(), "timed out waiting") {
 		t.Fatalf("unacknowledged update error=%v; want bounded FailedPrecondition timeout", err)
@@ -279,14 +279,14 @@ func TestUpdateConfigRejectsUnsupportedAndUnauthorizedMutations(t *testing.T) {
 	if err := st.UpsertWorkspace(store.WorkspaceRecord{Name: "team", Members: []store.WorkspaceMember{{Subject: "reader", Role: "reader"}}}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
-	base := &openshellv1.UpdateConfigRequest{Name: "demo", Workspace: "team", SettingKey: "ocsf_json_enabled", SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_BoolValue{BoolValue: true}}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
+	base := &compatv1.UpdateConfigRequest{Sandbox: "demo", WorkspaceScope: workspaceScope("team"), SettingKey: "ocsf_json_enabled", SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_BoolValue{BoolValue: true}}}
 	reader := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "oidc", Subject: "reader", Scopes: []string{"config:write"}})
 	if _, err := rpc.UpdateConfig(reader, base); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("workspace reader write error=%v; want PermissionDenied", err)
 	}
 	local := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	deleteSandbox := &openshellv1.UpdateConfigRequest{Name: base.GetName(), Workspace: base.GetWorkspace(), SettingKey: base.GetSettingKey(), DeleteSetting: true}
+	deleteSandbox := &compatv1.UpdateConfigRequest{Sandbox: base.GetSandbox(), WorkspaceScope: base.GetWorkspaceScope(), SettingKey: base.GetSettingKey(), DeleteSetting: true}
 	if response, err := rpc.UpdateConfig(local, deleteSandbox); err != nil || response.GetDeleted() {
 		t.Fatalf("missing sandbox setting delete response=%v err=%v; want a successful no-op", response, err)
 	}
@@ -296,16 +296,16 @@ func TestUpdateConfigRejectsUnsupportedAndUnauthorizedMutations(t *testing.T) {
 	if _, err := rpc.UpdateConfig(local, deleteSandbox); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("globally managed sandbox setting delete error=%v; want FailedPrecondition", err)
 	}
-	badEnum := &openshellv1.UpdateConfigRequest{Global: true, SettingKey: "proposal_approval_mode", SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_StringValue{StringValue: "autom"}}}
+	badEnum := &compatv1.UpdateConfigRequest{Global: true, SettingKey: "proposal_approval_mode", SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_StringValue{StringValue: "autom"}}}
 	if _, err := rpc.UpdateConfig(local, badEnum); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("invalid registered value error=%v; want InvalidArgument", err)
 	}
-	policyUpdate := &openshellv1.UpdateConfigRequest{Global: true, Policy: &sandboxv1.SandboxPolicy{Version: 1}}
+	policyUpdate := &compatv1.UpdateConfigRequest{Global: true, Policy: &sandboxv1.SandboxPolicy{Version: 1}}
 	policyResp, err := rpc.UpdateConfig(local, policyUpdate)
 	if err != nil || policyResp.GetVersion() != 1 || policyResp.GetPolicyHash() == "" {
 		t.Fatalf("global policy update resp=%v err=%v", policyResp, err)
 	}
-	mergeUpdate := &openshellv1.UpdateConfigRequest{Global: true, MergeOperations: []*openshellv1.PolicyMergeOperation{{}}}
+	mergeUpdate := &compatv1.UpdateConfigRequest{Global: true, MergeOperations: []*compatv1.PolicyMergeOperation{{}}}
 	if _, err := rpc.UpdateConfig(local, mergeUpdate); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("policy merge error=%v; want InvalidArgument", err)
 	}
@@ -319,9 +319,9 @@ func TestUpdateConfigAnnotationsAndResourceVersionCAS(t *testing.T) {
 	if err := st.UpsertSandbox(store.Sandbox{Name: "demo", Workspace: "team"}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	first, err := rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{Name: "demo", SettingKey: "proposal_approval_mode", SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_StringValue{StringValue: "manual"}}, Annotations: map[string]string{"audit.example/source": "console"}})
+	first, err := rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{Sandbox: "demo", SettingKey: "proposal_approval_mode", SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_StringValue{StringValue: "manual"}}, Annotations: map[string]string{"audit.example/source": "console"}})
 	if err != nil || first.GetAnnotations()["audit.example/source"] != "console" {
 		t.Fatalf("first update=%v err=%v", first, err)
 	}
@@ -329,15 +329,15 @@ func TestUpdateConfigAnnotationsAndResourceVersionCAS(t *testing.T) {
 	if sandbox.ResourceVersion != 2 {
 		t.Fatalf("resource version=%d; want 2", sandbox.ResourceVersion)
 	}
-	second, err := rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{Name: "demo", SettingKey: "proposal_approval_mode", SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_StringValue{StringValue: "auto"}}, ExpectedResourceVersion: sandbox.ResourceVersion})
+	second, err := rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{Sandbox: "demo", SettingKey: "proposal_approval_mode", SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_StringValue{StringValue: "auto"}}, ExpectedResourceVersion: sandbox.ResourceVersion})
 	if err != nil || second.GetSettingsRevision() != 2 {
 		t.Fatalf("second update=%v err=%v", second, err)
 	}
-	_, err = rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{Name: "demo", SettingKey: "proposal_approval_mode", SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_StringValue{StringValue: "manual"}}, ExpectedResourceVersion: sandbox.ResourceVersion})
+	_, err = rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{Sandbox: "demo", SettingKey: "proposal_approval_mode", SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_StringValue{StringValue: "manual"}}, ExpectedResourceVersion: sandbox.ResourceVersion})
 	if status.Code(err) != codes.Aborted {
 		t.Fatalf("stale update error=%v; want Aborted", err)
 	}
-	_, err = rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{Name: "demo", SettingKey: "proposal_approval_mode", SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_StringValue{StringValue: "manual"}}, Annotations: map[string]string{"bad key": "value"}})
+	_, err = rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{Sandbox: "demo", SettingKey: "proposal_approval_mode", SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_StringValue{StringValue: "manual"}}, Annotations: map[string]string{"bad key": "value"}})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("invalid annotation error=%v; want InvalidArgument", err)
 	}
@@ -351,22 +351,22 @@ func TestGetSandboxConfigEnforcesPrincipalScope(t *testing.T) {
 	if err := st.UpsertSandbox(store.Sandbox{Name: "demo", ID: "sandbox-123", Workspace: "team"}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
-	if _, err := rpc.GetSandboxConfig(context.Background(), &sandboxv1.GetSandboxConfigRequest{SandboxId: "demo"}); status.Code(err) != codes.Unauthenticated {
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
+	if _, err := rpc.GetSandboxConfig(context.Background(), &sandboxv1.GetSandboxConfigRequest{Name: "demo"}); status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("anonymous error=%v; want Unauthenticated", err)
 	}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalSandbox, Sandbox: "other"})
-	if _, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{SandboxId: "demo"}); status.Code(err) != codes.PermissionDenied {
+	if _, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{Name: "demo"}); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("cross-sandbox error=%v; want PermissionDenied", err)
 	}
 	ctx = withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "oidc", Subject: "reader", Scopes: []string{"config:read"}})
-	if _, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{SandboxId: "demo"}); status.Code(err) != codes.NotFound {
+	if _, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{Name: "demo"}); status.Code(err) != codes.NotFound {
 		t.Fatalf("unregistered workspace error=%v; want NotFound", err)
 	}
 	if err := st.UpsertWorkspace(store.WorkspaceRecord{Name: "team", Members: []store.WorkspaceMember{{Subject: "reader", Role: "reader"}}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{SandboxId: "demo"}); err != nil {
+	if _, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{Name: "demo"}); err != nil {
 		t.Fatalf("workspace reader denied: %v", err)
 	}
 }
@@ -382,9 +382,9 @@ func TestGetSandboxConfigAppliesGlobalPolicyOverrideAndFailureMode(t *testing.T)
 	if err := st.SetGlobalPolicy("version: 3\n"); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{options: Options{PolicyValidationFailureMode: "retain_last_valid"}, runtime: &grpcRuntime{st: st}}
+	rpc := &compatRPCAdapter{options: Options{PolicyValidationFailureMode: "retain_last_valid"}, runtime: &grpcRuntime{st: st}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	resp, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{SandboxId: "demo"})
+	resp, err := rpc.GetSandboxConfig(ctx, &sandboxv1.GetSandboxConfigRequest{Name: "demo"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,6 +422,29 @@ func TestGetSandboxConfigDualAuthAllowsSandboxBearerOnlyForItsSandbox(t *testing
 	}
 }
 
+func TestCompatPeerRPCsRejectUserBearerUntilPeerAuthExists(t *testing.T) {
+	st, err := store.Open(t.TempDir(), "gw-peer-rpc-auth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	opt := Options{grpcRuntime: &grpcRuntime{st: st}}
+	token, err := st.EnsureAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+token))
+	for _, method := range []string{
+		"/openshell.v1.OpenShell/PeerRelay",
+		"/openshell.v1.OpenShell/PeerReportProviderReadiness",
+		"/openshell.v1.OpenShell/PeerReportEndpointStatus",
+		"/openshell.v1.OpenShell/PeerGetSandboxProviderStatus",
+	} {
+		if _, err := authenticateGRPC(ctx, method, opt); status.Code(err) != codes.PermissionDenied {
+			t.Errorf("%s accepted a user bearer or returned %s; want PermissionDenied", method, status.Code(err))
+		}
+	}
+}
+
 func TestRefreshSandboxTokenAcceptsImmediatelyPreviousActiveSupervisorToken(t *testing.T) {
 	st, err := store.Open(t.TempDir(), "gw-active-token-refresh")
 	if err != nil {
@@ -444,8 +467,8 @@ func TestRefreshSandboxTokenAcceptsImmediatelyPreviousActiveSupervisorToken(t *t
 	if err != nil {
 		t.Fatalf("previous active token was not accepted for refresh: %v", err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
-	response, err := rpc.RefreshSandboxToken(refreshedContext, &openshellv1.RefreshSandboxTokenRequest{})
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
+	response, err := rpc.RefreshSandboxToken(refreshedContext, &compatv1.RefreshSandboxTokenRequest{})
 	if err != nil || response.GetToken() != current {
 		t.Fatalf("refresh response=%v err=%v; want current token", response, err)
 	}
@@ -475,12 +498,12 @@ func TestUpdateConfigAllowsSandboxPolicySyncOnlyForOwnSandbox(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
-	resp, err := rpc.UpdateConfig(authed, &openshellv1.UpdateConfigRequest{Name: "demo", Policy: &sandboxv1.SandboxPolicy{Version: 1}})
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
+	resp, err := rpc.UpdateConfig(authed, &compatv1.UpdateConfigRequest{Sandbox: "demo", Policy: &sandboxv1.SandboxPolicy{Version: 1}})
 	if err != nil || resp.GetVersion() != 1 {
 		t.Fatalf("policy sync resp=%v err=%v", resp, err)
 	}
-	settingMutation := &openshellv1.UpdateConfigRequest{Name: "demo", SettingKey: "ocsf_json_enabled", SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_BoolValue{BoolValue: true}}}
+	settingMutation := &compatv1.UpdateConfigRequest{Sandbox: "demo", SettingKey: "ocsf_json_enabled", SettingValue: &sandboxv1.SettingValue{Value: &sandboxv1.SettingValue_BoolValue{BoolValue: true}}}
 	if _, err := rpc.UpdateConfig(authed, settingMutation); status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("sandbox token setting mutation error=%v; want Unauthenticated", err)
 	}
@@ -503,10 +526,10 @@ func TestUpdateConfigDeliversEffectivePolicyToRuntimeFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("version: 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, opt: Options{DataDir: dataDir}}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, opt: Options{DataDir: dataDir}}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	if _, err := rpc.UpdateConfig(ctx, &openshellv1.UpdateConfigRequest{
-		Name: "demo", Workspace: "default",
+	if _, err := rpc.UpdateConfig(ctx, &compatv1.UpdateConfigRequest{
+		Sandbox: "demo", WorkspaceScope: workspaceScope("default"),
 		Policy: &sandboxv1.SandboxPolicy{Version: 1, NetworkPolicies: map[string]*sandboxv1.NetworkPolicyRule{
 			"api": {Name: "api", Endpoints: []*sandboxv1.NetworkEndpoint{{Host: "api.example.com", Port: 443}}},
 		}},
@@ -523,7 +546,7 @@ func TestUpdateConfigDeliversEffectivePolicyToRuntimeFile(t *testing.T) {
 }
 
 func TestGetGatewayConfigRejectsUnavailableAndMalformedState(t *testing.T) {
-	if _, err := (&openShellRPC{}).GetGatewayConfig(context.Background(), &sandboxv1.GetGatewayConfigRequest{}); status.Code(err) != codes.Unavailable {
+	if _, err := (&compatRPCAdapter{}).GetGatewayConfig(context.Background(), &sandboxv1.GetGatewayConfigRequest{}); status.Code(err) != codes.Unavailable {
 		t.Fatalf("nil runtime error=%v; want Unavailable", err)
 	}
 	st, err := store.Open(t.TempDir(), "gw-config")
@@ -533,7 +556,7 @@ func TestGetGatewayConfigRejectsUnavailableAndMalformedState(t *testing.T) {
 	if err := st.SetSetting("ocsf_json_enabled", "sometimes"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (&openShellRPC{runtime: &grpcRuntime{st: st}}).GetGatewayConfig(context.Background(), &sandboxv1.GetGatewayConfigRequest{}); status.Code(err) != codes.Internal {
+	if _, err := (&compatRPCAdapter{runtime: &grpcRuntime{st: st}}).GetGatewayConfig(context.Background(), &sandboxv1.GetGatewayConfigRequest{}); status.Code(err) != codes.Internal {
 		t.Fatalf("malformed setting error=%v; want Internal", err)
 	}
 }

@@ -1,6 +1,9 @@
 package httpapi
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -11,9 +14,15 @@ import (
 	"strconv"
 	"strings"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	core "github.com/cautem/cautem-core"
 	"github.com/cautem/cautem-driver/driver"
 	"google.golang.org/protobuf/types/known/structpb"
+)
+
+const (
+	annotationQuarshellPidsLimit  = "quarshell.internal/pids-limit"
+	annotationQuarshellCDIDevices = "quarshell.internal/cdi-devices"
 )
 
 func sandboxHelperPath(name string) (string, error) {
@@ -30,6 +39,10 @@ func sandboxHelperPath(name string) (string, error) {
 }
 
 func sandboxGatewayURL(opt Options, driverConfig map[string]any) (string, error) {
+	return sandboxGatewayURLForExecutionMode(opt, driverConfig, false)
+}
+
+func sandboxGatewayURLForExecutionMode(opt Options, driverConfig map[string]any, runsOnGatewayHost bool) (string, error) {
 	for _, value := range []any{driverConfig["grpc_endpoint"], os.Getenv("OPENSHELL_GATEWAY_URL"), os.Getenv("CAUTEM_GATEWAY_URL")} {
 		raw, ok := value.(string)
 		if !ok || strings.TrimSpace(raw) == "" {
@@ -45,7 +58,7 @@ func sandboxGatewayURL(opt Options, driverConfig map[string]any) (string, error)
 		if err := validateGuestTLSForEndpoint(driverConfig, u.Scheme); err != nil {
 			return "", err
 		}
-		if ip := net.ParseIP(u.Hostname()); ip != nil && ip.IsLoopback() || strings.EqualFold(u.Hostname(), "localhost") {
+		if !runsOnGatewayHost && (net.ParseIP(u.Hostname()) != nil && net.ParseIP(u.Hostname()).IsLoopback() || strings.EqualFold(u.Hostname(), "localhost")) {
 			port := u.Port()
 			if port == "" {
 				return "", fmt.Errorf("gateway gRPC endpoint needs an explicit port")
@@ -54,7 +67,7 @@ func sandboxGatewayURL(opt Options, driverConfig map[string]any) (string, error)
 		}
 		return strings.TrimRight(u.String(), "/"), nil
 	}
-	_, port, err := net.SplitHostPort(opt.Listen)
+	listenHost, port, err := net.SplitHostPort(opt.Listen)
 	if err != nil {
 		return "", fmt.Errorf("gateway listener endpoint is unavailable")
 	}
@@ -64,6 +77,16 @@ func sandboxGatewayURL(opt Options, driverConfig map[string]any) (string, error)
 	}
 	if err := validateGuestTLSForEndpoint(driverConfig, scheme); err != nil {
 		return "", err
+	}
+	if runsOnGatewayHost {
+		if ip := net.ParseIP(listenHost); ip != nil && ip.IsUnspecified() {
+			listenHost = "127.0.0.1"
+		}
+		// A host-owned VM worker can use a Gateway listener on loopback. A
+		// wildcard listener is reached through its IPv4 loopback address.
+		if net.ParseIP(listenHost) != nil && net.ParseIP(listenHost).IsLoopback() || strings.EqualFold(listenHost, "localhost") {
+			return scheme + "://" + net.JoinHostPort(listenHost, port), nil
+		}
 	}
 	return scheme + "://host.docker.internal:" + port, nil
 }
@@ -94,25 +117,114 @@ func validateGuestTLSForEndpoint(driverConfig map[string]any, scheme string) err
 	return nil
 }
 
-func buildGatewayDriverSpec(req *openshellv1.CreateSandboxRequest, inputs sandboxRuntimeInputs, name, image, workspaceRoot, driverName, driverConfigJSON string) (driver.Spec, error) {
+func selectedGatewayDriverConfig(template *compatv1.SandboxTemplate, driverName string) (map[string]any, error) {
+	if template.GetDriverConfig() == nil {
+		return nil, nil
+	}
+	selected, ok := template.GetDriverConfig().AsMap()[driverName].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("template.driver_config has no %q configuration", driverName)
+	}
+	return selected, nil
+}
+
+func buildGatewayBackendCreateRequest(req *compatv1.CreateSandboxRequest, inputs sandboxRuntimeInputs, name, image, workspaceID, workspaceRoot, driverName string, config map[string]any) (driver.BackendCreateRequest, error) {
 	spec := req.GetSpec()
 	tmpl := spec.GetTemplate()
-	out := driver.Spec{Name: name, Image: image, Workspace: workspaceRoot, GatewayID: inputs.gatewayID, Command: append([]string(nil), spec.GetCommand()...), Env: append([]string(nil), inputs.env...), ProxyBin: inputs.proxyBin, InitBin: inputs.initBin, SSHBin: inputs.sshBin, EnableSSH: true, PolicyPath: inputs.policyPath, ProxyEnv: append([]string(nil), inputs.proxyEnv...), GatewayURL: inputs.gatewayURL, PersistVolume: true, DriverConfigJSON: driverConfigJSON, Labels: map[string]string{}, SupervisorBin: inputs.supervisorBin}
-	if len(out.Command) == 0 {
-		out.Command = []string{"/bin/sh"}
+	restartPolicy, err := mainProcessRestartPolicy(spec.GetRestartPolicy())
+	if err != nil {
+		return driver.BackendCreateRequest{}, err
 	}
+	pidsLimit, cdiDevices, err := sandboxRuntimeOptionsFromAnnotations(req.GetAnnotations())
+	if err != nil {
+		return driver.BackendCreateRequest{}, err
+	}
+	command := append([]string(nil), spec.GetCommand()...)
+	if len(command) == 0 {
+		command = []string{"/bin/sh"}
+	}
+	resources := driver.ResourceLimits{PIDs: pidsLimit, CDIDevices: cdiDevices}
 	if gpu := spec.GetResourceRequirements().GetGpu(); gpu != nil {
-		out.GPU = true
+		resources.GPU = true
 		if gpu.Count != nil {
-			out.GPUCount = int(*gpu.Count)
+			resources.GPUCount = int(*gpu.Count)
+		}
+	}
+	if len(cdiDevices) > 0 {
+		if resources.GPUCount > 0 && resources.GPUCount != len(cdiDevices) {
+			return driver.BackendCreateRequest{}, fmt.Errorf("GPU count does not match explicit CDI device count")
+		}
+		resources.GPU = true
+		if resources.GPUCount == 0 {
+			resources.GPUCount = len(cdiDevices)
 		}
 	}
 	cpu, memory, err := engineResourceLimits(tmpl.GetResources(), driverName)
 	if err != nil {
-		return driver.Spec{}, err
+		return driver.BackendCreateRequest{}, err
 	}
-	out.CPU, out.MemoryBytes = cpu, memory
-	return out, nil
+	resources.CPUCores, resources.MemoryBytes = cpu, memory
+	var proxy *driver.ProxySpec
+	if inputs.proxyBin != "" || inputs.policyPath != "" || len(inputs.proxyEnv) > 0 {
+		proxy = &driver.ProxySpec{Binary: inputs.proxyBin, PolicyPath: inputs.policyPath, Environment: append([]string(nil), inputs.proxyEnv...)}
+	}
+	var backendConfig any
+	if config != nil {
+		backendConfig = config
+	}
+	return driver.BackendCreateRequest{
+		SandboxID: core.ID(name),
+		Name:      name,
+		Workspace: driver.WorkspaceTarget{ID: workspaceID, HostPath: workspaceRoot, Persist: true},
+		Workload: driver.WorkloadSpec{
+			Image: image, Command: command, Environment: append([]string(nil), inputs.env...),
+			TTY: spec.GetTty(), RestartPolicy: restartPolicy,
+		},
+		Resources: resources,
+		Network: driver.NetworkSpec{
+			GatewayID: inputs.gatewayID, GatewayURL: inputs.gatewayURL,
+			Proxy: proxy,
+		},
+		Runtime: driver.RuntimeAssets{
+			InitBinary: inputs.initBin, SupervisorBinary: inputs.supervisorBin,
+			SSHBinary: inputs.sshBin, EnableSSH: true,
+		},
+		Config: backendConfig,
+	}, nil
+}
+
+func sandboxRuntimeOptionsFromAnnotations(annotations map[string]string) (int64, []string, error) {
+	var pidsLimit int64
+	if raw, ok := annotations[annotationQuarshellPidsLimit]; ok {
+		value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if err != nil || value < -1 {
+			return 0, nil, fmt.Errorf("pids limit must be -1 or a non-negative integer")
+		}
+		pidsLimit = value
+	}
+	var devices []string
+	if raw, ok := annotations[annotationQuarshellCDIDevices]; ok {
+		if strings.TrimSpace(raw) == "" || json.Unmarshal([]byte(raw), &devices) != nil || len(devices) == 0 {
+			return 0, nil, fmt.Errorf("CDI devices must be a non-empty JSON string array")
+		}
+		normalized, err := normalizeControlCDIDevices(0, devices)
+		if err != nil {
+			return 0, nil, err
+		}
+		devices = normalized
+	}
+	return pidsLimit, devices, nil
+}
+
+func validateGatewayRuntime(ctx context.Context, backend driver.Backend) error {
+	validator, err := driver.RequireExtension[driver.RuntimeContractValidator](ctx, backend, driver.CapabilityGatewayRuntimeValidation, "validate Gateway runtime guarantees")
+	if errors.Is(err, driver.ErrUnsupported) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return validator.ValidateRuntimeContract(ctx)
 }
 
 // driverLabels binds the Gateway-verified installation and workspace identity

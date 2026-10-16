@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	controlv1 "github.com/cautem/cautem-proto/gen/go/cautem/control/v1"
@@ -239,13 +239,13 @@ func TestCreateSandboxEnforcesAggregateCPUQuotaBeforeRuntimeCreate(t *testing.T)
 	engine := &rpcTestEngine{}
 	registry := newComputeRegistry(Options{ComputeDriverNames: []string{"docker"}, ComputeDriverConfigs: map[string]map[string]any{"docker": {"grpc_endpoint": "http://gateway:7443"}}})
 	registry.engines["docker"] = engine
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, opt: Options{DataDir: t.TempDir(), Listen: "127.0.0.1:7443"}, compute: registry}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, opt: Options{DataDir: t.TempDir(), Listen: "127.0.0.1:7443"}, compute: registry}}
 	resources, err := structpb.NewStruct(map[string]any{"limits": map[string]any{"cpu": "500m"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = rpc.CreateSandbox(withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local"}), &openshellv1.CreateSandboxRequest{
-		Workspace: "team", Name: "next", Spec: &openshellv1.SandboxSpec{Policy: &sandboxv1.SandboxPolicy{Version: 1}, Template: &openshellv1.SandboxTemplate{Image: "alpine:3.22", Resources: resources}},
+	_, err = rpc.CreateSandbox(withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local"}), &compatv1.CreateSandboxRequest{
+		WorkspaceScope: workspaceScope("team"), Name: "next", Spec: &compatv1.SandboxSpec{Policy: &sandboxv1.SandboxPolicy{Version: 1}, Template: &compatv1.SandboxTemplate{Image: "alpine:3.22", Resources: resources}},
 	})
 	if connect.CodeOf(err) != connect.CodeResourceExhausted {
 		t.Fatalf("CreateSandbox error = %v, want ResourceExhausted", err)
@@ -270,9 +270,9 @@ func TestStartSandboxEnforcesWorkspaceGPUQuota(t *testing.T) {
 		t.Fatal(err)
 	}
 	count := uint32(1)
-	specJSON, err := protojson.Marshal(&openshellv1.SandboxSpec{
-		Template:             &openshellv1.SandboxTemplate{Image: "alpine:3.22"},
-		ResourceRequirements: &openshellv1.ResourceRequirements{Gpu: &openshellv1.GpuResourceRequirements{Count: &count}},
+	specJSON, err := protojson.Marshal(&compatv1.SandboxSpec{
+		Template:             &compatv1.SandboxTemplate{Image: "alpine:3.22"},
+		ResourceRequirements: &compatv1.ResourceRequirements{Gpu: &compatv1.GpuResourceRequirements{Count: &count}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -283,8 +283,8 @@ func TestStartSandboxEnforcesWorkspaceGPUQuota(t *testing.T) {
 	engine := &rpcTestEngine{}
 	registry := newComputeRegistry(Options{ComputeDriverNames: []string{"docker"}})
 	registry.engines["docker"] = engine
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, compute: registry}}
-	_, err = rpc.StartSandbox(withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local"}), &openshellv1.StartSandboxRequest{Workspace: "team", Name: "stopped"})
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, compute: registry}}
+	_, err = rpc.StartSandbox(withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local"}), &compatv1.StartSandboxRequest{WorkspaceScope: workspaceScope("team"), Name: "stopped"})
 	if status.Code(err) != codes.ResourceExhausted && connect.CodeOf(err) != connect.CodeResourceExhausted {
 		t.Fatalf("StartSandbox error = %v, want ResourceExhausted", err)
 	}

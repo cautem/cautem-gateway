@@ -59,7 +59,7 @@ func Serve(ctx context.Context, opt Options) error {
 		}
 	}()
 	if opt.RegisterGRPC == nil {
-		opt.RegisterGRPC = func(server *grpc.Server) { registerOpenShellRPCWithOptions(server, opt) }
+		opt.RegisterGRPC = func(server *grpc.Server) { registerCompatRPCWithOptions(server, opt) }
 	}
 	return listenAndServe(ctx, opt, handler)
 }

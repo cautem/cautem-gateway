@@ -13,10 +13,11 @@ import (
 	"strings"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 const (
@@ -293,7 +294,7 @@ func browserFileRequestAccess(r *http.Request, st *store.Store, write, allowRoot
 	principal := PrincipalFrom(r.Context())
 	workspace := defaultWorkspace(sandbox.Workspace)
 	if write {
-		if err := (&openShellRPC{runtime: &grpcRuntime{st: st}}).requireSandboxWrite(withPrincipal(r.Context(), principal), workspace); err != nil {
+		if err := (&compatRPCAdapter{runtime: &grpcRuntime{st: st}}).requireSandboxWrite(withPrincipal(r.Context(), principal), workspace); err != nil {
 			return store.Sandbox{}, "", err
 		}
 	} else if err := requireSandboxReadWorkspace(withPrincipal(r.Context(), principal), st, workspace); err != nil {
@@ -345,16 +346,16 @@ func runBrowserFileCommand(ctx context.Context, runtime *grpcRuntime, _ Options,
 	}
 	args := []string{"python3", "-c", script, "/workspace", relative}
 	args = append(args, extraArgs...)
-	req := &openshellv1.ExecSandboxRequest{SandboxId: sandbox, Command: args, Workdir: "/workspace", Stdin: stdin, TimeoutSeconds: browserFileExecTimeout, NoLoginShell: true}
+	req := &compatv1.ExecSandboxRequest{Sandbox: sandbox, Command: args, Workdir: "/workspace", Stdin: stdin, ExecutionTimeout: durationpb.New(browserFileExecTimeout * time.Second), NoLoginShell: true}
 	commandCtx, cancel := context.WithTimeout(ctx, browserFileExecTimeout*time.Second)
 	defer cancel()
 	var output bytes.Buffer
-	send := func(event *openshellv1.ExecSandboxEvent) error {
+	send := func(event *compatv1.ExecSandboxEvent) error {
 		var data []byte
 		switch payload := event.GetPayload().(type) {
-		case *openshellv1.ExecSandboxEvent_Stdout:
+		case *compatv1.ExecSandboxEvent_Stdout:
 			data = payload.Stdout.GetData()
-		case *openshellv1.ExecSandboxEvent_Stderr:
+		case *compatv1.ExecSandboxEvent_Stderr:
 			return nil
 		default:
 			return nil

@@ -65,16 +65,16 @@ func (s *session) close() {
 	})
 }
 
-// RegisterOpenShellSupervisor registers a control stream backed by OpenShell
+// RegisterSupervisor registers a control stream backed by OpenShell
 // ConnectSupervisor. The callback must enqueue a RelayOpen on that stream.
 // The returned function unregisters this exact session (safe after replacement).
-func (h *Hub) RegisterOpenShellSupervisor(sandbox, instanceID string, open func(channel, target string) error, done <-chan struct{}, closeFn func()) func() {
+func (h *Hub) RegisterSupervisor(sandbox, instanceID string, open func(channel, target string) error, done <-chan struct{}, closeFn func()) func() {
 	s := &session{sandbox: sandbox, instanceID: instanceID, open: open, closeFn: closeFn, done: make(chan struct{})}
 	h.mu.Lock()
 	prev := h.sessions[sandbox]
 	var closing []*activeRelay
 	if prev != nil {
-		closing = h.takeActiveOpenShellRelaysLocked(sandbox)
+		closing = h.takeActiveRelaysLocked(sandbox)
 	}
 	h.sessions[sandbox] = s
 	h.mu.Unlock()
@@ -95,7 +95,7 @@ func (h *Hub) RegisterOpenShellSupervisor(sandbox, instanceID string, open func(
 		var closing []*activeRelay
 		if h.sessions[sandbox] == s {
 			delete(h.sessions, sandbox)
-			closing = h.takeActiveOpenShellRelaysLocked(sandbox)
+			closing = h.takeActiveRelaysLocked(sandbox)
 			removed = true
 		}
 		h.mu.Unlock()
@@ -106,9 +106,9 @@ func (h *Hub) RegisterOpenShellSupervisor(sandbox, instanceID string, open func(
 	}
 }
 
-// OpenShellSupervisorInstance returns the instance ID for the currently
+// SupervisorInstance returns the instance ID for the currently
 // connected pinned OpenShell control stream.
-func (h *Hub) OpenShellSupervisorInstance(sandbox string) (string, bool) {
+func (h *Hub) SupervisorInstance(sandbox string) (string, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	s, ok := h.sessions[sandbox]
@@ -118,9 +118,9 @@ func (h *Hub) OpenShellSupervisorInstance(sandbox string) (string, bool) {
 	return s.instanceID, true
 }
 
-// AcceptOpenShellRelay claims a pending channel and returns the stream side of
+// AcceptRelay claims a pending channel and returns the stream side of
 // a byte pipe. OpenChannel receives the other side after the claim succeeds.
-func (h *Hub) AcceptOpenShellRelay(sandbox, channel string) (net.Conn, error) {
+func (h *Hub) AcceptRelay(sandbox, channel string) (net.Conn, error) {
 	h.mu.Lock()
 	p := h.pending[channel]
 	if p == nil || p.sandbox != sandbox {
@@ -151,9 +151,9 @@ type activeRelay struct {
 	stream  net.Conn
 }
 
-// CloseOpenShellRelay aborts an active channel, or rejects a not-yet-opened
+// CloseRelay aborts an active channel, or rejects a not-yet-opened
 // channel. RelayClose is abortive: unlike CloseWrite it does not promise drain.
-func (h *Hub) CloseOpenShellRelay(sandbox, channel string, cause error) bool {
+func (h *Hub) CloseRelay(sandbox, channel string, cause error) bool {
 	if channel == "" {
 		return false
 	}
@@ -195,7 +195,7 @@ func (h *Hub) removeActiveRelay(channel string, stream net.Conn) {
 	h.mu.Unlock()
 }
 
-func (h *Hub) takeActiveOpenShellRelaysLocked(sandbox string) []*activeRelay {
+func (h *Hub) takeActiveRelaysLocked(sandbox string) []*activeRelay {
 	var closing []*activeRelay
 	for channel, active := range h.active {
 		if active.sandbox == sandbox {
@@ -219,9 +219,9 @@ type pending struct {
 	failed  chan error
 }
 
-// RejectOpenShellRelay completes a pending OpenChannel request when the
+// RejectRelay completes a pending OpenChannel request when the
 // supervisor rejects the requested target.
-func (h *Hub) RejectOpenShellRelay(sandbox, channel string, cause error) {
+func (h *Hub) RejectRelay(sandbox, channel string, cause error) {
 	h.mu.Lock()
 	p := h.pending[channel]
 	if p != nil && p.sandbox == sandbox {
@@ -300,7 +300,7 @@ func (h *Hub) Disconnect(sandbox string) {
 	h.mu.Lock()
 	s := h.sessions[sandbox]
 	delete(h.sessions, sandbox)
-	closing := h.takeActiveOpenShellRelaysLocked(sandbox)
+	closing := h.takeActiveRelaysLocked(sandbox)
 	h.mu.Unlock()
 	if s != nil {
 		s.close()
@@ -322,7 +322,7 @@ func (h *Hub) ServeSupervisor(w http.ResponseWriter, r *http.Request, sandbox st
 	prev := h.sessions[sandbox]
 	var closing []*activeRelay
 	if prev != nil {
-		closing = h.takeActiveOpenShellRelaysLocked(sandbox)
+		closing = h.takeActiveRelaysLocked(sandbox)
 	}
 	h.sessions[sandbox] = s
 	h.mu.Unlock()
@@ -336,7 +336,7 @@ func (h *Hub) ServeSupervisor(w http.ResponseWriter, r *http.Request, sandbox st
 		var closing []*activeRelay
 		if h.sessions[sandbox] == s {
 			delete(h.sessions, sandbox)
-			closing = h.takeActiveOpenShellRelaysLocked(sandbox)
+			closing = h.takeActiveRelaysLocked(sandbox)
 		}
 		h.mu.Unlock()
 		s.close()

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	core "github.com/cautem/cautem-core"
 	corepolicy "github.com/cautem/cautem-core/policy"
@@ -28,7 +28,7 @@ import (
 
 // UpdateConfig implements registered setting mutations, full policy snapshots,
 // sandbox annotation projections and optimistic resource-version checks.
-func (s *openShellRPC) UpdateConfig(ctx context.Context, req *openshellv1.UpdateConfigRequest) (*openshellv1.UpdateConfigResponse, error) {
+func (s *compatRPCAdapter) UpdateConfig(ctx context.Context, req *compatv1.UpdateConfigRequest) (*compatv1.UpdateConfigResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return nil, status.Error(codes.Unavailable, "config runtime is not initialized")
 	}
@@ -54,7 +54,7 @@ func (s *openShellRPC) UpdateConfig(ctx context.Context, req *openshellv1.Update
 	if key == "" {
 		return nil, status.Error(codes.InvalidArgument, "setting_key is required")
 	}
-	kind, ok := registeredOpenShellSettings[key]
+	kind, ok := registeredGatewaySettings[key]
 	if !ok || key == "policy" {
 		return nil, status.Errorf(codes.InvalidArgument, "setting %q is not registered", key)
 	}
@@ -92,13 +92,13 @@ func (s *openShellRPC) UpdateConfig(ctx context.Context, req *openshellv1.Update
 			return nil, status.Error(codes.Internal, "could not store global setting")
 		}
 		_, revision := s.runtime.st.SettingsSnapshot()
-		return &openshellv1.UpdateConfigResponse{SettingsRevision: revision, Deleted: deleted}, nil
+		return &compatv1.UpdateConfigResponse{SettingsRevision: revision, Deleted: deleted}, nil
 	}
 
 	if p.Kind != PrincipalUser {
 		return nil, status.Error(codes.Unauthenticated, "authenticated user required")
 	}
-	name := strings.TrimSpace(req.GetName())
+	name := strings.TrimSpace(req.GetSandbox())
 	if name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required for sandbox-scoped settings")
 	}
@@ -106,7 +106,7 @@ func (s *openShellRPC) UpdateConfig(ctx context.Context, req *openshellv1.Update
 	if !ok {
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
-	if workspace := strings.TrimSpace(req.GetWorkspace()); workspace != "" && workspace != sandbox.Workspace {
+	if workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope())); workspace != "" && workspace != sandbox.Workspace {
 		return nil, status.Error(codes.PermissionDenied, "sandbox does not belong to requested workspace")
 	}
 	if err := s.requireSandboxConfigWrite(p, sandbox.Workspace); err != nil {
@@ -122,11 +122,11 @@ func (s *openShellRPC) UpdateConfig(ctx context.Context, req *openshellv1.Update
 		}
 		return nil, status.Error(codes.Internal, "could not store sandbox setting")
 	}
-	return &openshellv1.UpdateConfigResponse{SettingsRevision: updated.SettingsRevision, Annotations: updated.Annotations, Deleted: deleted}, nil
+	return &compatv1.UpdateConfigResponse{SettingsRevision: updated.SettingsRevision, Annotations: updated.Annotations, Deleted: deleted}, nil
 }
 
-func (s *openShellRPC) updateConfigPolicy(ctx context.Context, req *openshellv1.UpdateConfigRequest) (*openshellv1.UpdateConfigResponse, error) {
-	doc, err := parseOpenShellSandboxPolicy(req.GetPolicy())
+func (s *compatRPCAdapter) updateConfigPolicy(ctx context.Context, req *compatv1.UpdateConfigRequest) (*compatv1.UpdateConfigResponse, error) {
+	doc, err := parseSandboxPolicy(req.GetPolicy())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "policy is invalid: %v", err)
 	}
@@ -165,9 +165,9 @@ func (s *openShellRPC) updateConfigPolicy(ctx context.Context, req *openshellv1.
 		if policyRevision <= uint64(^uint32(0)) {
 			version = uint32(policyRevision)
 		}
-		return &openshellv1.UpdateConfigResponse{Version: version, PolicyHash: policyHash, SettingsRevision: settingsRevision}, nil
+		return &compatv1.UpdateConfigResponse{Version: version, PolicyHash: policyHash, SettingsRevision: settingsRevision}, nil
 	}
-	name := strings.TrimSpace(req.GetName())
+	name := strings.TrimSpace(req.GetSandbox())
 	if name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required for sandbox policy updates")
 	}
@@ -186,7 +186,7 @@ func (s *openShellRPC) updateConfigPolicy(ctx context.Context, req *openshellv1.
 		if p.Kind != PrincipalUser {
 			return nil, status.Error(codes.Unauthenticated, "authenticated user required")
 		}
-		if workspace := strings.TrimSpace(req.GetWorkspace()); workspace != "" && workspace != sandbox.Workspace {
+		if workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope())); workspace != "" && workspace != sandbox.Workspace {
 			return nil, status.Error(codes.PermissionDenied, "sandbox does not belong to requested workspace")
 		}
 		if err := s.requireSandboxConfigWrite(p, sandbox.Workspace); err != nil {
@@ -218,13 +218,13 @@ func (s *openShellRPC) updateConfigPolicy(ctx context.Context, req *openshellv1.
 	if err := s.waitSandboxPolicyApplied(ctx, name, updated.PolicyRev); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
-	return &openshellv1.UpdateConfigResponse{Version: uint32(updated.PolicyRev), PolicyHash: policyHash, Annotations: updated.Annotations}, nil
+	return &compatv1.UpdateConfigResponse{Version: uint32(updated.PolicyRev), PolicyHash: policyHash, Annotations: updated.Annotations}, nil
 }
 
 // syncSandboxRuntimePolicy updates the shared policy file used by local
 // container backends and asks remote compute backends to deliver the same
 // effective revision through their own runtime contract.
-func (s *openShellRPC) syncSandboxRuntimePolicy(ctx context.Context, name string, revision int) error {
+func (s *compatRPCAdapter) syncSandboxRuntimePolicy(ctx context.Context, name string, revision int) error {
 	if s == nil || s.runtime == nil || s.runtime.st == nil {
 		return nil
 	}
@@ -271,16 +271,19 @@ func (s *openShellRPC) syncSandboxRuntimePolicy(ctx context.Context, name string
 		}
 		return nil
 	}
-	engine, err := s.runtime.compute.engine(sandbox.ComputeDriver)
+	backend, err := s.runtime.compute.backend(sandbox.ComputeDriver)
 	if err != nil {
 		return fmt.Errorf("open sandbox compute driver for policy update: %w", err)
 	}
-	updater, supportsPolicyUpdate := engine.(driver.SandboxPolicyUpdater)
-	if !supportsPolicyUpdate {
+	updater, err := driver.RequireExtension[driver.RuntimePolicyUpdater](ctx, backend, driver.CapabilityPolicyUpdate, "deliver a runtime policy update")
+	if errors.Is(err, driver.ErrUnsupported) {
 		if isKubernetesComputeDriver(sandbox.ComputeDriver) {
 			return fmt.Errorf("kubernetes compute driver cannot deliver policy updates")
 		}
 		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect compute policy update capability: %w", err)
 	}
 	if err := updater.UpdateSandboxPolicy(ctx, core.ID(sandbox.RuntimeID), content); err != nil {
 		return fmt.Errorf("update sandbox policy in compute runtime: %w", err)
@@ -288,7 +291,7 @@ func (s *openShellRPC) syncSandboxRuntimePolicy(ctx context.Context, name string
 	return nil
 }
 
-func (s *openShellRPC) waitSandboxPolicyApplied(ctx context.Context, name string, revision int) error {
+func (s *compatRPCAdapter) waitSandboxPolicyApplied(ctx context.Context, name string, revision int) error {
 	if s == nil || s.runtime == nil || s.runtime.st == nil || s.runtime.relay == nil {
 		return nil
 	}
@@ -297,7 +300,7 @@ func (s *openShellRPC) waitSandboxPolicyApplied(ctx context.Context, name string
 	restartingKubernetes := false
 	if exists && sandbox.Status == "running" {
 		var err error
-		restartingKubernetes, err = sandboxUsesRestartedPolicyDelivery(s.runtime, sandbox)
+		restartingKubernetes, err = sandboxUsesRestartedPolicyDelivery(ctx, s.runtime, sandbox)
 		if err != nil {
 			return fmt.Errorf("inspect compute policy delivery while waiting for acknowledgement: %w", err)
 		}
@@ -336,16 +339,22 @@ func (s *openShellRPC) waitSandboxPolicyApplied(ctx context.Context, name string
 	}
 }
 
-func sandboxUsesRestartedPolicyDelivery(runtime *grpcRuntime, sandbox store.Sandbox) (bool, error) {
+func sandboxUsesRestartedPolicyDelivery(ctx context.Context, runtime *grpcRuntime, sandbox store.Sandbox) (bool, error) {
 	if runtime == nil || runtime.compute == nil || !isKubernetesComputeDriver(sandbox.ComputeDriver) {
 		return false, nil
 	}
-	engine, err := runtime.compute.engine(sandbox.ComputeDriver)
+	backend, err := runtime.compute.backend(sandbox.ComputeDriver)
 	if err != nil {
 		return false, err
 	}
-	_, ok := engine.(driver.SandboxPolicyUpdater)
-	return ok, nil
+	_, err = driver.RequireExtension[driver.RuntimePolicyUpdater](ctx, backend, driver.CapabilityPolicyUpdate, "wait for a runtime policy acknowledgement")
+	if errors.Is(err, driver.ErrUnsupported) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func isKubernetesComputeDriver(name string) bool {
@@ -452,7 +461,7 @@ func isConfigAdmin(p Principal, configuredAdminRole string) bool {
 	return containsString(roles, "platform_admin") || containsString(roles, "platform-admin") || containsString(roles, "openshell-admin")
 }
 
-func (s *openShellRPC) requireSandboxConfigWrite(p Principal, workspace string) error {
+func (s *compatRPCAdapter) requireSandboxConfigWrite(p Principal, workspace string) error {
 	if p.IDP == "local" || p.IDP == "local_dev" {
 		return nil
 	}

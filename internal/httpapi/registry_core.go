@@ -10,6 +10,7 @@ import (
 	"time"
 
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
+	"github.com/cautem/cautem-driver/driver"
 	computev1 "github.com/cautem/cautem-gateway/internal/upstreamproto/computev1"
 	credentialsv1 "github.com/cautem/cautem-gateway/internal/upstreamproto/credentialsv1"
 	interceptorv1 "github.com/cautem/cautem-gateway/internal/upstreamproto/interceptorv1"
@@ -17,7 +18,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // driverRegistry is the typed boundary for configured built-in and external
@@ -108,7 +108,7 @@ func newDriverRegistry(opt Options) (*driverRegistry, error) {
 		}
 		config := driverConfig(opt.ComputeDriverConfigs, name)
 		registration := computeDriverRegistration{name: key, config: config}
-		if !isBuiltinComputeDriver(key) {
+		if !isLocalComputeDriver(key) {
 			endpoint := stringConfig(config, "grpc_endpoint")
 			if endpoint == "" {
 				return nil, fmt.Errorf("compute driver %q: grpc_endpoint is required for an external driver", name)
@@ -251,7 +251,7 @@ func (r *driverRegistry) probe(ctx context.Context) error {
 	}
 	for name, registration := range r.middleware {
 		probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		manifest, err := registration.client.Describe(probeCtx, &emptypb.Empty{})
+		manifest, err := registration.client.Describe(probeCtx, &middlewarev1.MiddlewareDescribeRequest{})
 		cancel()
 		if err != nil {
 			return fmt.Errorf("middleware %q Describe: %w", name, err)
@@ -293,14 +293,16 @@ func driverConfig(configs DriverConfigs, name string) map[string]any {
 
 func normalizeDriverName(name string) string { return strings.ToLower(strings.TrimSpace(name)) }
 
-func isBuiltinComputeDriver(name string) bool {
+func isLocalComputeDriver(name string) bool {
 	switch normalizeDriverName(name) {
 	case "docker", "podman", "kubernetes", "vm":
 		return true
 	default:
-		return false
+		return driver.HasRegisteredBackend(name)
 	}
 }
+
+func isNativeComputeDriver(name string) bool { return driver.HasRegisteredBackend(name) }
 
 func isBuiltinCredentialDriver(name string, config map[string]any) bool {
 	if normalizeDriverName(name) == "local" {

@@ -330,7 +330,9 @@ func configuredDriverStatus(names []string, configs DriverConfigs) []map[string]
 		case "vm", "kubernetes":
 			state = "compatibility_stub"
 		default:
-			if stringConfig(driverConfig(configs, name), "grpc_endpoint") != "" {
+			if isNativeComputeDriver(name) {
+				state = "backend_registered_lazy"
+			} else if stringConfig(driverConfig(configs, name), "grpc_endpoint") != "" {
 				state = "remote_registered"
 			}
 		}

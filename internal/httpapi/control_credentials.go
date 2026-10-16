@@ -41,7 +41,7 @@ func (a *controlAPI) UpdateProviderCredentials(ctx context.Context, req *connect
 	if a.opt.grpcRuntime == nil || a.opt.grpcRuntime.st == nil {
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New("provider service is unavailable"))
 	}
-	access := (&openShellRPC{runtime: a.opt.grpcRuntime}).requireProviderAccess(ctx, workspace, true)
+	access := (&compatRPCAdapter{runtime: a.opt.grpcRuntime}).requireProviderAccess(ctx, workspace, true)
 	if access != nil {
 		return nil, providerAccessError(access)
 	}

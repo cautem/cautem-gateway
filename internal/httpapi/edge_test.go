@@ -133,11 +133,11 @@ func TestEdgeRouterRelaysExposedService(t *testing.T) {
 	t.Cleanup(func() { close(done) })
 	relay := sshrelay.NewHub()
 	relay.OpenTimeout = time.Second
-	remove := relay.RegisterOpenShellSupervisor("sb", "instance", func(channel, target string) error {
+	remove := relay.RegisterSupervisor("sb", "instance", func(channel, target string) error {
 		if target != "tcp://127.0.0.1:8080" {
 			t.Fatalf("relay target %q", target)
 		}
-		conn, err := relay.AcceptOpenShellRelay("sb", channel)
+		conn, err := relay.AcceptRelay("sb", channel)
 		if err != nil {
 			return err
 		}

@@ -3,14 +3,16 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	datamodelv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -18,14 +20,14 @@ const (
 	maxSandboxPageSize     uint32 = 1000
 )
 
-func (s *openShellRPC) GetSandbox(ctx context.Context, req *openshellv1.GetSandboxRequest) (*openshellv1.SandboxResponse, error) {
+func (s *compatRPCAdapter) GetSandbox(ctx context.Context, req *compatv1.GetSandboxRequest) (*compatv1.SandboxResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return nil, status.Error(codes.Unavailable, "sandbox store is not initialized")
 	}
 	if req == nil || strings.TrimSpace(req.GetName()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
-	workspace := req.GetWorkspace()
+	workspace := requestWorkspace(req.GetWorkspaceScope())
 	if workspace == "" {
 		workspace = "default"
 	}
@@ -40,18 +42,18 @@ func (s *openShellRPC) GetSandbox(ctx context.Context, req *openshellv1.GetSandb
 	if err != nil {
 		return nil, status.Error(codes.FailedPrecondition, "stored sandbox spec is invalid")
 	}
-	return &openshellv1.SandboxResponse{Sandbox: result}, nil
+	return &compatv1.SandboxResponse{Sandbox: result}, nil
 }
 
-func (s *openShellRPC) ListSandboxes(ctx context.Context, req *openshellv1.ListSandboxesRequest) (*openshellv1.ListSandboxesResponse, error) {
+func (s *compatRPCAdapter) ListSandboxes(ctx context.Context, req *compatv1.ListSandboxesRequest) (*compatv1.ListSandboxesResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil {
 		return nil, status.Error(codes.Unavailable, "sandbox store is not initialized")
 	}
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request is required")
 	}
-	workspace := strings.TrimSpace(req.GetWorkspace())
-	if req.GetAllWorkspaces() {
+	workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope()))
+	if scopeAllWorkspaces(req.GetWorkspaceScope()) {
 		if workspace != "" {
 			return nil, status.Error(codes.InvalidArgument, "all_workspaces and workspace are mutually exclusive")
 		}
@@ -72,7 +74,7 @@ func (s *openShellRPC) ListSandboxes(ctx context.Context, req *openshellv1.ListS
 	}
 	filtered := make([]store.Sandbox, 0)
 	for _, sandbox := range s.runtime.st.ListSandboxes() {
-		if !req.GetAllWorkspaces() && sandbox.Workspace != workspace {
+		if !scopeAllWorkspaces(req.GetWorkspaceScope()) && sandbox.Workspace != workspace {
 			continue
 		}
 		matches := true
@@ -86,22 +88,29 @@ func (s *openShellRPC) ListSandboxes(ctx context.Context, req *openshellv1.ListS
 			filtered = append(filtered, sandbox)
 		}
 	}
-	limit := req.GetLimit()
+	limit := uint32(req.GetPageSize())
 	if limit == 0 {
 		limit = defaultSandboxPageSize
 	}
 	if limit > maxSandboxPageSize {
 		limit = maxSandboxPageSize
 	}
-	start := uint64(req.GetOffset())
+	start := uint64(0)
+	if token := strings.TrimSpace(req.GetPageToken()); token != "" {
+		parsed, parseErr := strconv.ParseUint(token, 10, 64)
+		if parseErr != nil {
+			return nil, status.Error(codes.InvalidArgument, "invalid page_token")
+		}
+		start = parsed
+	}
 	if start >= uint64(len(filtered)) {
-		return &openshellv1.ListSandboxesResponse{}, nil
+		return &compatv1.ListSandboxesResponse{}, nil
 	}
 	end := start + uint64(limit)
 	if end > uint64(len(filtered)) {
 		end = uint64(len(filtered))
 	}
-	response := &openshellv1.ListSandboxesResponse{Sandboxes: make([]*openshellv1.Sandbox, 0, end-start)}
+	response := &compatv1.ListSandboxesResponse{Sandboxes: make([]*compatv1.Sandbox, 0, end-start)}
 	for _, sandbox := range filtered[start:end] {
 		result, err := sandboxRecordToProto(sandbox)
 		if err != nil {
@@ -109,10 +118,13 @@ func (s *openShellRPC) ListSandboxes(ctx context.Context, req *openshellv1.ListS
 		}
 		response.Sandboxes = append(response.Sandboxes, result)
 	}
+	if end < uint64(len(filtered)) {
+		response.NextPageToken = strconv.FormatUint(end, 10)
+	}
 	return response, nil
 }
 
-func (s *openShellRPC) requireSandboxReadWorkspace(ctx context.Context, workspace string) error {
+func (s *compatRPCAdapter) requireSandboxReadWorkspace(ctx context.Context, workspace string) error {
 	return requireSandboxReadWorkspace(ctx, s.runtime.st, workspace)
 }
 
@@ -161,16 +173,16 @@ func parseSandboxLabelSelector(raw string) (map[string]string, error) {
 	return selector, nil
 }
 
-func sandboxRecordToProto(record store.Sandbox) (*openshellv1.Sandbox, error) {
+func sandboxRecordToProto(record store.Sandbox) (*compatv1.Sandbox, error) {
 	createdAt := record.CreatedAt
 	if createdAt.IsZero() {
 		createdAt = record.UpdatedAt
 	}
 	metadata := &datamodelv1.ObjectMeta{Id: record.ID, Name: record.Name, Labels: record.Labels, Annotations: record.Annotations, Workspace: record.Workspace, ResourceVersion: record.ResourceVersion}
 	if !createdAt.IsZero() {
-		metadata.CreatedAtMs = createdAt.UnixMilli()
+		metadata.CreatedTime = timestamppb.New(createdAt)
 	}
-	spec := &openshellv1.SandboxSpec{Template: &openshellv1.SandboxTemplate{Image: record.Image}, Providers: append([]string(nil), record.AttachedProviders...)}
+	spec := &compatv1.SandboxSpec{Template: &compatv1.SandboxTemplate{Image: record.Image}, Providers: append([]string(nil), record.AttachedProviders...)}
 	if record.SpecJSON != "" {
 		if err := protojson.Unmarshal([]byte(record.SpecJSON), spec); err != nil {
 			return nil, err
@@ -182,29 +194,29 @@ func sandboxRecordToProto(record store.Sandbox) (*openshellv1.Sandbox, error) {
 	if record.AttachedProviders != nil {
 		spec.Providers = append([]string(nil), record.AttachedProviders...)
 	}
-	phase := openshellv1.SandboxPhase_SANDBOX_PHASE_UNKNOWN
+	phase := compatv1.SandboxPhase_SANDBOX_PHASE_UNKNOWN
 	switch strings.ToLower(strings.TrimSpace(record.Status)) {
 	case "provisioning":
-		phase = openshellv1.SandboxPhase_SANDBOX_PHASE_PROVISIONING
+		phase = compatv1.SandboxPhase_SANDBOX_PHASE_PROVISIONING
 	case "running", "ready":
-		phase = openshellv1.SandboxPhase_SANDBOX_PHASE_READY
+		phase = compatv1.SandboxPhase_SANDBOX_PHASE_READY
 	case "starting":
-		phase = openshellv1.SandboxPhase_SANDBOX_PHASE_STARTING
+		phase = compatv1.SandboxPhase_SANDBOX_PHASE_STARTING
 	case "stopping":
-		phase = openshellv1.SandboxPhase_SANDBOX_PHASE_STOPPING
+		phase = compatv1.SandboxPhase_SANDBOX_PHASE_STOPPING
 	case "stopped":
-		phase = openshellv1.SandboxPhase_SANDBOX_PHASE_STOPPED
+		phase = compatv1.SandboxPhase_SANDBOX_PHASE_STOPPED
 	case "error", "failed":
-		phase = openshellv1.SandboxPhase_SANDBOX_PHASE_ERROR
+		phase = compatv1.SandboxPhase_SANDBOX_PHASE_ERROR
 	case "completed":
-		phase = openshellv1.SandboxPhase_SANDBOX_PHASE_COMPLETED
+		phase = compatv1.SandboxPhase_SANDBOX_PHASE_COMPLETED
 	case "deleting":
-		phase = openshellv1.SandboxPhase_SANDBOX_PHASE_DELETING
+		phase = compatv1.SandboxPhase_SANDBOX_PHASE_DELETING
 	}
-	status := &openshellv1.SandboxStatus{SandboxName: record.Name, Phase: phase, CurrentPolicyVersion: record.ActivePolicyVersion, MainProcessInstanceId: record.MainProcessInstanceID}
+	status := &compatv1.SandboxStatus{Phase: phase, CurrentPolicyVersion: record.ActivePolicyVersion, MainProcessInstanceId: record.MainProcessInstanceID}
 	if record.MainProcessExitCode != nil {
 		code := *record.MainProcessExitCode
 		status.ExitCode = &code
 	}
-	return &openshellv1.Sandbox{Metadata: metadata, Spec: spec, Status: status}, nil
+	return &compatv1.Sandbox{Metadata: metadata, Spec: spec, Status: status}, nil
 }

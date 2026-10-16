@@ -64,10 +64,11 @@ curl -s http://127.0.0.1:7443/healthz
 |--------|------|------|
 | GET | `/healthz` | liveness |
 
-The remaining HTTP contract is documented in [`api/openapi.yaml`](./api/openapi.yaml).
-It covers health and bootstrap flows; management operations use the generated
-Control RPC or the pinned OpenShell RPC contract. No REST compatibility layer
-is maintained for beta clients.
+The HTTP contract is documented in [`api/openapi.yaml`](./api/openapi.yaml).
+It covers health and bootstrap flows plus the bounded, authenticated rootfs
+upload endpoint used after OpenShell `BeginRootfsTarStaging`. Other management
+operations use the generated Control RPC or pinned OpenShell RPC contract.
+No general REST compatibility layer is maintained for beta clients.
 
 The separate `cautem.control.v1` Connect API serves authenticated UI and SDK
 clients on the gateway listener. Its source schema and generated Go/Connect/

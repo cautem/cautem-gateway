@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"testing"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-func TestOpenShellSandboxProviderAttachmentLifecycle(t *testing.T) {
+func TestCompatSandboxProviderAttachmentLifecycle(t *testing.T) {
 	st, err := store.Open(t.TempDir(), "provider-attachments")
 	if err != nil {
 		t.Fatal(err)
@@ -34,10 +34,10 @@ func TestOpenShellSandboxProviderAttachmentLifecycle(t *testing.T) {
 	if err := st.UpsertProvider(store.ProviderRecord{Name: "github", Type: "github", Workspace: "default"}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev", Subject: "alice"})
 
-	list, err := rpc.ListSandboxProviders(ctx, &openshellv1.ListSandboxProvidersRequest{SandboxName: "demo"})
+	list, err := rpc.ListSandboxProviders(ctx, &compatv1.ListSandboxProvidersRequest{Sandbox: "demo"})
 	if err != nil || len(list.GetProviders()) != 1 || list.GetProviders()[0].GetType() != "github" {
 		t.Fatalf("ListSandboxProviders=%v err=%v", list, err)
 	}
@@ -45,7 +45,7 @@ func TestOpenShellSandboxProviderAttachmentLifecycle(t *testing.T) {
 		t.Fatalf("ListSandboxProviders exposed credentials: %v", list.GetProviders()[0].GetCredentials())
 	}
 
-	attached, err := rpc.AttachSandboxProvider(ctx, &openshellv1.AttachSandboxProviderRequest{SandboxName: "demo", ProviderName: "openai", ExpectedResourceVersion: 7})
+	attached, err := rpc.AttachSandboxProvider(ctx, &compatv1.AttachSandboxProviderRequest{Sandbox: "demo", Provider: "openai", ExpectedResourceVersion: 7})
 	if err != nil || !attached.GetAttached() {
 		t.Fatalf("AttachSandboxProvider=%v err=%v", attached, err)
 	}
@@ -63,7 +63,7 @@ func TestOpenShellSandboxProviderAttachmentLifecycle(t *testing.T) {
 		t.Fatalf("persisted spec providers=%v", got)
 	}
 
-	list, err = rpc.ListSandboxProviders(ctx, &openshellv1.ListSandboxProvidersRequest{SandboxName: "demo"})
+	list, err = rpc.ListSandboxProviders(ctx, &compatv1.ListSandboxProvidersRequest{Sandbox: "demo"})
 	if err != nil || len(list.GetProviders()) != 2 {
 		t.Fatalf("ListSandboxProviders after attach=%v err=%v", list, err)
 	}
@@ -71,7 +71,7 @@ func TestOpenShellSandboxProviderAttachmentLifecycle(t *testing.T) {
 	for _, provider := range list.GetProviders() {
 		if provider.GetType() == "openai" {
 			foundOpenAI = true
-			if provider.GetCredentials()["OPENAI_API_KEY"] != "REDACTED" || provider.GetConfig()["organization"] != "team" || provider.GetCredentialExpiresAtMs()["OPENAI_API_KEY"] != 1234 {
+			if provider.GetCredentials()["OPENAI_API_KEY"] != "REDACTED" || provider.GetConfig()["organization"] != "team" || provider.GetCredentialExpirationTimes()["OPENAI_API_KEY"].AsTime().UnixMilli() != 1234 {
 				t.Fatalf("redacted provider projection=%v", provider)
 			}
 		}
@@ -80,24 +80,24 @@ func TestOpenShellSandboxProviderAttachmentLifecycle(t *testing.T) {
 		t.Fatal("attached provider missing from ListSandboxProviders")
 	}
 
-	idempotent, err := rpc.AttachSandboxProvider(ctx, &openshellv1.AttachSandboxProviderRequest{SandboxName: "demo", ProviderName: "openai", ExpectedResourceVersion: 8})
+	idempotent, err := rpc.AttachSandboxProvider(ctx, &compatv1.AttachSandboxProviderRequest{Sandbox: "demo", Provider: "openai", ExpectedResourceVersion: 8})
 	if err != nil || idempotent.GetAttached() || idempotent.GetSandbox().GetMetadata().GetResourceVersion() != 8 {
 		t.Fatalf("idempotent attach=%v err=%v", idempotent, err)
 	}
-	detached, err := rpc.DetachSandboxProvider(ctx, &openshellv1.DetachSandboxProviderRequest{SandboxName: "demo", ProviderName: "github", ExpectedResourceVersion: 8})
+	detached, err := rpc.DetachSandboxProvider(ctx, &compatv1.DetachSandboxProviderRequest{Sandbox: "demo", Provider: "github", ExpectedResourceVersion: 8})
 	if err != nil || !detached.GetDetached() || detached.GetSandbox().GetMetadata().GetResourceVersion() != 9 {
 		t.Fatalf("DetachSandboxProvider=%v err=%v", detached, err)
 	}
 	if got := detached.GetSandbox().GetSpec().GetProviders(); len(got) != 1 || got[0] != "openai" {
 		t.Fatalf("detached spec providers=%v", got)
 	}
-	missing, err := rpc.DetachSandboxProvider(ctx, &openshellv1.DetachSandboxProviderRequest{SandboxName: "demo", ProviderName: "github", ExpectedResourceVersion: 9})
+	missing, err := rpc.DetachSandboxProvider(ctx, &compatv1.DetachSandboxProviderRequest{Sandbox: "demo", Provider: "github", ExpectedResourceVersion: 9})
 	if err != nil || missing.GetDetached() || missing.GetSandbox().GetMetadata().GetResourceVersion() != 9 {
 		t.Fatalf("idempotent detach=%v err=%v", missing, err)
 	}
 }
 
-func TestOpenShellSandboxProviderAttachmentAuthorizationAndCAS(t *testing.T) {
+func TestCompatSandboxProviderAttachmentAuthorizationAndCAS(t *testing.T) {
 	st, err := store.Open(t.TempDir(), "provider-attachments-auth")
 	if err != nil {
 		t.Fatal(err)
@@ -111,31 +111,31 @@ func TestOpenShellSandboxProviderAttachmentAuthorizationAndCAS(t *testing.T) {
 	if err := st.UpsertProvider(store.ProviderRecord{Name: "openai", Type: "openai", Workspace: "team"}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
 	alice := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "oidc", Subject: "alice", Scopes: []string{"sandbox:read", "sandbox:write"}})
 	bob := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "oidc", Subject: "bob", Scopes: []string{"sandbox:read", "sandbox:write"}})
-	if _, err := rpc.AttachSandboxProvider(bob, &openshellv1.AttachSandboxProviderRequest{SandboxName: "demo", Workspace: "team", ProviderName: "openai"}); status.Code(err) != codes.PermissionDenied {
+	if _, err := rpc.AttachSandboxProvider(bob, &compatv1.AttachSandboxProviderRequest{Sandbox: "demo", WorkspaceScope: workspaceScope("team"), Provider: "openai"}); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("cross-workspace attach code=%s err=%v", status.Code(err), err)
 	}
-	if _, err := rpc.AttachSandboxProvider(alice, &openshellv1.AttachSandboxProviderRequest{SandboxName: "demo", Workspace: "team", ProviderName: "missing"}); status.Code(err) != codes.FailedPrecondition {
+	if _, err := rpc.AttachSandboxProvider(alice, &compatv1.AttachSandboxProviderRequest{Sandbox: "demo", WorkspaceScope: workspaceScope("team"), Provider: "missing"}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("missing provider attach code=%s err=%v", status.Code(err), err)
 	}
-	if _, err := rpc.AttachSandboxProvider(alice, &openshellv1.AttachSandboxProviderRequest{SandboxName: "demo", Workspace: "team", ProviderName: "openai", ExpectedResourceVersion: 2}); status.Code(err) != codes.Aborted {
+	if _, err := rpc.AttachSandboxProvider(alice, &compatv1.AttachSandboxProviderRequest{Sandbox: "demo", WorkspaceScope: workspaceScope("team"), Provider: "openai", ExpectedResourceVersion: 2}); status.Code(err) != codes.Aborted {
 		t.Fatalf("stale attach code=%s err=%v", status.Code(err), err)
 	}
 	current, _ := st.GetSandbox("demo")
 	if current.ResourceVersion != 3 || len(current.AttachedProviders) != 0 {
 		t.Fatalf("rejected mutation changed sandbox: %+v", current)
 	}
-	if _, err := rpc.AttachSandboxProvider(alice, &openshellv1.AttachSandboxProviderRequest{SandboxName: "demo", Workspace: "team", ProviderName: "openai", ExpectedResourceVersion: 3}); err != nil {
+	if _, err := rpc.AttachSandboxProvider(alice, &compatv1.AttachSandboxProviderRequest{Sandbox: "demo", WorkspaceScope: workspaceScope("team"), Provider: "openai", ExpectedResourceVersion: 3}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rpc.DetachSandboxProvider(alice, &openshellv1.DetachSandboxProviderRequest{SandboxName: "demo", Workspace: "team", ProviderName: "openai", ExpectedResourceVersion: 3}); status.Code(err) != codes.Aborted {
+	if _, err := rpc.DetachSandboxProvider(alice, &compatv1.DetachSandboxProviderRequest{Sandbox: "demo", WorkspaceScope: workspaceScope("team"), Provider: "openai", ExpectedResourceVersion: 3}); status.Code(err) != codes.Aborted {
 		t.Fatalf("stale detach code=%s err=%v", status.Code(err), err)
 	}
 }
 
-func TestOpenShellSandboxProviderAttachmentLimit(t *testing.T) {
+func TestCompatSandboxProviderAttachmentLimit(t *testing.T) {
 	st, err := store.Open(t.TempDir(), "provider-attachments-limit")
 	if err != nil {
 		t.Fatal(err)
@@ -150,9 +150,9 @@ func TestOpenShellSandboxProviderAttachmentLimit(t *testing.T) {
 	if err := st.UpsertProvider(store.ProviderRecord{Name: "extra", Type: "test", Workspace: "default"}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalUser, IDP: "local_dev"})
-	if _, err := rpc.AttachSandboxProvider(ctx, &openshellv1.AttachSandboxProviderRequest{SandboxName: "full", ProviderName: "extra"}); status.Code(err) != codes.InvalidArgument {
+	if _, err := rpc.AttachSandboxProvider(ctx, &compatv1.AttachSandboxProviderRequest{Sandbox: "full", Provider: "extra"}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("provider limit code=%s err=%v", status.Code(err), err)
 	}
 	current, _ := st.GetSandbox("full")

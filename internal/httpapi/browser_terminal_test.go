@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/sshrelay"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"github.com/coder/websocket"
@@ -39,8 +39,8 @@ func TestBrowserTerminalRouteRelaysInteractivePTY(t *testing.T) {
 	}
 	runtime := &grpcRuntime{st: st, relay: sshrelay.NewHub()}
 	done := make(chan struct{})
-	remove := runtime.relay.RegisterOpenShellSupervisor("demo", "terminal-test", func(channel, _ string) error {
-		relayConn, err := runtime.relay.AcceptOpenShellRelay("demo", channel)
+	remove := runtime.relay.RegisterSupervisor("demo", "terminal-test", func(channel, _ string) error {
+		relayConn, err := runtime.relay.AcceptRelay("demo", channel)
 		if err != nil {
 			return err
 		}
@@ -180,7 +180,7 @@ func TestBrowserTerminalAccessIsRecheckedForMembershipAndLifecycle(t *testing.T)
 	}
 	runtime := &grpcRuntime{st: st, relay: sshrelay.NewHub()}
 	principal := Principal{Kind: PrincipalUser, IDP: "oidc", Subject: "alice", Scopes: []string{"sandbox:write"}}
-	start := &openshellv1.ExecSandboxRequest{SandboxId: "demo", Command: []string{"/bin/sh"}, Tty: true, Cols: 80, Rows: 24}
+	start := &compatv1.ExecSandboxRequest{Sandbox: "demo", WorkspaceScope: workspaceScope("team-a"), Command: []string{"/bin/sh"}, Tty: true, Cols: 80, Rows: 24}
 	if err := validateBrowserTerminalAccess(context.Background(), principal, "demo", st, runtime, Options{}, start); err != nil {
 		t.Fatalf("authorized terminal was denied: %v", err)
 	}

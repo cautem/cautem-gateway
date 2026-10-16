@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	"github.com/cautem/cautem-core/defaults"
 	coreenv "github.com/cautem/cautem-core/env"
@@ -36,7 +36,7 @@ type sandboxRuntimeInputs struct {
 	supervisorBin   string
 }
 
-func (s *openShellRPC) prepareSandboxRuntime(req *openshellv1.CreateSandboxRequest, driverName, name, workspace string) (sandboxRuntimeInputs, error) {
+func (s *compatRPCAdapter) prepareSandboxRuntime(req *compatv1.CreateSandboxRequest, driverName, name, workspace string) (sandboxRuntimeInputs, error) {
 	out := sandboxRuntimeInputs{gatewayID: strings.TrimSpace(s.runtime.st.Snapshot().GatewayID)}
 	if out.gatewayID == "" {
 		return out, fmt.Errorf("gateway installation identity is unavailable")
@@ -45,7 +45,7 @@ func (s *openShellRPC) prepareSandboxRuntime(req *openshellv1.CreateSandboxReque
 	var sandboxPolicy policy.Document
 	hasSandboxPolicy := req.GetSpec().GetPolicy() != nil
 	if hasSandboxPolicy {
-		sandboxPolicy, err = parseOpenShellSandboxPolicy(req.GetSpec().GetPolicy())
+		sandboxPolicy, err = parseSandboxPolicy(req.GetSpec().GetPolicy())
 		if err != nil {
 			return out, err
 		}
@@ -78,7 +78,7 @@ func (s *openShellRPC) prepareSandboxRuntime(req *openshellv1.CreateSandboxReque
 	out.effectivePolicy = effective
 	var layers []provider.Layer
 	for _, providerName := range req.GetSpec().GetProviders() {
-		if hasGlobalPolicy || !hasSandboxPolicy {
+		if hasGlobalPolicy {
 			break
 		}
 		providerName = strings.TrimSpace(providerName)
@@ -148,7 +148,7 @@ func (s *openShellRPC) prepareSandboxRuntime(req *openshellv1.CreateSandboxReque
 			out.supervisorBin = path
 		}
 	}
-	out.gatewayURL, err = sandboxGatewayURL(s.runtime.opt, s.runtime.compute.configured[driverName])
+	out.gatewayURL, err = sandboxGatewayURLForExecutionMode(s.runtime.opt, s.runtime.compute.configured[driverName], driverName == "vm")
 	if err != nil {
 		return out, err
 	}
@@ -222,7 +222,7 @@ func (s *openShellRPC) prepareSandboxRuntime(req *openshellv1.CreateSandboxReque
 	return out, nil
 }
 
-func (s *openShellRPC) supervisorMiddlewareProxyEnv(policy *sandboxv1.SandboxPolicy) ([]string, error) {
+func (s *compatRPCAdapter) supervisorMiddlewareProxyEnv(policy *sandboxv1.SandboxPolicy) ([]string, error) {
 	if policy == nil || len(policy.GetNetworkMiddlewares()) == 0 {
 		return nil, nil
 	}
@@ -263,7 +263,7 @@ func (s *openShellRPC) supervisorMiddlewareProxyEnv(policy *sandboxv1.SandboxPol
 			include = append([]string(nil), selector.GetInclude()...)
 			exclude = append([]string(nil), selector.GetExclude()...)
 		}
-		items = append(items, item{Name: config.GetMiddleware(), Endpoint: service.GetGrpcEndpoint(), Timeout: service.GetTimeout(), FailClosed: strings.ToLower(config.GetOnError()) != "fail_open", MaxPayloadBytes: service.GetMaxPayloadBytes(), Config: fields, TLSCAPEM: base64.StdEncoding.EncodeToString(service.GetTlsCaCertPem()), Order: config.GetOrder(), Include: include, Exclude: exclude})
+		items = append(items, item{Name: config.GetMiddleware(), Endpoint: service.GetGrpcEndpoint(), Timeout: service.GetRequestTimeout().AsDuration().String(), FailClosed: strings.ToLower(config.GetOnError()) != "fail_open", MaxPayloadBytes: service.GetMaxPayloadBytes(), Config: fields, TLSCAPEM: base64.StdEncoding.EncodeToString(service.GetTlsCaCertPem()), Order: config.GetOrder(), Include: include, Exclude: exclude})
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		if items[i].Order != items[j].Order {

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-core/relayproto"
 	"github.com/cautem/cautem-gateway/internal/sshrelay"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
@@ -22,17 +22,17 @@ import (
 func TestValidateForwardTarget(t *testing.T) {
 	tests := []struct {
 		name string
-		init *openshellv1.TcpForwardInit
+		init *compatv1.TcpForwardInit
 		want string
 		code codes.Code
 	}{
-		{name: "ssh", init: &openshellv1.TcpForwardInit{Target: &openshellv1.TcpForwardInit_Ssh{Ssh: &openshellv1.SshRelayTarget{}}}, want: relayproto.TargetSSH},
-		{name: "localhost", init: &openshellv1.TcpForwardInit{Target: &openshellv1.TcpForwardInit_Tcp{Tcp: &openshellv1.TcpRelayTarget{Host: "localhost", Port: 8080}}}, want: "tcp://127.0.0.1:8080"},
-		{name: "ipv6 loopback", init: &openshellv1.TcpForwardInit{Target: &openshellv1.TcpForwardInit_Tcp{Tcp: &openshellv1.TcpRelayTarget{Host: "::1", Port: 443}}}, want: "tcp://[::1]:443"},
-		{name: "public address denied", init: &openshellv1.TcpForwardInit{Target: &openshellv1.TcpForwardInit_Tcp{Tcp: &openshellv1.TcpRelayTarget{Host: "192.0.2.10", Port: 443}}}, code: codes.InvalidArgument},
-		{name: "hostname denied", init: &openshellv1.TcpForwardInit{Target: &openshellv1.TcpForwardInit_Tcp{Tcp: &openshellv1.TcpRelayTarget{Host: "example.com", Port: 443}}}, code: codes.InvalidArgument},
-		{name: "zero port denied", init: &openshellv1.TcpForwardInit{Target: &openshellv1.TcpForwardInit_Tcp{Tcp: &openshellv1.TcpRelayTarget{Host: "127.0.0.1"}}}, code: codes.InvalidArgument},
-		{name: "missing target denied", init: &openshellv1.TcpForwardInit{}, code: codes.InvalidArgument},
+		{name: "ssh", init: &compatv1.TcpForwardInit{Target: &compatv1.TcpForwardInit_Ssh{Ssh: &compatv1.SshRelayTarget{}}}, want: relayproto.TargetSSH},
+		{name: "localhost", init: &compatv1.TcpForwardInit{Target: &compatv1.TcpForwardInit_Tcp{Tcp: &compatv1.TcpRelayTarget{Host: "localhost", Port: 8080}}}, want: "tcp://127.0.0.1:8080"},
+		{name: "ipv6 loopback", init: &compatv1.TcpForwardInit{Target: &compatv1.TcpForwardInit_Tcp{Tcp: &compatv1.TcpRelayTarget{Host: "::1", Port: 443}}}, want: "tcp://[::1]:443"},
+		{name: "public address denied", init: &compatv1.TcpForwardInit{Target: &compatv1.TcpForwardInit_Tcp{Tcp: &compatv1.TcpRelayTarget{Host: "192.0.2.10", Port: 443}}}, code: codes.InvalidArgument},
+		{name: "hostname denied", init: &compatv1.TcpForwardInit{Target: &compatv1.TcpForwardInit_Tcp{Tcp: &compatv1.TcpRelayTarget{Host: "example.com", Port: 443}}}, code: codes.InvalidArgument},
+		{name: "zero port denied", init: &compatv1.TcpForwardInit{Target: &compatv1.TcpForwardInit_Tcp{Tcp: &compatv1.TcpRelayTarget{Host: "127.0.0.1"}}}, code: codes.InvalidArgument},
+		{name: "missing target denied", init: &compatv1.TcpForwardInit{}, code: codes.InvalidArgument},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -53,8 +53,8 @@ func TestValidateForwardTarget(t *testing.T) {
 type forwardTestStream struct {
 	grpc.ServerStream
 	ctx context.Context
-	in  <-chan *openshellv1.TcpForwardFrame
-	out chan<- *openshellv1.TcpForwardFrame
+	in  <-chan *compatv1.TcpForwardFrame
+	out chan<- *compatv1.TcpForwardFrame
 }
 
 func forwardTCPPair(t *testing.T) (*net.TCPConn, *net.TCPConn) {
@@ -77,7 +77,7 @@ func forwardTCPPair(t *testing.T) (*net.TCPConn, *net.TCPConn) {
 }
 
 func (s forwardTestStream) Context() context.Context { return s.ctx }
-func (s forwardTestStream) Recv() (*openshellv1.TcpForwardFrame, error) {
+func (s forwardTestStream) Recv() (*compatv1.TcpForwardFrame, error) {
 	select {
 	case frame, ok := <-s.in:
 		if !ok {
@@ -88,7 +88,7 @@ func (s forwardTestStream) Recv() (*openshellv1.TcpForwardFrame, error) {
 		return nil, s.ctx.Err()
 	}
 }
-func (s forwardTestStream) Send(frame *openshellv1.TcpForwardFrame) error {
+func (s forwardTestStream) Send(frame *compatv1.TcpForwardFrame) error {
 	select {
 	case s.out <- frame:
 		return nil
@@ -110,9 +110,9 @@ func TestForwardTCPRelaysBytes(t *testing.T) {
 			_, _ = serviceSide.Write(buf[:n])
 		}
 	}()
-	in := make(chan *openshellv1.TcpForwardFrame, 2)
-	out := make(chan *openshellv1.TcpForwardFrame, 1)
-	in <- &openshellv1.TcpForwardFrame{Payload: &openshellv1.TcpForwardFrame_Data{Data: []byte("roundtrip")}}
+	in := make(chan *compatv1.TcpForwardFrame, 2)
+	out := make(chan *compatv1.TcpForwardFrame, 1)
+	in <- &compatv1.TcpForwardFrame{Payload: &compatv1.TcpForwardFrame_Data{Data: []byte("roundtrip")}}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	stream := forwardTestStream{ctx: ctx, in: in, out: out}
@@ -171,9 +171,9 @@ func TestForwardTCPClientHalfCloseKeepsTargetResponseOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer clientConn.Close()
-	in := make(chan *openshellv1.TcpForwardFrame, 1)
-	out := make(chan *openshellv1.TcpForwardFrame, 2)
-	in <- &openshellv1.TcpForwardFrame{Payload: &openshellv1.TcpForwardFrame_Data{Data: []byte("request-fin")}}
+	in := make(chan *compatv1.TcpForwardFrame, 1)
+	out := make(chan *compatv1.TcpForwardFrame, 2)
+	in <- &compatv1.TcpForwardFrame{Payload: &compatv1.TcpForwardFrame_Data{Data: []byte("request-fin")}}
 	close(in)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -222,7 +222,7 @@ func TestForwardTCPContextCancellationAndDeadline(t *testing.T) {
 				timer := time.AfterFunc(25*time.Millisecond, cancel)
 				defer timer.Stop()
 			}
-			stream := forwardTestStream{ctx: ctx, in: make(chan *openshellv1.TcpForwardFrame), out: make(chan *openshellv1.TcpForwardFrame, 1)}
+			stream := forwardTestStream{ctx: ctx, in: make(chan *compatv1.TcpForwardFrame), out: make(chan *compatv1.TcpForwardFrame, 1)}
 			err := bridgeForwardTCP(stream, left)
 			if status.Code(err) != tc.want {
 				t.Fatalf("bridge error=%v code=%s; want %s", err, status.Code(err), tc.want)
@@ -273,19 +273,19 @@ func TestForwardConnectionLimits(t *testing.T) {
 	}
 }
 
-func TestOpenShellRelayOpenMessageRejectsNonLoopbackTargets(t *testing.T) {
+func TestCompatRelayOpenMessageRejectsNonLoopbackTargets(t *testing.T) {
 	for _, target := range []string{"tcp://example.com:443", "tcp://0.0.0.0:80", "tcp://127.0.0.1:0", "http://127.0.0.1:80", "tcp://user@127.0.0.1:80"} {
-		if _, err := openShellRelayOpenMessage("channel", target); err == nil {
-			t.Errorf("openShellRelayOpenMessage accepted %q", target)
+		if _, err := relayOpenMessage("channel", target); err == nil {
+			t.Errorf("relayOpenMessage accepted %q", target)
 		}
 	}
-	msg, err := openShellRelayOpenMessage("channel", "tcp://127.0.0.1:8080")
+	msg, err := relayOpenMessage("channel", "tcp://127.0.0.1:8080")
 	if err != nil || msg.GetRelayOpen().GetTcp().GetHost() != "127.0.0.1" || msg.GetRelayOpen().GetTcp().GetPort() != 8080 {
 		t.Fatalf("OpenShell relay TCP target=%v err=%v", msg.GetRelayOpen(), err)
 	}
 }
 
-func TestOpenShellGRPCForwardTCPBridgeAndAuthorization(t *testing.T) {
+func TestCompatGRPCForwardTCPBridgeAndAuthorization(t *testing.T) {
 	state, err := store.Open(t.TempDir(), "forward-tcp-grpc")
 	if err != nil {
 		t.Fatal(err)
@@ -299,11 +299,11 @@ func TestOpenShellGRPCForwardTCPBridgeAndAuthorization(t *testing.T) {
 	}
 	hub := sshrelay.NewHub()
 	done := make(chan struct{})
-	remove := hub.RegisterOpenShellSupervisor("demo", "instance-demo", func(channel, target string) error {
+	remove := hub.RegisterSupervisor("demo", "instance-demo", func(channel, target string) error {
 		if target != "tcp://127.0.0.1:17777" {
 			return status.Errorf(codes.InvalidArgument, "unexpected relay target %q", target)
 		}
-		upstream, acceptErr := hub.AcceptOpenShellRelay("demo", channel)
+		upstream, acceptErr := hub.AcceptRelay("demo", channel)
 		if acceptErr != nil {
 			return acceptErr
 		}
@@ -323,7 +323,7 @@ func TestOpenShellGRPCForwardTCPBridgeAndAuthorization(t *testing.T) {
 	runtime := &grpcRuntime{st: state, relay: hub}
 	opt := Options{AllowUnauthenticated: true, grpcRuntime: runtime}
 	server := grpc.NewServer(grpcAuthServerOptions(opt)...)
-	registerOpenShellRPCWithOptions(server, opt)
+	registerCompatRPCWithOptions(server, opt)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -336,7 +336,7 @@ func TestOpenShellGRPCForwardTCPBridgeAndAuthorization(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	client := openshellv1.NewOpenShellClient(conn)
+	client := compatv1.NewOpenShellClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	limitReleases := make([]func(), 0, maxForwardPerSandbox)
@@ -351,9 +351,9 @@ func TestOpenShellGRPCForwardTCPBridgeAndAuthorization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := limited.Send(&openshellv1.TcpForwardFrame{Payload: &openshellv1.TcpForwardFrame_Init{Init: &openshellv1.TcpForwardInit{
-		SandboxId: "sb-demo", AuthorizationToken: token,
-		Target: &openshellv1.TcpForwardInit_Tcp{Tcp: &openshellv1.TcpRelayTarget{Host: "localhost", Port: 17777}},
+	if err := limited.Send(&compatv1.TcpForwardFrame{Payload: &compatv1.TcpForwardFrame_Init{Init: &compatv1.TcpForwardInit{
+		Sandbox: "demo", AuthorizationToken: token,
+		Target: &compatv1.TcpForwardInit_Tcp{Tcp: &compatv1.TcpRelayTarget{Host: "localhost", Port: 17777}},
 	}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -367,14 +367,14 @@ func TestOpenShellGRPCForwardTCPBridgeAndAuthorization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	init := &openshellv1.TcpForwardInit{
-		SandboxId: "sb-demo", AuthorizationToken: token,
-		Target: &openshellv1.TcpForwardInit_Tcp{Tcp: &openshellv1.TcpRelayTarget{Host: "localhost", Port: 17777}},
+	init := &compatv1.TcpForwardInit{
+		Sandbox: "demo", AuthorizationToken: token,
+		Target: &compatv1.TcpForwardInit_Tcp{Tcp: &compatv1.TcpRelayTarget{Host: "localhost", Port: 17777}},
 	}
-	if err := stream.Send(&openshellv1.TcpForwardFrame{Payload: &openshellv1.TcpForwardFrame_Init{Init: init}}); err != nil {
+	if err := stream.Send(&compatv1.TcpForwardFrame{Payload: &compatv1.TcpForwardFrame_Init{Init: init}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := stream.Send(&openshellv1.TcpForwardFrame{Payload: &openshellv1.TcpForwardFrame_Data{Data: []byte("grpc-forward-roundtrip")}}); err != nil {
+	if err := stream.Send(&compatv1.TcpForwardFrame{Payload: &compatv1.TcpForwardFrame_Data{Data: []byte("grpc-forward-roundtrip")}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := stream.CloseSend(); err != nil {
@@ -392,9 +392,9 @@ func TestOpenShellGRPCForwardTCPBridgeAndAuthorization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := denied.Send(&openshellv1.TcpForwardFrame{Payload: &openshellv1.TcpForwardFrame_Init{Init: &openshellv1.TcpForwardInit{
-		SandboxId: "sb-demo", AuthorizationToken: token,
-		Target: &openshellv1.TcpForwardInit_Tcp{Tcp: &openshellv1.TcpRelayTarget{Host: "192.0.2.9", Port: 80}},
+	if err := denied.Send(&compatv1.TcpForwardFrame{Payload: &compatv1.TcpForwardFrame_Init{Init: &compatv1.TcpForwardInit{
+		Sandbox: "demo", AuthorizationToken: token,
+		Target: &compatv1.TcpForwardInit_Tcp{Tcp: &compatv1.TcpRelayTarget{Host: "192.0.2.9", Port: 80}},
 	}}}); err != nil {
 		t.Fatal(err)
 	}

@@ -18,6 +18,15 @@ type runtimeCredentialRefreshTestEngine struct {
 	err   error
 }
 
+func (*runtimeCredentialRefreshTestEngine) BackendCapabilityInfo() driver.BackendInfo {
+	return driver.BackendInfo{
+		ID: "kubernetes",
+		Capabilities: map[driver.Capability]struct{}{
+			driver.CapabilityCredentialRefresh: {},
+		},
+	}
+}
+
 func (engine *runtimeCredentialRefreshTestEngine) RefreshSandboxRuntimeCredentials(_ context.Context, id core.ID) error {
 	engine.calls = append(engine.calls, id)
 	return engine.err

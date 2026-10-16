@@ -11,6 +11,7 @@ package interceptorv1
 
 import (
 	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	extensionv1 "github.com/cautem/cautem-gateway/internal/upstreamproto/extensionv1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	structpb "google.golang.org/protobuf/types/known/structpb"
@@ -79,7 +80,9 @@ func (GatewayInterceptorPhase) EnumDescriptor() ([]byte, []int) {
 }
 
 type DescribeRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Gateway protocol metadata. Interceptors must reject unmet requirements.
+	Gateway       *extensionv1.PeerMetadata `protobuf:"bytes,1,opt,name=gateway,proto3" json:"gateway,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -112,6 +115,13 @@ func (x *DescribeRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use DescribeRequest.ProtoReflect.Descriptor instead.
 func (*DescribeRequest) Descriptor() ([]byte, []int) {
 	return file_gateway_interceptor_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *DescribeRequest) GetGateway() *extensionv1.PeerMetadata {
+	if x != nil {
+		return x.Gateway
+	}
+	return nil
 }
 
 type ProviderProfileSnapshotRequest struct {
@@ -541,8 +551,12 @@ type InterceptorManifest struct {
 	// an incorrect audience before returning this manifest. Empty skips this
 	// post-authentication consistency check.
 	ExpectedAudience string `protobuf:"bytes,5,opt,name=expected_audience,json=expectedAudience,proto3" json:"expected_audience,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Gateway-interceptor protocol metadata. Required for negotiation.
+	// Declare protocol 1.0 and list "openshell.gateway-interceptor.contract" in
+	// supported_capabilities.
+	Extension     *extensionv1.PeerMetadata `protobuf:"bytes,6,opt,name=extension,proto3" json:"extension,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *InterceptorManifest) Reset() {
@@ -608,6 +622,13 @@ func (x *InterceptorManifest) GetExpectedAudience() string {
 		return x.ExpectedAudience
 	}
 	return ""
+}
+
+func (x *InterceptorManifest) GetExtension() *extensionv1.PeerMetadata {
+	if x != nil {
+		return x.Extension
+	}
+	return nil
 }
 
 type ProviderProfileSnapshot struct {
@@ -873,8 +894,9 @@ var File_gateway_interceptor_proto protoreflect.FileDescriptor
 
 const file_gateway_interceptor_proto_rawDesc = "" +
 	"\n" +
-	"\x19gateway_interceptor.proto\x12 openshell.gateway_interceptor.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x0fopenshell.proto\"\x11\n" +
-	"\x0fDescribeRequest\" \n" +
+	"\x19gateway_interceptor.proto\x12 openshell.gateway_interceptor.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x0fextension.proto\x1a\x0fopenshell.proto\"Q\n" +
+	"\x0fDescribeRequest\x12>\n" +
+	"\agateway\x18\x01 \x01(\v2$.openshell.extension.v1.PeerMetadataR\agateway\" \n" +
 	"\x1eProviderProfileSnapshotRequest\"\xd9\x04\n" +
 	"\x15InterceptorEvaluation\x12)\n" +
 	"\x10interceptor_name\x18\x01 \x01(\tR\x0finterceptorName\x12\x1d\n" +
@@ -907,13 +929,14 @@ const file_gateway_interceptor_proto_rawDesc = "" +
 	"\x0flog_annotations\x18\x05 \x03(\v2G.openshell.gateway_interceptor.v1.InterceptorResult.LogAnnotationsEntryR\x0elogAnnotations\x1aA\n" +
 	"\x13LogAnnotationsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xfc\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc0\x02\n" +
 	"\x13InterceptorManifest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12P\n" +
 	"\bbindings\x18\x02 \x03(\v24.openshell.gateway_interceptor.v1.InterceptorBindingR\bbindings\x12%\n" +
 	"\x0efailure_policy\x18\x03 \x01(\tR\rfailurePolicy\x12+\n" +
 	"\x11provider_profiles\x18\x04 \x01(\bR\x10providerProfiles\x12+\n" +
-	"\x11expected_audience\x18\x05 \x01(\tR\x10expectedAudience\"p\n" +
+	"\x11expected_audience\x18\x05 \x01(\tR\x10expectedAudience\x12B\n" +
+	"\textension\x18\x06 \x01(\v2$.openshell.extension.v1.PeerMetadataR\textension\"p\n" +
 	"\x17ProviderProfileSnapshot\x12\x1a\n" +
 	"\brevision\x18\x01 \x01(\tR\brevision\x129\n" +
 	"\bprofiles\x18\x02 \x03(\v2\x1d.openshell.v1.ProviderProfileR\bprofiles\"\xf1\x01\n" +
@@ -971,37 +994,40 @@ var file_gateway_interceptor_proto_goTypes = []any{
 	(*JsonPatch)(nil),                      // 12: openshell.gateway_interceptor.v1.JsonPatch
 	nil,                                    // 13: openshell.gateway_interceptor.v1.InterceptorEvaluation.PrincipalEntry
 	nil,                                    // 14: openshell.gateway_interceptor.v1.InterceptorResult.LogAnnotationsEntry
-	(*structpb.Struct)(nil),                // 15: google.protobuf.Struct
-	(*openshellv1.ProviderProfile)(nil),    // 16: openshell.v1.ProviderProfile
-	(*structpb.Value)(nil),                 // 17: google.protobuf.Value
+	(*extensionv1.PeerMetadata)(nil),       // 15: openshell.extension.v1.PeerMetadata
+	(*structpb.Struct)(nil),                // 16: google.protobuf.Struct
+	(*openshellv1.ProviderProfile)(nil),    // 17: openshell.v1.ProviderProfile
+	(*structpb.Value)(nil),                 // 18: google.protobuf.Value
 }
 var file_gateway_interceptor_proto_depIdxs = []int32{
-	13, // 0: openshell.gateway_interceptor.v1.InterceptorEvaluation.principal:type_name -> openshell.gateway_interceptor.v1.InterceptorEvaluation.PrincipalEntry
-	4,  // 1: openshell.gateway_interceptor.v1.InterceptorEvaluation.modify_operation:type_name -> openshell.gateway_interceptor.v1.ModifyOperationEvaluation
-	5,  // 2: openshell.gateway_interceptor.v1.InterceptorEvaluation.validate:type_name -> openshell.gateway_interceptor.v1.ValidateEvaluation
-	6,  // 3: openshell.gateway_interceptor.v1.InterceptorEvaluation.post_commit:type_name -> openshell.gateway_interceptor.v1.PostCommitEvaluation
-	15, // 4: openshell.gateway_interceptor.v1.ModifyOperationEvaluation.proposed_operation:type_name -> google.protobuf.Struct
-	15, // 5: openshell.gateway_interceptor.v1.ValidateEvaluation.proposed_operation:type_name -> google.protobuf.Struct
-	15, // 6: openshell.gateway_interceptor.v1.ValidateEvaluation.current_state:type_name -> google.protobuf.Struct
-	15, // 7: openshell.gateway_interceptor.v1.PostCommitEvaluation.committed_response:type_name -> google.protobuf.Struct
-	12, // 8: openshell.gateway_interceptor.v1.InterceptorResult.patches:type_name -> openshell.gateway_interceptor.v1.JsonPatch
-	14, // 9: openshell.gateway_interceptor.v1.InterceptorResult.log_annotations:type_name -> openshell.gateway_interceptor.v1.InterceptorResult.LogAnnotationsEntry
-	10, // 10: openshell.gateway_interceptor.v1.InterceptorManifest.bindings:type_name -> openshell.gateway_interceptor.v1.InterceptorBinding
-	16, // 11: openshell.gateway_interceptor.v1.ProviderProfileSnapshot.profiles:type_name -> openshell.v1.ProviderProfile
-	11, // 12: openshell.gateway_interceptor.v1.InterceptorBinding.selector:type_name -> openshell.gateway_interceptor.v1.InterceptorSelector
-	0,  // 13: openshell.gateway_interceptor.v1.InterceptorBinding.phases:type_name -> openshell.gateway_interceptor.v1.GatewayInterceptorPhase
-	17, // 14: openshell.gateway_interceptor.v1.JsonPatch.value:type_name -> google.protobuf.Value
-	1,  // 15: openshell.gateway_interceptor.v1.GatewayInterceptor.Describe:input_type -> openshell.gateway_interceptor.v1.DescribeRequest
-	2,  // 16: openshell.gateway_interceptor.v1.GatewayInterceptor.SnapshotProviderProfiles:input_type -> openshell.gateway_interceptor.v1.ProviderProfileSnapshotRequest
-	3,  // 17: openshell.gateway_interceptor.v1.GatewayInterceptor.Evaluate:input_type -> openshell.gateway_interceptor.v1.InterceptorEvaluation
-	8,  // 18: openshell.gateway_interceptor.v1.GatewayInterceptor.Describe:output_type -> openshell.gateway_interceptor.v1.InterceptorManifest
-	9,  // 19: openshell.gateway_interceptor.v1.GatewayInterceptor.SnapshotProviderProfiles:output_type -> openshell.gateway_interceptor.v1.ProviderProfileSnapshot
-	7,  // 20: openshell.gateway_interceptor.v1.GatewayInterceptor.Evaluate:output_type -> openshell.gateway_interceptor.v1.InterceptorResult
-	18, // [18:21] is the sub-list for method output_type
-	15, // [15:18] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	15, // 0: openshell.gateway_interceptor.v1.DescribeRequest.gateway:type_name -> openshell.extension.v1.PeerMetadata
+	13, // 1: openshell.gateway_interceptor.v1.InterceptorEvaluation.principal:type_name -> openshell.gateway_interceptor.v1.InterceptorEvaluation.PrincipalEntry
+	4,  // 2: openshell.gateway_interceptor.v1.InterceptorEvaluation.modify_operation:type_name -> openshell.gateway_interceptor.v1.ModifyOperationEvaluation
+	5,  // 3: openshell.gateway_interceptor.v1.InterceptorEvaluation.validate:type_name -> openshell.gateway_interceptor.v1.ValidateEvaluation
+	6,  // 4: openshell.gateway_interceptor.v1.InterceptorEvaluation.post_commit:type_name -> openshell.gateway_interceptor.v1.PostCommitEvaluation
+	16, // 5: openshell.gateway_interceptor.v1.ModifyOperationEvaluation.proposed_operation:type_name -> google.protobuf.Struct
+	16, // 6: openshell.gateway_interceptor.v1.ValidateEvaluation.proposed_operation:type_name -> google.protobuf.Struct
+	16, // 7: openshell.gateway_interceptor.v1.ValidateEvaluation.current_state:type_name -> google.protobuf.Struct
+	16, // 8: openshell.gateway_interceptor.v1.PostCommitEvaluation.committed_response:type_name -> google.protobuf.Struct
+	12, // 9: openshell.gateway_interceptor.v1.InterceptorResult.patches:type_name -> openshell.gateway_interceptor.v1.JsonPatch
+	14, // 10: openshell.gateway_interceptor.v1.InterceptorResult.log_annotations:type_name -> openshell.gateway_interceptor.v1.InterceptorResult.LogAnnotationsEntry
+	10, // 11: openshell.gateway_interceptor.v1.InterceptorManifest.bindings:type_name -> openshell.gateway_interceptor.v1.InterceptorBinding
+	15, // 12: openshell.gateway_interceptor.v1.InterceptorManifest.extension:type_name -> openshell.extension.v1.PeerMetadata
+	17, // 13: openshell.gateway_interceptor.v1.ProviderProfileSnapshot.profiles:type_name -> openshell.v1.ProviderProfile
+	11, // 14: openshell.gateway_interceptor.v1.InterceptorBinding.selector:type_name -> openshell.gateway_interceptor.v1.InterceptorSelector
+	0,  // 15: openshell.gateway_interceptor.v1.InterceptorBinding.phases:type_name -> openshell.gateway_interceptor.v1.GatewayInterceptorPhase
+	18, // 16: openshell.gateway_interceptor.v1.JsonPatch.value:type_name -> google.protobuf.Value
+	1,  // 17: openshell.gateway_interceptor.v1.GatewayInterceptor.Describe:input_type -> openshell.gateway_interceptor.v1.DescribeRequest
+	2,  // 18: openshell.gateway_interceptor.v1.GatewayInterceptor.SnapshotProviderProfiles:input_type -> openshell.gateway_interceptor.v1.ProviderProfileSnapshotRequest
+	3,  // 19: openshell.gateway_interceptor.v1.GatewayInterceptor.Evaluate:input_type -> openshell.gateway_interceptor.v1.InterceptorEvaluation
+	8,  // 20: openshell.gateway_interceptor.v1.GatewayInterceptor.Describe:output_type -> openshell.gateway_interceptor.v1.InterceptorManifest
+	9,  // 21: openshell.gateway_interceptor.v1.GatewayInterceptor.SnapshotProviderProfiles:output_type -> openshell.gateway_interceptor.v1.ProviderProfileSnapshot
+	7,  // 22: openshell.gateway_interceptor.v1.GatewayInterceptor.Evaluate:output_type -> openshell.gateway_interceptor.v1.InterceptorResult
+	20, // [20:23] is the sub-list for method output_type
+	17, // [17:20] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_gateway_interceptor_proto_init() }

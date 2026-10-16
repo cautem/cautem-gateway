@@ -32,7 +32,7 @@ func (a *controlAPI) GetOperation(ctx context.Context, req *connect.Request[cont
 	if !validSandboxName(workspace) {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace"))
 	}
-	if err := (&openShellRPC{options: a.opt, runtime: &grpcRuntime{st: a.store}}).requireSandboxWrite(ctx, workspace); err != nil {
+	if err := (&compatRPCAdapter{options: a.opt, runtime: &grpcRuntime{st: a.store}}).requireSandboxWrite(ctx, workspace); err != nil {
 		return nil, controlActionError(err)
 	}
 	if len(req.Msg.GetRequestId()) < 16 || len(req.Msg.GetRequestId()) > 128 {

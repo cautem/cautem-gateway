@@ -11,8 +11,10 @@ package credentialsv1
 
 import (
 	datamodelv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/datamodelv1"
+	extensionv1 "github.com/cautem/cautem-gateway/internal/upstreamproto/extensionv1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -26,7 +28,9 @@ const (
 )
 
 type GetCredentialDriverCapabilitiesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Gateway protocol metadata. Drivers must reject unmet requirements.
+	Gateway       *extensionv1.PeerMetadata `protobuf:"bytes,1,opt,name=gateway,proto3" json:"gateway,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -61,20 +65,31 @@ func (*GetCredentialDriverCapabilitiesRequest) Descriptor() ([]byte, []int) {
 	return file_credential_driver_proto_rawDescGZIP(), []int{0}
 }
 
+func (x *GetCredentialDriverCapabilitiesRequest) GetGateway() *extensionv1.PeerMetadata {
+	if x != nil {
+		return x.Gateway
+	}
+	return nil
+}
+
 type GetCredentialDriverCapabilitiesResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Human-readable driver name.
 	DriverName string `protobuf:"bytes,1,opt,name=driver_name,json=driverName,proto3" json:"driver_name,omitempty"`
-	// Driver implementation version string.
+	// Deprecated diagnostic compatibility field. Use extension.implementation_version.
 	DriverVersion string `protobuf:"bytes,2,opt,name=driver_version,json=driverVersion,proto3" json:"driver_version,omitempty"`
 	// Backend kind, such as "kubernetes-secrets" or "vault".
 	BackendKind string `protobuf:"bytes,3,opt,name=backend_kind,json=backendKind,proto3" json:"backend_kind,omitempty"`
 	// True when ListCredentials is supported.
 	SupportsList bool `protobuf:"varint,4,opt,name=supports_list,json=supportsList,proto3" json:"supports_list,omitempty"`
-	// True when ResolveCredentials may return expires_at_ms values.
+	// True when ResolveCredentials may return expiration_time values.
 	SupportsExpiresAt bool `protobuf:"varint,5,opt,name=supports_expires_at,json=supportsExpiresAt,proto3" json:"supports_expires_at,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Credential-driver protocol metadata. Required for protocol negotiation.
+	// Declare protocol 1.0 and list "openshell.credentials.contract" in
+	// supported_capabilities.
+	Extension     *extensionv1.PeerMetadata `protobuf:"bytes,6,opt,name=extension,proto3" json:"extension,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetCredentialDriverCapabilitiesResponse) Reset() {
@@ -142,10 +157,17 @@ func (x *GetCredentialDriverCapabilitiesResponse) GetSupportsExpiresAt() bool {
 	return false
 }
 
+func (x *GetCredentialDriverCapabilitiesResponse) GetExtension() *extensionv1.PeerMetadata {
+	if x != nil {
+		return x.Extension
+	}
+	return nil
+}
+
 type StoreCredentialRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Provider instance name supplied for audit and backend policy decisions.
-	ProviderName string `protobuf:"bytes,1,opt,name=provider_name,json=providerName,proto3" json:"provider_name,omitempty"`
+	Provider string `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
 	// Gateway-owned logical key for this provider secret. Injectable credentials
 	// use their runtime environment key; refresh material uses an internal key.
 	CredentialKey string `protobuf:"bytes,2,opt,name=credential_key,json=credentialKey,proto3" json:"credential_key,omitempty"`
@@ -195,9 +217,9 @@ func (*StoreCredentialRequest) Descriptor() ([]byte, []int) {
 	return file_credential_driver_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *StoreCredentialRequest) GetProviderName() string {
+func (x *StoreCredentialRequest) GetProvider() string {
 	if x != nil {
-		return x.ProviderName
+		return x.Provider
 	}
 	return ""
 }
@@ -292,7 +314,7 @@ func (x *StoreCredentialResponse) GetHandle() *datamodelv1.CredentialHandle {
 type DeleteCredentialRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Provider instance name supplied for audit and backend policy decisions.
-	ProviderName string `protobuf:"bytes,1,opt,name=provider_name,json=providerName,proto3" json:"provider_name,omitempty"`
+	Provider string `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
 	// Gateway-owned logical key that owns the handle.
 	CredentialKey string `protobuf:"bytes,2,opt,name=credential_key,json=credentialKey,proto3" json:"credential_key,omitempty"`
 	// Opaque handle to delete.
@@ -335,9 +357,9 @@ func (*DeleteCredentialRequest) Descriptor() ([]byte, []int) {
 	return file_credential_driver_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *DeleteCredentialRequest) GetProviderName() string {
+func (x *DeleteCredentialRequest) GetProvider() string {
 	if x != nil {
-		return x.ProviderName
+		return x.Provider
 	}
 	return ""
 }
@@ -455,7 +477,7 @@ type ResolveCredentialRequest struct {
 	// Gateway-chosen opaque ID used to correlate batch responses.
 	RequestId string `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	// Provider instance name supplied for audit and backend policy decisions.
-	ProviderName string `protobuf:"bytes,2,opt,name=provider_name,json=providerName,proto3" json:"provider_name,omitempty"`
+	Provider string `protobuf:"bytes,2,opt,name=provider,proto3" json:"provider,omitempty"`
 	// Gateway-owned logical key for the value being resolved.
 	CredentialKey string `protobuf:"bytes,3,opt,name=credential_key,json=credentialKey,proto3" json:"credential_key,omitempty"`
 	// Opaque handle to resolve.
@@ -505,9 +527,9 @@ func (x *ResolveCredentialRequest) GetRequestId() string {
 	return ""
 }
 
-func (x *ResolveCredentialRequest) GetProviderName() string {
+func (x *ResolveCredentialRequest) GetProvider() string {
 	if x != nil {
-		return x.ProviderName
+		return x.Provider
 	}
 	return ""
 }
@@ -590,10 +612,10 @@ type ResolvedCredential struct {
 	RequestId string `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	// Secret string value. Drivers must never log this field.
 	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
-	// Expiration timestamp in milliseconds since Unix epoch, or zero when absent.
-	ExpiresAtMs   int64 `protobuf:"varint,3,opt,name=expires_at_ms,json=expiresAtMs,proto3" json:"expires_at_ms,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Expiration time. Absence means the credential does not expire.
+	ExpirationTime *timestamppb.Timestamp `protobuf:"bytes,103,opt,name=expiration_time,json=expirationTime,proto3" json:"expiration_time,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ResolvedCredential) Reset() {
@@ -640,11 +662,11 @@ func (x *ResolvedCredential) GetValue() string {
 	return ""
 }
 
-func (x *ResolvedCredential) GetExpiresAtMs() int64 {
+func (x *ResolvedCredential) GetExpirationTime() *timestamppb.Timestamp {
 	if x != nil {
-		return x.ExpiresAtMs
+		return x.ExpirationTime
 	}
-	return 0
+	return nil
 }
 
 type ListCredentialsRequest struct {
@@ -794,17 +816,19 @@ var File_credential_driver_proto protoreflect.FileDescriptor
 
 const file_credential_driver_proto_rawDesc = "" +
 	"\n" +
-	"\x17credential_driver.proto\x12\x18openshell.credentials.v1\x1a\x0fdatamodel.proto\"(\n" +
-	"&GetCredentialDriverCapabilitiesRequest\"\xe9\x01\n" +
+	"\x17credential_driver.proto\x12\x18openshell.credentials.v1\x1a\x0fdatamodel.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x0fextension.proto\"h\n" +
+	"&GetCredentialDriverCapabilitiesRequest\x12>\n" +
+	"\agateway\x18\x01 \x01(\v2$.openshell.extension.v1.PeerMetadataR\agateway\"\xad\x02\n" +
 	"'GetCredentialDriverCapabilitiesResponse\x12\x1f\n" +
 	"\vdriver_name\x18\x01 \x01(\tR\n" +
 	"driverName\x12%\n" +
 	"\x0edriver_version\x18\x02 \x01(\tR\rdriverVersion\x12!\n" +
 	"\fbackend_kind\x18\x03 \x01(\tR\vbackendKind\x12#\n" +
 	"\rsupports_list\x18\x04 \x01(\bR\fsupportsList\x12.\n" +
-	"\x13supports_expires_at\x18\x05 \x01(\bR\x11supportsExpiresAt\"\xa9\x02\n" +
-	"\x16StoreCredentialRequest\x12#\n" +
-	"\rprovider_name\x18\x01 \x01(\tR\fproviderName\x12%\n" +
+	"\x13supports_expires_at\x18\x05 \x01(\bR\x11supportsExpiresAt\x12B\n" +
+	"\textension\x18\x06 \x01(\v2$.openshell.extension.v1.PeerMetadataR\textension\"\xa0\x02\n" +
+	"\x16StoreCredentialRequest\x12\x1a\n" +
+	"\bprovider\x18\x01 \x01(\tR\bprovider\x12%\n" +
 	"\x0ecredential_key\x18\x02 \x01(\tR\rcredentialKey\x12\x14\n" +
 	"\x05value\x18\x03 \x01(\tR\x05value\x12Q\n" +
 	"\x0fexisting_handle\x18\x04 \x01(\v2(.openshell.datamodel.v1.CredentialHandleR\x0eexistingHandle\x12\x1c\n" +
@@ -813,9 +837,9 @@ const file_credential_driver_proto_rawDesc = "" +
 	"providerId\x12\x1b\n" +
 	"\tobject_id\x18\a \x01(\tR\bobjectId\"[\n" +
 	"\x17StoreCredentialResponse\x12@\n" +
-	"\x06handle\x18\x01 \x01(\v2(.openshell.datamodel.v1.CredentialHandleR\x06handle\"\xe6\x01\n" +
-	"\x17DeleteCredentialRequest\x12#\n" +
-	"\rprovider_name\x18\x01 \x01(\tR\fproviderName\x12%\n" +
+	"\x06handle\x18\x01 \x01(\v2(.openshell.datamodel.v1.CredentialHandleR\x06handle\"\xdd\x01\n" +
+	"\x17DeleteCredentialRequest\x12\x1a\n" +
+	"\bprovider\x18\x01 \x01(\tR\bprovider\x12%\n" +
 	"\x0ecredential_key\x18\x02 \x01(\tR\rcredentialKey\x12@\n" +
 	"\x06handle\x18\x03 \x01(\v2(.openshell.datamodel.v1.CredentialHandleR\x06handle\x12\x1c\n" +
 	"\tworkspace\x18\x04 \x01(\tR\tworkspace\x12\x1f\n" +
@@ -823,23 +847,23 @@ const file_credential_driver_proto_rawDesc = "" +
 	"providerId\"\x1a\n" +
 	"\x18DeleteCredentialResponse\"q\n" +
 	"\x19ResolveCredentialsRequest\x12T\n" +
-	"\vcredentials\x18\x01 \x03(\v22.openshell.credentials.v1.ResolveCredentialRequestR\vcredentials\"\x86\x02\n" +
+	"\vcredentials\x18\x01 \x03(\v22.openshell.credentials.v1.ResolveCredentialRequestR\vcredentials\"\xfd\x01\n" +
 	"\x18ResolveCredentialRequest\x12\x1d\n" +
 	"\n" +
-	"request_id\x18\x01 \x01(\tR\trequestId\x12#\n" +
-	"\rprovider_name\x18\x02 \x01(\tR\fproviderName\x12%\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1a\n" +
+	"\bprovider\x18\x02 \x01(\tR\bprovider\x12%\n" +
 	"\x0ecredential_key\x18\x03 \x01(\tR\rcredentialKey\x12@\n" +
 	"\x06handle\x18\x04 \x01(\v2(.openshell.datamodel.v1.CredentialHandleR\x06handle\x12\x1c\n" +
 	"\tworkspace\x18\x05 \x01(\tR\tworkspace\x12\x1f\n" +
 	"\vprovider_id\x18\x06 \x01(\tR\n" +
 	"providerId\"l\n" +
 	"\x1aResolveCredentialsResponse\x12N\n" +
-	"\vcredentials\x18\x01 \x03(\v2,.openshell.credentials.v1.ResolvedCredentialR\vcredentials\"m\n" +
+	"\vcredentials\x18\x01 \x03(\v2,.openshell.credentials.v1.ResolvedCredentialR\vcredentials\"\xa3\x01\n" +
 	"\x12ResolvedCredential\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value\x12\"\n" +
-	"\rexpires_at_ms\x18\x03 \x01(\x03R\vexpiresAtMs\"\x18\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\x12C\n" +
+	"\x0fexpiration_time\x18g \x01(\v2\x1a.google.protobuf.TimestampR\x0eexpirationTimeJ\x04\b\x03\x10\x04R\rexpires_at_ms\"\x18\n" +
 	"\x16ListCredentialsRequest\"g\n" +
 	"\x17ListCredentialsResponse\x12L\n" +
 	"\vcredentials\x18\x01 \x03(\v2*.openshell.credentials.v1.ListedCredentialR\vcredentials\"\xd1\x01\n" +
@@ -885,32 +909,37 @@ var file_credential_driver_proto_goTypes = []any{
 	(*ListCredentialsResponse)(nil),                 // 11: openshell.credentials.v1.ListCredentialsResponse
 	(*ListedCredential)(nil),                        // 12: openshell.credentials.v1.ListedCredential
 	nil,                                             // 13: openshell.credentials.v1.ListedCredential.MetadataEntry
-	(*datamodelv1.CredentialHandle)(nil),            // 14: openshell.datamodel.v1.CredentialHandle
+	(*extensionv1.PeerMetadata)(nil),                // 14: openshell.extension.v1.PeerMetadata
+	(*datamodelv1.CredentialHandle)(nil),            // 15: openshell.datamodel.v1.CredentialHandle
+	(*timestamppb.Timestamp)(nil),                   // 16: google.protobuf.Timestamp
 }
 var file_credential_driver_proto_depIdxs = []int32{
-	14, // 0: openshell.credentials.v1.StoreCredentialRequest.existing_handle:type_name -> openshell.datamodel.v1.CredentialHandle
-	14, // 1: openshell.credentials.v1.StoreCredentialResponse.handle:type_name -> openshell.datamodel.v1.CredentialHandle
-	14, // 2: openshell.credentials.v1.DeleteCredentialRequest.handle:type_name -> openshell.datamodel.v1.CredentialHandle
-	7,  // 3: openshell.credentials.v1.ResolveCredentialsRequest.credentials:type_name -> openshell.credentials.v1.ResolveCredentialRequest
-	14, // 4: openshell.credentials.v1.ResolveCredentialRequest.handle:type_name -> openshell.datamodel.v1.CredentialHandle
-	9,  // 5: openshell.credentials.v1.ResolveCredentialsResponse.credentials:type_name -> openshell.credentials.v1.ResolvedCredential
-	12, // 6: openshell.credentials.v1.ListCredentialsResponse.credentials:type_name -> openshell.credentials.v1.ListedCredential
-	13, // 7: openshell.credentials.v1.ListedCredential.metadata:type_name -> openshell.credentials.v1.ListedCredential.MetadataEntry
-	0,  // 8: openshell.credentials.v1.CredentialDriver.GetCapabilities:input_type -> openshell.credentials.v1.GetCredentialDriverCapabilitiesRequest
-	2,  // 9: openshell.credentials.v1.CredentialDriver.StoreCredential:input_type -> openshell.credentials.v1.StoreCredentialRequest
-	4,  // 10: openshell.credentials.v1.CredentialDriver.DeleteCredential:input_type -> openshell.credentials.v1.DeleteCredentialRequest
-	6,  // 11: openshell.credentials.v1.CredentialDriver.ResolveCredentials:input_type -> openshell.credentials.v1.ResolveCredentialsRequest
-	10, // 12: openshell.credentials.v1.CredentialDriver.ListCredentials:input_type -> openshell.credentials.v1.ListCredentialsRequest
-	1,  // 13: openshell.credentials.v1.CredentialDriver.GetCapabilities:output_type -> openshell.credentials.v1.GetCredentialDriverCapabilitiesResponse
-	3,  // 14: openshell.credentials.v1.CredentialDriver.StoreCredential:output_type -> openshell.credentials.v1.StoreCredentialResponse
-	5,  // 15: openshell.credentials.v1.CredentialDriver.DeleteCredential:output_type -> openshell.credentials.v1.DeleteCredentialResponse
-	8,  // 16: openshell.credentials.v1.CredentialDriver.ResolveCredentials:output_type -> openshell.credentials.v1.ResolveCredentialsResponse
-	11, // 17: openshell.credentials.v1.CredentialDriver.ListCredentials:output_type -> openshell.credentials.v1.ListCredentialsResponse
-	13, // [13:18] is the sub-list for method output_type
-	8,  // [8:13] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	14, // 0: openshell.credentials.v1.GetCredentialDriverCapabilitiesRequest.gateway:type_name -> openshell.extension.v1.PeerMetadata
+	14, // 1: openshell.credentials.v1.GetCredentialDriverCapabilitiesResponse.extension:type_name -> openshell.extension.v1.PeerMetadata
+	15, // 2: openshell.credentials.v1.StoreCredentialRequest.existing_handle:type_name -> openshell.datamodel.v1.CredentialHandle
+	15, // 3: openshell.credentials.v1.StoreCredentialResponse.handle:type_name -> openshell.datamodel.v1.CredentialHandle
+	15, // 4: openshell.credentials.v1.DeleteCredentialRequest.handle:type_name -> openshell.datamodel.v1.CredentialHandle
+	7,  // 5: openshell.credentials.v1.ResolveCredentialsRequest.credentials:type_name -> openshell.credentials.v1.ResolveCredentialRequest
+	15, // 6: openshell.credentials.v1.ResolveCredentialRequest.handle:type_name -> openshell.datamodel.v1.CredentialHandle
+	9,  // 7: openshell.credentials.v1.ResolveCredentialsResponse.credentials:type_name -> openshell.credentials.v1.ResolvedCredential
+	16, // 8: openshell.credentials.v1.ResolvedCredential.expiration_time:type_name -> google.protobuf.Timestamp
+	12, // 9: openshell.credentials.v1.ListCredentialsResponse.credentials:type_name -> openshell.credentials.v1.ListedCredential
+	13, // 10: openshell.credentials.v1.ListedCredential.metadata:type_name -> openshell.credentials.v1.ListedCredential.MetadataEntry
+	0,  // 11: openshell.credentials.v1.CredentialDriver.GetCapabilities:input_type -> openshell.credentials.v1.GetCredentialDriverCapabilitiesRequest
+	2,  // 12: openshell.credentials.v1.CredentialDriver.StoreCredential:input_type -> openshell.credentials.v1.StoreCredentialRequest
+	4,  // 13: openshell.credentials.v1.CredentialDriver.DeleteCredential:input_type -> openshell.credentials.v1.DeleteCredentialRequest
+	6,  // 14: openshell.credentials.v1.CredentialDriver.ResolveCredentials:input_type -> openshell.credentials.v1.ResolveCredentialsRequest
+	10, // 15: openshell.credentials.v1.CredentialDriver.ListCredentials:input_type -> openshell.credentials.v1.ListCredentialsRequest
+	1,  // 16: openshell.credentials.v1.CredentialDriver.GetCapabilities:output_type -> openshell.credentials.v1.GetCredentialDriverCapabilitiesResponse
+	3,  // 17: openshell.credentials.v1.CredentialDriver.StoreCredential:output_type -> openshell.credentials.v1.StoreCredentialResponse
+	5,  // 18: openshell.credentials.v1.CredentialDriver.DeleteCredential:output_type -> openshell.credentials.v1.DeleteCredentialResponse
+	8,  // 19: openshell.credentials.v1.CredentialDriver.ResolveCredentials:output_type -> openshell.credentials.v1.ResolveCredentialsResponse
+	11, // 20: openshell.credentials.v1.CredentialDriver.ListCredentials:output_type -> openshell.credentials.v1.ListCredentialsResponse
+	16, // [16:21] is the sub-list for method output_type
+	11, // [11:16] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_credential_driver_proto_init() }

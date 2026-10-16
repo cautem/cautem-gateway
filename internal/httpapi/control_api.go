@@ -253,10 +253,10 @@ func (a *controlAPI) runtimeDriverSnapshot(ctx context.Context, driverName strin
 		return cached
 	}
 	snapshot := runtimeDriverSnapshot{checkedAt: now}
-	engine, err := a.opt.grpcRuntime.compute.engine(driverName)
+	backend, err := a.opt.grpcRuntime.compute.backend(driverName)
 	if err == nil {
 		listCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		rows, listErr := engine.List(listCtx)
+		rows, listErr := backend.List(listCtx)
 		cancel()
 		if listErr == nil {
 			snapshot.available = true

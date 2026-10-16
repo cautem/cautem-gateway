@@ -12,15 +12,16 @@ import (
 	"strings"
 	"testing"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	optionsv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/optionsv1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 type rpcInventory struct {
-	UpstreamCommit string                `json:"upstream_commit"`
-	Services       []rpcInventoryService `json:"services"`
+	UpstreamVersion string                `json:"upstream_version"`
+	UpstreamCommit  string                `json:"upstream_commit"`
+	Services        []rpcInventoryService `json:"services"`
 }
 
 type rpcInventoryService struct {
@@ -44,7 +45,7 @@ type rpcInventoryMethod struct {
 	Evidence           []string `json:"evidence"`
 }
 
-func TestOpenShellRPCInventoryMatchesPinnedServiceAndHandlers(t *testing.T) {
+func TestCompatRPCInventoryMatchesPinnedServiceAndHandlers(t *testing.T) {
 	_, source, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("resolve inventory test source path")
@@ -57,7 +58,7 @@ func TestOpenShellRPCInventoryMatchesPinnedServiceAndHandlers(t *testing.T) {
 	if err := json.Unmarshal(body, &inventory); err != nil {
 		t.Fatalf("decode RPC inventory: %v", err)
 	}
-	if inventory.UpstreamCommit != "a0814443f19c07102b19ff09d6ead3d3ba59f9c5" {
+	if inventory.UpstreamVersion != "v0.1.4" || inventory.UpstreamCommit != "5a7728c304b5528e954e9ae900cf21f84e1a12b1" {
 		t.Fatalf("inventory upstream commit=%q", inventory.UpstreamCommit)
 	}
 	var public *rpcInventoryService
@@ -70,11 +71,11 @@ func TestOpenShellRPCInventoryMatchesPinnedServiceAndHandlers(t *testing.T) {
 	if public == nil || !public.Registered {
 		t.Fatal("public OpenShell service is missing or not registered in inventory")
 	}
-	service := openshellv1.File_openshell_proto.Services().ByName("OpenShell")
+	service := compatv1.File_openshell_proto.Services().ByName("OpenShell")
 	if service == nil || len(public.Methods) != service.Methods().Len() {
 		t.Fatalf("inventory has %d OpenShell methods; pinned descriptor has %d", len(public.Methods), service.Methods().Len())
 	}
-	implemented, err := explicitOpenShellRPCHandlers(filepath.Dir(source))
+	implemented, err := explicitCompatRPCHandlers(filepath.Dir(source))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +163,7 @@ func TestOpenShellRPCInventoryMatchesPinnedServiceAndHandlers(t *testing.T) {
 		t.Errorf("inventory covers %d of %d pinned OpenShell methods", len(seen), service.Methods().Len())
 	}
 	wantRelated := map[string]int{
-		"openshell.compute.v1.ComputeDriver":                  13,
+		"openshell.compute.v1.ComputeDriver":                  12,
 		"openshell.credentials.v1.CredentialDriver":           5,
 		"openshell.middleware.v1.SupervisorMiddleware":        4,
 		"openshell.middleware.v1.HttpResponsePreReturn":       1,
@@ -191,14 +192,14 @@ func TestOpenShellRPCInventoryMatchesPinnedServiceAndHandlers(t *testing.T) {
 }
 
 func TestGetGatewayInfoHasStablePublicResponse(t *testing.T) {
-	rpc := &openShellRPC{options: Options{ComputeDriverNames: []string{"docker", "podman"}}}
-	response, err := rpc.GetGatewayInfo(context.Background(), &openshellv1.GetGatewayInfoRequest{})
+	rpc := &compatRPCAdapter{options: Options{ComputeDriverNames: []string{"docker", "podman"}}}
+	response, err := rpc.GetGatewayInfo(context.Background(), &compatv1.GetGatewayInfoRequest{})
 	if err != nil || response.GetGatewayVersion() == "" || len(response.GetComputeDrivers()) != 2 {
 		t.Fatalf("gateway info=%v err=%v", response, err)
 	}
 }
 
-func explicitOpenShellRPCHandlers(dir string) (map[string]struct{}, error) {
+func explicitCompatRPCHandlers(dir string) (map[string]struct{}, error) {
 	fset := token.NewFileSet()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -224,7 +225,7 @@ func explicitOpenShellRPCHandlers(dir string) (map[string]struct{}, error) {
 				continue
 			}
 			receiver, ok := pointer.X.(*ast.Ident)
-			if ok && receiver.Name == "openShellRPC" {
+			if ok && receiver.Name == "compatRPCAdapter" {
 				out[function.Name.Name] = struct{}{}
 			}
 		}

@@ -2,11 +2,12 @@ openapi: 3.1.0
 info:
   title: cautem Gateway REST API
   version: 0.1.0
-  summary: Health and authentication bootstrap endpoints for the gateway.
+  summary: Health, authentication bootstrap, and bounded rootfs image upload.
   description: >-
     Management APIs use generated Control RPC or the pinned OpenShell RPC
-    contract. HTTP remains for health probes and browser/local authentication
-    bootstrap; streaming SSH and supervisor relay transports are not REST APIs.
+    contract. HTTP also provides bounded rootfs image upload after an OpenShell
+    staging token is allocated. Streaming SSH and supervisor relay transports
+    are not REST APIs.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -18,6 +19,8 @@ tags:
     description: Liveness checks for the gateway process.
   - name: Gateway
     description: Browser and local authentication bootstrap.
+  - name: Sandbox images
+    description: Upload a rootfs archive to a workspace-scoped staging token.
 paths:
   /healthz:
     get:
@@ -83,7 +86,56 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /v1/rootfs-tar/{staging_token}:
+    put:
+      operationId: uploadRootfsTar
+      tags: [Sandbox images]
+      summary: Upload an allocated rootfs tar archive
+      description: >-
+        Allocate a token with the OpenShell BeginRootfsTarStaging RPC first.
+        Upload exactly the allocated byte count before it expires. The gateway
+        checks sandbox:write access and workspace membership, limits the stream
+        to the declared size, and consumes each token once. The token is a
+        staging credential and must not be logged. Remote deployments require
+        HTTPS.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: staging_token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/x-tar:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: The archive was atomically published to the staging slot.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: A valid bearer token is required.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The staging token has already been uploaded.
+        '411':
+          description: Content-Length is required.
+        '412':
+          description: The staging workspace is unavailable.
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     Health:
       type: object

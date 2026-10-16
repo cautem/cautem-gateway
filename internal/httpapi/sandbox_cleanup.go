@@ -15,26 +15,31 @@ import (
 
 const sandboxCleanupTimeout = 30 * time.Second
 
-// cleanupEngineSandbox keeps cleanup running after the request is canceled.
+type sandboxStopDeleter interface {
+	Stop(context.Context, core.ID) error
+	Delete(context.Context, core.ID) error
+}
+
+// cleanupSandboxRuntime keeps cleanup running after the request is canceled.
 // The bool reports whether Delete succeeded; a Stop failure alone does not
 // mean the runtime still exists if Delete completed successfully.
-func cleanupEngineSandbox(ctx context.Context, engine driver.Engine, id core.ID, stop bool) (bool, error) {
+func cleanupSandboxRuntime(ctx context.Context, backend sandboxStopDeleter, id core.ID, stop bool) (bool, error) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sandboxCleanupTimeout)
 	defer cancel()
 
 	var stopErr error
 	if stop {
-		stopErr = engine.Stop(cleanupCtx, id)
+		stopErr = backend.Stop(cleanupCtx, id)
 	}
-	deleteErr := engine.Delete(cleanupCtx, id)
+	deleteErr := backend.Delete(cleanupCtx, id)
 	return deleteErr == nil, errors.Join(stopErr, deleteErr)
 }
 
-func (s *openShellRPC) rollbackSandboxCreate(ctx context.Context, engine driver.Engine, record store.Sandbox, handle driver.Handle) error {
+func (s *compatRPCAdapter) rollbackSandboxCreate(ctx context.Context, backend driver.Backend, record store.Sandbox, handle driver.Handle) error {
 	backendDeleted := true
 	var cleanupErr error
 	if handle.ID != "" {
-		backendDeleted, cleanupErr = cleanupEngineSandbox(ctx, engine, handle.ID, true)
+		backendDeleted, cleanupErr = cleanupSandboxRuntime(ctx, backend, handle.ID, true)
 	}
 
 	record.RuntimeID = string(handle.ID)

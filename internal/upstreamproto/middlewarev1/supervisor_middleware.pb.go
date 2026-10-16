@@ -10,9 +10,10 @@
 package middlewarev1
 
 import (
+	extensionv1 "github.com/cautem/cautem-gateway/internal/upstreamproto/extensionv1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	structpb "google.golang.org/protobuf/types/known/structpb"
 	reflect "reflect"
 	sync "sync"
@@ -454,14 +455,60 @@ func (ExistingHeaderAction) EnumDescriptor() ([]byte, []int) {
 	return file_supervisor_middleware_proto_rawDescGZIP(), []int{6}
 }
 
+type MiddlewareDescribeRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Gateway or supervisor protocol metadata. Middleware must reject unmet
+	// requirements before accepting traffic.
+	Gateway       *extensionv1.PeerMetadata `protobuf:"bytes,1,opt,name=gateway,proto3" json:"gateway,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MiddlewareDescribeRequest) Reset() {
+	*x = MiddlewareDescribeRequest{}
+	mi := &file_supervisor_middleware_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MiddlewareDescribeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MiddlewareDescribeRequest) ProtoMessage() {}
+
+func (x *MiddlewareDescribeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_supervisor_middleware_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MiddlewareDescribeRequest.ProtoReflect.Descriptor instead.
+func (*MiddlewareDescribeRequest) Descriptor() ([]byte, []int) {
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *MiddlewareDescribeRequest) GetGateway() *extensionv1.PeerMetadata {
+	if x != nil {
+		return x.Gateway
+	}
+	return nil
+}
+
 // MiddlewareManifest describes one middleware service and its bindings.
 type MiddlewareManifest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Human-readable middleware service name used only for diagnostics. This is
 	// not required to match an operator-owned registration name.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// Release version of the middleware service implementation, used for
-	// diagnostics.
+	// Deprecated diagnostic compatibility field. Use
+	// extension.implementation_version.
 	ServiceVersion string `protobuf:"bytes,2,opt,name=service_version,json=serviceVersion,proto3" json:"service_version,omitempty"`
 	// Bindings exposed by this middleware service.
 	Bindings []*MiddlewareBinding `protobuf:"bytes,3,rep,name=bindings,proto3" json:"bindings,omitempty"`
@@ -471,13 +518,17 @@ type MiddlewareManifest struct {
 	// reject an incorrect audience before returning this manifest. Empty skips
 	// this post-authentication consistency check.
 	ExpectedAudience string `protobuf:"bytes,4,opt,name=expected_audience,json=expectedAudience,proto3" json:"expected_audience,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Supervisor-middleware protocol metadata. Required for negotiation.
+	// Declare protocol 1.0 and list "openshell.supervisor-middleware.contract"
+	// in supported_capabilities.
+	Extension     *extensionv1.PeerMetadata `protobuf:"bytes,5,opt,name=extension,proto3" json:"extension,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *MiddlewareManifest) Reset() {
 	*x = MiddlewareManifest{}
-	mi := &file_supervisor_middleware_proto_msgTypes[0]
+	mi := &file_supervisor_middleware_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -489,7 +540,7 @@ func (x *MiddlewareManifest) String() string {
 func (*MiddlewareManifest) ProtoMessage() {}
 
 func (x *MiddlewareManifest) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[0]
+	mi := &file_supervisor_middleware_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -502,7 +553,7 @@ func (x *MiddlewareManifest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MiddlewareManifest.ProtoReflect.Descriptor instead.
 func (*MiddlewareManifest) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{0}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *MiddlewareManifest) GetName() string {
@@ -533,6 +584,13 @@ func (x *MiddlewareManifest) GetExpectedAudience() string {
 	return ""
 }
 
+func (x *MiddlewareManifest) GetExtension() *extensionv1.PeerMetadata {
+	if x != nil {
+		return x.Extension
+	}
+	return nil
+}
+
 // MiddlewareBinding declares one operation and phase supported by a service.
 type MiddlewareBinding struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -546,16 +604,15 @@ type MiddlewareBinding struct {
 	// Optional binding-specific RPC timeout. Empty uses the operator-configured
 	// service timeout, or the 500ms platform default when that is also omitted.
 	// A non-empty value may shorten but cannot extend the operator timeout.
-	// Values use an integer with an `ms` or `s` suffix and must be between
-	// 10ms and 30s.
-	Timeout       string `protobuf:"bytes,4,opt,name=timeout,proto3" json:"timeout,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Values must be between 10ms and 30s.
+	RequestTimeout *durationpb.Duration `protobuf:"bytes,104,opt,name=request_timeout,json=requestTimeout,proto3" json:"request_timeout,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *MiddlewareBinding) Reset() {
 	*x = MiddlewareBinding{}
-	mi := &file_supervisor_middleware_proto_msgTypes[1]
+	mi := &file_supervisor_middleware_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -567,7 +624,7 @@ func (x *MiddlewareBinding) String() string {
 func (*MiddlewareBinding) ProtoMessage() {}
 
 func (x *MiddlewareBinding) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[1]
+	mi := &file_supervisor_middleware_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -580,7 +637,7 @@ func (x *MiddlewareBinding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MiddlewareBinding.ProtoReflect.Descriptor instead.
 func (*MiddlewareBinding) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{1}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *MiddlewareBinding) GetOperation() SupervisorMiddlewareOperation {
@@ -604,11 +661,11 @@ func (x *MiddlewareBinding) GetMaxPayloadBytes() uint64 {
 	return 0
 }
 
-func (x *MiddlewareBinding) GetTimeout() string {
+func (x *MiddlewareBinding) GetRequestTimeout() *durationpb.Duration {
 	if x != nil {
-		return x.Timeout
+		return x.RequestTimeout
 	}
-	return ""
+	return nil
 }
 
 // ValidateConfigRequest contains one policy configuration to validate.
@@ -624,7 +681,7 @@ type ValidateConfigRequest struct {
 
 func (x *ValidateConfigRequest) Reset() {
 	*x = ValidateConfigRequest{}
-	mi := &file_supervisor_middleware_proto_msgTypes[2]
+	mi := &file_supervisor_middleware_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -636,7 +693,7 @@ func (x *ValidateConfigRequest) String() string {
 func (*ValidateConfigRequest) ProtoMessage() {}
 
 func (x *ValidateConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[2]
+	mi := &file_supervisor_middleware_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -649,7 +706,7 @@ func (x *ValidateConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateConfigRequest.ProtoReflect.Descriptor instead.
 func (*ValidateConfigRequest) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{2}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ValidateConfigRequest) GetConfig() *structpb.Struct {
@@ -679,7 +736,7 @@ type ValidateConfigResponse struct {
 
 func (x *ValidateConfigResponse) Reset() {
 	*x = ValidateConfigResponse{}
-	mi := &file_supervisor_middleware_proto_msgTypes[3]
+	mi := &file_supervisor_middleware_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -691,7 +748,7 @@ func (x *ValidateConfigResponse) String() string {
 func (*ValidateConfigResponse) ProtoMessage() {}
 
 func (x *ValidateConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[3]
+	mi := &file_supervisor_middleware_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -704,7 +761,7 @@ func (x *ValidateConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateConfigResponse.ProtoReflect.Descriptor instead.
 func (*ValidateConfigResponse) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{3}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ValidateConfigResponse) GetValid() bool {
@@ -750,7 +807,7 @@ type HttpRequestEvaluation struct {
 
 func (x *HttpRequestEvaluation) Reset() {
 	*x = HttpRequestEvaluation{}
-	mi := &file_supervisor_middleware_proto_msgTypes[4]
+	mi := &file_supervisor_middleware_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -762,7 +819,7 @@ func (x *HttpRequestEvaluation) String() string {
 func (*HttpRequestEvaluation) ProtoMessage() {}
 
 func (x *HttpRequestEvaluation) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[4]
+	mi := &file_supervisor_middleware_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -775,7 +832,7 @@ func (x *HttpRequestEvaluation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpRequestEvaluation.ProtoReflect.Descriptor instead.
 func (*HttpRequestEvaluation) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{4}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *HttpRequestEvaluation) GetPhase() SupervisorMiddlewarePhase {
@@ -840,7 +897,7 @@ type HttpHeader struct {
 
 func (x *HttpHeader) Reset() {
 	*x = HttpHeader{}
-	mi := &file_supervisor_middleware_proto_msgTypes[5]
+	mi := &file_supervisor_middleware_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -852,7 +909,7 @@ func (x *HttpHeader) String() string {
 func (*HttpHeader) ProtoMessage() {}
 
 func (x *HttpHeader) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[5]
+	mi := &file_supervisor_middleware_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -865,7 +922,7 @@ func (x *HttpHeader) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpHeader.ProtoReflect.Descriptor instead.
 func (*HttpHeader) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{5}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *HttpHeader) GetName() string {
@@ -900,7 +957,7 @@ type HttpResponseEvent struct {
 
 func (x *HttpResponseEvent) Reset() {
 	*x = HttpResponseEvent{}
-	mi := &file_supervisor_middleware_proto_msgTypes[6]
+	mi := &file_supervisor_middleware_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -912,7 +969,7 @@ func (x *HttpResponseEvent) String() string {
 func (*HttpResponseEvent) ProtoMessage() {}
 
 func (x *HttpResponseEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[6]
+	mi := &file_supervisor_middleware_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -925,7 +982,7 @@ func (x *HttpResponseEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponseEvent.ProtoReflect.Descriptor instead.
 func (*HttpResponseEvent) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{6}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *HttpResponseEvent) GetEvent() isHttpResponseEvent_Event {
@@ -1019,7 +1076,7 @@ type HttpResponseEventResult struct {
 
 func (x *HttpResponseEventResult) Reset() {
 	*x = HttpResponseEventResult{}
-	mi := &file_supervisor_middleware_proto_msgTypes[7]
+	mi := &file_supervisor_middleware_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1031,7 +1088,7 @@ func (x *HttpResponseEventResult) String() string {
 func (*HttpResponseEventResult) ProtoMessage() {}
 
 func (x *HttpResponseEventResult) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[7]
+	mi := &file_supervisor_middleware_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1044,7 +1101,7 @@ func (x *HttpResponseEventResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponseEventResult.ProtoReflect.Descriptor instead.
 func (*HttpResponseEventResult) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{7}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *HttpResponseEventResult) GetResult() isHttpResponseEventResult_Result {
@@ -1148,7 +1205,7 @@ type HttpResponsePreflight struct {
 
 func (x *HttpResponsePreflight) Reset() {
 	*x = HttpResponsePreflight{}
-	mi := &file_supervisor_middleware_proto_msgTypes[8]
+	mi := &file_supervisor_middleware_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1160,7 +1217,7 @@ func (x *HttpResponsePreflight) String() string {
 func (*HttpResponsePreflight) ProtoMessage() {}
 
 func (x *HttpResponsePreflight) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[8]
+	mi := &file_supervisor_middleware_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1173,7 +1230,7 @@ func (x *HttpResponsePreflight) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponsePreflight.ProtoReflect.Descriptor instead.
 func (*HttpResponsePreflight) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{8}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *HttpResponsePreflight) GetContext() *RequestContext {
@@ -1259,7 +1316,7 @@ type HttpResponsePreflightResult struct {
 
 func (x *HttpResponsePreflightResult) Reset() {
 	*x = HttpResponsePreflightResult{}
-	mi := &file_supervisor_middleware_proto_msgTypes[9]
+	mi := &file_supervisor_middleware_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1271,7 +1328,7 @@ func (x *HttpResponsePreflightResult) String() string {
 func (*HttpResponsePreflightResult) ProtoMessage() {}
 
 func (x *HttpResponsePreflightResult) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[9]
+	mi := &file_supervisor_middleware_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1284,7 +1341,7 @@ func (x *HttpResponsePreflightResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponsePreflightResult.ProtoReflect.Descriptor instead.
 func (*HttpResponsePreflightResult) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{9}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *HttpResponsePreflightResult) GetAction() isHttpResponsePreflightResult_Action {
@@ -1383,7 +1440,7 @@ type HttpResponsePreflightSkip struct {
 
 func (x *HttpResponsePreflightSkip) Reset() {
 	*x = HttpResponsePreflightSkip{}
-	mi := &file_supervisor_middleware_proto_msgTypes[10]
+	mi := &file_supervisor_middleware_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1395,7 +1452,7 @@ func (x *HttpResponsePreflightSkip) String() string {
 func (*HttpResponsePreflightSkip) ProtoMessage() {}
 
 func (x *HttpResponsePreflightSkip) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[10]
+	mi := &file_supervisor_middleware_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1408,7 +1465,7 @@ func (x *HttpResponsePreflightSkip) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponsePreflightSkip.ProtoReflect.Descriptor instead.
 func (*HttpResponsePreflightSkip) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{10}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{11}
 }
 
 // Blocks delivery as a successful decision regardless of on_error. OpenShell
@@ -1440,7 +1497,7 @@ type HttpResponseBlockDelivery struct {
 
 func (x *HttpResponseBlockDelivery) Reset() {
 	*x = HttpResponseBlockDelivery{}
-	mi := &file_supervisor_middleware_proto_msgTypes[11]
+	mi := &file_supervisor_middleware_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1452,7 +1509,7 @@ func (x *HttpResponseBlockDelivery) String() string {
 func (*HttpResponseBlockDelivery) ProtoMessage() {}
 
 func (x *HttpResponseBlockDelivery) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[11]
+	mi := &file_supervisor_middleware_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1465,7 +1522,7 @@ func (x *HttpResponseBlockDelivery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponseBlockDelivery.ProtoReflect.Descriptor instead.
 func (*HttpResponseBlockDelivery) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{11}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{12}
 }
 
 // Selects body inspection and response-header mutations.
@@ -1485,7 +1542,7 @@ type HttpResponsePreflightInspect struct {
 
 func (x *HttpResponsePreflightInspect) Reset() {
 	*x = HttpResponsePreflightInspect{}
-	mi := &file_supervisor_middleware_proto_msgTypes[12]
+	mi := &file_supervisor_middleware_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1497,7 +1554,7 @@ func (x *HttpResponsePreflightInspect) String() string {
 func (*HttpResponsePreflightInspect) ProtoMessage() {}
 
 func (x *HttpResponsePreflightInspect) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[12]
+	mi := &file_supervisor_middleware_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1510,7 +1567,7 @@ func (x *HttpResponsePreflightInspect) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponsePreflightInspect.ProtoReflect.Descriptor instead.
 func (*HttpResponsePreflightInspect) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{12}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *HttpResponsePreflightInspect) GetBodyMode() HttpResponseBodyMode {
@@ -1550,7 +1607,7 @@ type HttpResponseBodyUnit struct {
 
 func (x *HttpResponseBodyUnit) Reset() {
 	*x = HttpResponseBodyUnit{}
-	mi := &file_supervisor_middleware_proto_msgTypes[13]
+	mi := &file_supervisor_middleware_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1562,7 +1619,7 @@ func (x *HttpResponseBodyUnit) String() string {
 func (*HttpResponseBodyUnit) ProtoMessage() {}
 
 func (x *HttpResponseBodyUnit) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[13]
+	mi := &file_supervisor_middleware_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1575,7 +1632,7 @@ func (x *HttpResponseBodyUnit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponseBodyUnit.ProtoReflect.Descriptor instead.
 func (*HttpResponseBodyUnit) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{13}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *HttpResponseBodyUnit) GetSequence() uint64 {
@@ -1659,7 +1716,7 @@ type HttpResponseBodyResult struct {
 
 func (x *HttpResponseBodyResult) Reset() {
 	*x = HttpResponseBodyResult{}
-	mi := &file_supervisor_middleware_proto_msgTypes[14]
+	mi := &file_supervisor_middleware_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1671,7 +1728,7 @@ func (x *HttpResponseBodyResult) String() string {
 func (*HttpResponseBodyResult) ProtoMessage() {}
 
 func (x *HttpResponseBodyResult) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[14]
+	mi := &file_supervisor_middleware_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1684,7 +1741,7 @@ func (x *HttpResponseBodyResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponseBodyResult.ProtoReflect.Descriptor instead.
 func (*HttpResponseBodyResult) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{14}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *HttpResponseBodyResult) GetSequence() uint64 {
@@ -1806,7 +1863,7 @@ type HttpResponseBodyPassThrough struct {
 
 func (x *HttpResponseBodyPassThrough) Reset() {
 	*x = HttpResponseBodyPassThrough{}
-	mi := &file_supervisor_middleware_proto_msgTypes[15]
+	mi := &file_supervisor_middleware_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1818,7 +1875,7 @@ func (x *HttpResponseBodyPassThrough) String() string {
 func (*HttpResponseBodyPassThrough) ProtoMessage() {}
 
 func (x *HttpResponseBodyPassThrough) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[15]
+	mi := &file_supervisor_middleware_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1831,7 +1888,7 @@ func (x *HttpResponseBodyPassThrough) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponseBodyPassThrough.ProtoReflect.Descriptor instead.
 func (*HttpResponseBodyPassThrough) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{15}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{16}
 }
 
 // Finalizes this unit and ends the stage. This stage receives no later body or
@@ -1852,7 +1909,7 @@ type HttpResponseBodySkipRemaining struct {
 
 func (x *HttpResponseBodySkipRemaining) Reset() {
 	*x = HttpResponseBodySkipRemaining{}
-	mi := &file_supervisor_middleware_proto_msgTypes[16]
+	mi := &file_supervisor_middleware_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1864,7 +1921,7 @@ func (x *HttpResponseBodySkipRemaining) String() string {
 func (*HttpResponseBodySkipRemaining) ProtoMessage() {}
 
 func (x *HttpResponseBodySkipRemaining) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[16]
+	mi := &file_supervisor_middleware_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1877,7 +1934,7 @@ func (x *HttpResponseBodySkipRemaining) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponseBodySkipRemaining.ProtoReflect.Descriptor instead.
 func (*HttpResponseBodySkipRemaining) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{16}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *HttpResponseBodySkipRemaining) GetCurrent() isHttpResponseBodySkipRemaining_Current {
@@ -1940,7 +1997,7 @@ type HttpResponseBodyTransform struct {
 
 func (x *HttpResponseBodyTransform) Reset() {
 	*x = HttpResponseBodyTransform{}
-	mi := &file_supervisor_middleware_proto_msgTypes[17]
+	mi := &file_supervisor_middleware_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1952,7 +2009,7 @@ func (x *HttpResponseBodyTransform) String() string {
 func (*HttpResponseBodyTransform) ProtoMessage() {}
 
 func (x *HttpResponseBodyTransform) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[17]
+	mi := &file_supervisor_middleware_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1965,7 +2022,7 @@ func (x *HttpResponseBodyTransform) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponseBodyTransform.ProtoReflect.Descriptor instead.
 func (*HttpResponseBodyTransform) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{17}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *HttpResponseBodyTransform) GetReplacement() isHttpResponseBodyTransform_Replacement {
@@ -2009,7 +2066,7 @@ type HttpResponseTrailers struct {
 
 func (x *HttpResponseTrailers) Reset() {
 	*x = HttpResponseTrailers{}
-	mi := &file_supervisor_middleware_proto_msgTypes[18]
+	mi := &file_supervisor_middleware_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2021,7 +2078,7 @@ func (x *HttpResponseTrailers) String() string {
 func (*HttpResponseTrailers) ProtoMessage() {}
 
 func (x *HttpResponseTrailers) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[18]
+	mi := &file_supervisor_middleware_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2034,7 +2091,7 @@ func (x *HttpResponseTrailers) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponseTrailers.ProtoReflect.Descriptor instead.
 func (*HttpResponseTrailers) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{18}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *HttpResponseTrailers) GetHeaders() []*HttpHeader {
@@ -2073,7 +2130,7 @@ type HttpResponseTrailersResult struct {
 
 func (x *HttpResponseTrailersResult) Reset() {
 	*x = HttpResponseTrailersResult{}
-	mi := &file_supervisor_middleware_proto_msgTypes[19]
+	mi := &file_supervisor_middleware_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2085,7 +2142,7 @@ func (x *HttpResponseTrailersResult) String() string {
 func (*HttpResponseTrailersResult) ProtoMessage() {}
 
 func (x *HttpResponseTrailersResult) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[19]
+	mi := &file_supervisor_middleware_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2098,7 +2155,7 @@ func (x *HttpResponseTrailersResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponseTrailersResult.ProtoReflect.Descriptor instead.
 func (*HttpResponseTrailersResult) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{19}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *HttpResponseTrailersResult) GetTrailerMutations() []*HeaderMutation {
@@ -2151,7 +2208,7 @@ type MiddlewareSessionEnd struct {
 
 func (x *MiddlewareSessionEnd) Reset() {
 	*x = MiddlewareSessionEnd{}
-	mi := &file_supervisor_middleware_proto_msgTypes[20]
+	mi := &file_supervisor_middleware_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2163,7 +2220,7 @@ func (x *MiddlewareSessionEnd) String() string {
 func (*MiddlewareSessionEnd) ProtoMessage() {}
 
 func (x *MiddlewareSessionEnd) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[20]
+	mi := &file_supervisor_middleware_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2176,7 +2233,7 @@ func (x *MiddlewareSessionEnd) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MiddlewareSessionEnd.ProtoReflect.Descriptor instead.
 func (*MiddlewareSessionEnd) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{20}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *MiddlewareSessionEnd) GetReason() MiddlewareSessionEndReason {
@@ -2207,7 +2264,7 @@ type MiddlewareSessionProtocolError struct {
 
 func (x *MiddlewareSessionProtocolError) Reset() {
 	*x = MiddlewareSessionProtocolError{}
-	mi := &file_supervisor_middleware_proto_msgTypes[21]
+	mi := &file_supervisor_middleware_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2219,7 +2276,7 @@ func (x *MiddlewareSessionProtocolError) String() string {
 func (*MiddlewareSessionProtocolError) ProtoMessage() {}
 
 func (x *MiddlewareSessionProtocolError) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[21]
+	mi := &file_supervisor_middleware_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2232,7 +2289,7 @@ func (x *MiddlewareSessionProtocolError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MiddlewareSessionProtocolError.ProtoReflect.Descriptor instead.
 func (*MiddlewareSessionProtocolError) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{21}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *MiddlewareSessionProtocolError) GetDomain() isMiddlewareSessionProtocolError_Domain {
@@ -2287,7 +2344,7 @@ type WebSocketProtocolError struct {
 
 func (x *WebSocketProtocolError) Reset() {
 	*x = WebSocketProtocolError{}
-	mi := &file_supervisor_middleware_proto_msgTypes[22]
+	mi := &file_supervisor_middleware_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2299,7 +2356,7 @@ func (x *WebSocketProtocolError) String() string {
 func (*WebSocketProtocolError) ProtoMessage() {}
 
 func (x *WebSocketProtocolError) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[22]
+	mi := &file_supervisor_middleware_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2312,7 +2369,7 @@ func (x *WebSocketProtocolError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebSocketProtocolError.ProtoReflect.Descriptor instead.
 func (*WebSocketProtocolError) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{22}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{23}
 }
 
 // Middleware exchange error details, reserved for future categories.
@@ -2324,7 +2381,7 @@ type MiddlewareExchangeProtocolError struct {
 
 func (x *MiddlewareExchangeProtocolError) Reset() {
 	*x = MiddlewareExchangeProtocolError{}
-	mi := &file_supervisor_middleware_proto_msgTypes[23]
+	mi := &file_supervisor_middleware_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2336,7 +2393,7 @@ func (x *MiddlewareExchangeProtocolError) String() string {
 func (*MiddlewareExchangeProtocolError) ProtoMessage() {}
 
 func (x *MiddlewareExchangeProtocolError) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[23]
+	mi := &file_supervisor_middleware_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2349,7 +2406,7 @@ func (x *MiddlewareExchangeProtocolError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MiddlewareExchangeProtocolError.ProtoReflect.Descriptor instead.
 func (*MiddlewareExchangeProtocolError) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{23}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{24}
 }
 
 // WebSocketSessionEvent is one ordered event in a stage-local stream.
@@ -2371,7 +2428,7 @@ type WebSocketSessionEvent struct {
 
 func (x *WebSocketSessionEvent) Reset() {
 	*x = WebSocketSessionEvent{}
-	mi := &file_supervisor_middleware_proto_msgTypes[24]
+	mi := &file_supervisor_middleware_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2383,7 +2440,7 @@ func (x *WebSocketSessionEvent) String() string {
 func (*WebSocketSessionEvent) ProtoMessage() {}
 
 func (x *WebSocketSessionEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[24]
+	mi := &file_supervisor_middleware_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2396,7 +2453,7 @@ func (x *WebSocketSessionEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebSocketSessionEvent.ProtoReflect.Descriptor instead.
 func (*WebSocketSessionEvent) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{24}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *WebSocketSessionEvent) GetEvent() isWebSocketSessionEvent_Event {
@@ -2491,7 +2548,7 @@ type WebSocketPreflight struct {
 
 func (x *WebSocketPreflight) Reset() {
 	*x = WebSocketPreflight{}
-	mi := &file_supervisor_middleware_proto_msgTypes[25]
+	mi := &file_supervisor_middleware_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2503,7 +2560,7 @@ func (x *WebSocketPreflight) String() string {
 func (*WebSocketPreflight) ProtoMessage() {}
 
 func (x *WebSocketPreflight) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[25]
+	mi := &file_supervisor_middleware_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2516,7 +2573,7 @@ func (x *WebSocketPreflight) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebSocketPreflight.ProtoReflect.Descriptor instead.
 func (*WebSocketPreflight) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{25}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *WebSocketPreflight) GetSessionId() string {
@@ -2579,7 +2636,7 @@ type WebSocketSessionStart struct {
 
 func (x *WebSocketSessionStart) Reset() {
 	*x = WebSocketSessionStart{}
-	mi := &file_supervisor_middleware_proto_msgTypes[26]
+	mi := &file_supervisor_middleware_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2591,7 +2648,7 @@ func (x *WebSocketSessionStart) String() string {
 func (*WebSocketSessionStart) ProtoMessage() {}
 
 func (x *WebSocketSessionStart) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[26]
+	mi := &file_supervisor_middleware_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2604,7 +2661,7 @@ func (x *WebSocketSessionStart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebSocketSessionStart.ProtoReflect.Descriptor instead.
 func (*WebSocketSessionStart) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{26}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *WebSocketSessionStart) GetSelectedSubprotocol() string {
@@ -2636,7 +2693,7 @@ type WebSocketMessage struct {
 
 func (x *WebSocketMessage) Reset() {
 	*x = WebSocketMessage{}
-	mi := &file_supervisor_middleware_proto_msgTypes[27]
+	mi := &file_supervisor_middleware_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2648,7 +2705,7 @@ func (x *WebSocketMessage) String() string {
 func (*WebSocketMessage) ProtoMessage() {}
 
 func (x *WebSocketMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[27]
+	mi := &file_supervisor_middleware_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2661,7 +2718,7 @@ func (x *WebSocketMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebSocketMessage.ProtoReflect.Descriptor instead.
 func (*WebSocketMessage) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{27}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *WebSocketMessage) GetSequence() uint64 {
@@ -2735,7 +2792,7 @@ type WebSocketPreflightDecision struct {
 
 func (x *WebSocketPreflightDecision) Reset() {
 	*x = WebSocketPreflightDecision{}
-	mi := &file_supervisor_middleware_proto_msgTypes[28]
+	mi := &file_supervisor_middleware_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2747,7 +2804,7 @@ func (x *WebSocketPreflightDecision) String() string {
 func (*WebSocketPreflightDecision) ProtoMessage() {}
 
 func (x *WebSocketPreflightDecision) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[28]
+	mi := &file_supervisor_middleware_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2760,7 +2817,7 @@ func (x *WebSocketPreflightDecision) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebSocketPreflightDecision.ProtoReflect.Descriptor instead.
 func (*WebSocketPreflightDecision) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{28}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *WebSocketPreflightDecision) GetAction() WebSocketPreflightAction {
@@ -2827,7 +2884,7 @@ type WebSocketMessageResult struct {
 
 func (x *WebSocketMessageResult) Reset() {
 	*x = WebSocketMessageResult{}
-	mi := &file_supervisor_middleware_proto_msgTypes[29]
+	mi := &file_supervisor_middleware_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2839,7 +2896,7 @@ func (x *WebSocketMessageResult) String() string {
 func (*WebSocketMessageResult) ProtoMessage() {}
 
 func (x *WebSocketMessageResult) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[29]
+	mi := &file_supervisor_middleware_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2852,7 +2909,7 @@ func (x *WebSocketMessageResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebSocketMessageResult.ProtoReflect.Descriptor instead.
 func (*WebSocketMessageResult) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{29}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *WebSocketMessageResult) GetSequence() uint64 {
@@ -2953,7 +3010,7 @@ type WebSocketSessionEventResult struct {
 
 func (x *WebSocketSessionEventResult) Reset() {
 	*x = WebSocketSessionEventResult{}
-	mi := &file_supervisor_middleware_proto_msgTypes[30]
+	mi := &file_supervisor_middleware_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2965,7 +3022,7 @@ func (x *WebSocketSessionEventResult) String() string {
 func (*WebSocketSessionEventResult) ProtoMessage() {}
 
 func (x *WebSocketSessionEventResult) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[30]
+	mi := &file_supervisor_middleware_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2978,7 +3035,7 @@ func (x *WebSocketSessionEventResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebSocketSessionEventResult.ProtoReflect.Descriptor instead.
 func (*WebSocketSessionEventResult) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{30}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *WebSocketSessionEventResult) GetResult() isWebSocketSessionEventResult_Result {
@@ -3035,9 +3092,9 @@ type RequestContext struct {
 	// Names are workspace-scoped and may be reused for different sandbox
 	// instances, so consumers must use sandbox_id for authorization, persistence,
 	// durable correlation, and identity.
-	SandboxName string `protobuf:"bytes,4,opt,name=sandbox_name,json=sandboxName,proto3" json:"sandbox_name,omitempty"`
+	Sandbox string `protobuf:"bytes,4,opt,name=sandbox,proto3" json:"sandbox,omitempty"`
 	// Workspace the sandbox belongs to. For display and logging only; see the
-	// sandbox_name guidance above.
+	// sandbox guidance above.
 	Workspace     string `protobuf:"bytes,5,opt,name=workspace,proto3" json:"workspace,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3045,7 +3102,7 @@ type RequestContext struct {
 
 func (x *RequestContext) Reset() {
 	*x = RequestContext{}
-	mi := &file_supervisor_middleware_proto_msgTypes[31]
+	mi := &file_supervisor_middleware_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3057,7 +3114,7 @@ func (x *RequestContext) String() string {
 func (*RequestContext) ProtoMessage() {}
 
 func (x *RequestContext) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[31]
+	mi := &file_supervisor_middleware_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3070,7 +3127,7 @@ func (x *RequestContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestContext.ProtoReflect.Descriptor instead.
 func (*RequestContext) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{31}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *RequestContext) GetRequestId() string {
@@ -3094,9 +3151,9 @@ func (x *RequestContext) GetOriginatingProcess() *Process {
 	return nil
 }
 
-func (x *RequestContext) GetSandboxName() string {
+func (x *RequestContext) GetSandbox() string {
 	if x != nil {
-		return x.SandboxName
+		return x.Sandbox
 	}
 	return ""
 }
@@ -3129,7 +3186,7 @@ type HttpRequestTarget struct {
 
 func (x *HttpRequestTarget) Reset() {
 	*x = HttpRequestTarget{}
-	mi := &file_supervisor_middleware_proto_msgTypes[32]
+	mi := &file_supervisor_middleware_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3141,7 +3198,7 @@ func (x *HttpRequestTarget) String() string {
 func (*HttpRequestTarget) ProtoMessage() {}
 
 func (x *HttpRequestTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[32]
+	mi := &file_supervisor_middleware_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3154,7 +3211,7 @@ func (x *HttpRequestTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpRequestTarget.ProtoReflect.Descriptor instead.
 func (*HttpRequestTarget) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{32}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *HttpRequestTarget) GetScheme() string {
@@ -3214,7 +3271,7 @@ type Process struct {
 
 func (x *Process) Reset() {
 	*x = Process{}
-	mi := &file_supervisor_middleware_proto_msgTypes[33]
+	mi := &file_supervisor_middleware_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3226,7 +3283,7 @@ func (x *Process) String() string {
 func (*Process) ProtoMessage() {}
 
 func (x *Process) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[33]
+	mi := &file_supervisor_middleware_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3239,7 +3296,7 @@ func (x *Process) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Process.ProtoReflect.Descriptor instead.
 func (*Process) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{33}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *Process) GetBinary() string {
@@ -3282,7 +3339,7 @@ type Finding struct {
 
 func (x *Finding) Reset() {
 	*x = Finding{}
-	mi := &file_supervisor_middleware_proto_msgTypes[34]
+	mi := &file_supervisor_middleware_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3294,7 +3351,7 @@ func (x *Finding) String() string {
 func (*Finding) ProtoMessage() {}
 
 func (x *Finding) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[34]
+	mi := &file_supervisor_middleware_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3307,7 +3364,7 @@ func (x *Finding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Finding.ProtoReflect.Descriptor instead.
 func (*Finding) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{34}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *Finding) GetType() string {
@@ -3357,7 +3414,7 @@ type WriteHeader struct {
 
 func (x *WriteHeader) Reset() {
 	*x = WriteHeader{}
-	mi := &file_supervisor_middleware_proto_msgTypes[35]
+	mi := &file_supervisor_middleware_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3369,7 +3426,7 @@ func (x *WriteHeader) String() string {
 func (*WriteHeader) ProtoMessage() {}
 
 func (x *WriteHeader) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[35]
+	mi := &file_supervisor_middleware_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3382,7 +3439,7 @@ func (x *WriteHeader) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteHeader.ProtoReflect.Descriptor instead.
 func (*WriteHeader) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{35}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *WriteHeader) GetName() string {
@@ -3416,7 +3473,7 @@ type RemoveHeader struct {
 
 func (x *RemoveHeader) Reset() {
 	*x = RemoveHeader{}
-	mi := &file_supervisor_middleware_proto_msgTypes[36]
+	mi := &file_supervisor_middleware_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3428,7 +3485,7 @@ func (x *RemoveHeader) String() string {
 func (*RemoveHeader) ProtoMessage() {}
 
 func (x *RemoveHeader) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[36]
+	mi := &file_supervisor_middleware_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3441,7 +3498,7 @@ func (x *RemoveHeader) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveHeader.ProtoReflect.Descriptor instead.
 func (*RemoveHeader) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{36}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *RemoveHeader) GetName() string {
@@ -3465,7 +3522,7 @@ type HeaderMutation struct {
 
 func (x *HeaderMutation) Reset() {
 	*x = HeaderMutation{}
-	mi := &file_supervisor_middleware_proto_msgTypes[37]
+	mi := &file_supervisor_middleware_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3477,7 +3534,7 @@ func (x *HeaderMutation) String() string {
 func (*HeaderMutation) ProtoMessage() {}
 
 func (x *HeaderMutation) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[37]
+	mi := &file_supervisor_middleware_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3490,7 +3547,7 @@ func (x *HeaderMutation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeaderMutation.ProtoReflect.Descriptor instead.
 func (*HeaderMutation) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{37}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *HeaderMutation) GetOperation() isHeaderMutation_Operation {
@@ -3575,7 +3632,7 @@ type HttpRequestResult struct {
 
 func (x *HttpRequestResult) Reset() {
 	*x = HttpRequestResult{}
-	mi := &file_supervisor_middleware_proto_msgTypes[38]
+	mi := &file_supervisor_middleware_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3587,7 +3644,7 @@ func (x *HttpRequestResult) String() string {
 func (*HttpRequestResult) ProtoMessage() {}
 
 func (x *HttpRequestResult) ProtoReflect() protoreflect.Message {
-	mi := &file_supervisor_middleware_proto_msgTypes[38]
+	mi := &file_supervisor_middleware_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3600,7 +3657,7 @@ func (x *HttpRequestResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpRequestResult.ProtoReflect.Descriptor instead.
 func (*HttpRequestResult) Descriptor() ([]byte, []int) {
-	return file_supervisor_middleware_proto_rawDescGZIP(), []int{38}
+	return file_supervisor_middleware_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *HttpRequestResult) GetDecision() Decision {
@@ -3663,17 +3720,20 @@ var File_supervisor_middleware_proto protoreflect.FileDescriptor
 
 const file_supervisor_middleware_proto_rawDesc = "" +
 	"\n" +
-	"\x1bsupervisor_middleware.proto\x12\x17openshell.middleware.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xc6\x01\n" +
+	"\x1bsupervisor_middleware.proto\x12\x17openshell.middleware.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x0fextension.proto\"[\n" +
+	"\x19MiddlewareDescribeRequest\x12>\n" +
+	"\agateway\x18\x01 \x01(\v2$.openshell.extension.v1.PeerMetadataR\agateway\"\x8a\x02\n" +
 	"\x12MiddlewareManifest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12'\n" +
 	"\x0fservice_version\x18\x02 \x01(\tR\x0eserviceVersion\x12F\n" +
 	"\bbindings\x18\x03 \x03(\v2*.openshell.middleware.v1.MiddlewareBindingR\bbindings\x12+\n" +
-	"\x11expected_audience\x18\x04 \x01(\tR\x10expectedAudience\"\xf9\x01\n" +
+	"\x11expected_audience\x18\x04 \x01(\tR\x10expectedAudience\x12B\n" +
+	"\textension\x18\x05 \x01(\v2$.openshell.extension.v1.PeerMetadataR\textension\"\xb2\x02\n" +
 	"\x11MiddlewareBinding\x12T\n" +
 	"\toperation\x18\x01 \x01(\x0e26.openshell.middleware.v1.SupervisorMiddlewareOperationR\toperation\x12H\n" +
 	"\x05phase\x18\x02 \x01(\x0e22.openshell.middleware.v1.SupervisorMiddlewarePhaseR\x05phase\x12*\n" +
-	"\x11max_payload_bytes\x18\x03 \x01(\x04R\x0fmaxPayloadBytes\x12\x18\n" +
-	"\atimeout\x18\x04 \x01(\tR\atimeout\"q\n" +
+	"\x11max_payload_bytes\x18\x03 \x01(\x04R\x0fmaxPayloadBytes\x12B\n" +
+	"\x0frequest_timeout\x18h \x01(\v2\x19.google.protobuf.DurationR\x0erequestTimeoutJ\x04\b\x04\x10\x05R\atimeout\"q\n" +
 	"\x15ValidateConfigRequest\x12/\n" +
 	"\x06config\x18\x01 \x01(\v2\x17.google.protobuf.StructR\x06config\x12'\n" +
 	"\x0fmiddleware_name\x18\x02 \x01(\tR\x0emiddlewareName\"F\n" +
@@ -3833,14 +3893,14 @@ const file_supervisor_middleware_proto_rawDesc = "" +
 	"\x1bWebSocketSessionEventResult\x12d\n" +
 	"\x12preflight_decision\x18\x01 \x01(\v23.openshell.middleware.v1.WebSocketPreflightDecisionH\x00R\x11preflightDecision\x12X\n" +
 	"\x0emessage_result\x18\x02 \x01(\v2/.openshell.middleware.v1.WebSocketMessageResultH\x00R\rmessageResultB\b\n" +
-	"\x06result\"\xe2\x01\n" +
+	"\x06result\"\xd9\x01\n" +
 	"\x0eRequestContext\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1d\n" +
 	"\n" +
 	"sandbox_id\x18\x02 \x01(\tR\tsandboxId\x12Q\n" +
-	"\x13originating_process\x18\x03 \x01(\v2 .openshell.middleware.v1.ProcessR\x12originatingProcess\x12!\n" +
-	"\fsandbox_name\x18\x04 \x01(\tR\vsandboxName\x12\x1c\n" +
+	"\x13originating_process\x18\x03 \x01(\v2 .openshell.middleware.v1.ProcessR\x12originatingProcess\x12\x18\n" +
+	"\asandbox\x18\x04 \x01(\tR\asandbox\x12\x1c\n" +
 	"\tworkspace\x18\x05 \x01(\tR\tworkspace\"\x95\x01\n" +
 	"\x11HttpRequestTarget\x12\x16\n" +
 	"\x06scheme\x18\x01 \x01(\tR\x06scheme\x12\x12\n" +
@@ -3926,9 +3986,9 @@ const file_supervisor_middleware_proto_rawDesc = "" +
 	"\"EXISTING_HEADER_ACTION_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dEXISTING_HEADER_ACTION_APPEND\x10\x01\x12$\n" +
 	" EXISTING_HEADER_ACTION_OVERWRITE\x10\x02\x12\x1f\n" +
-	"\x1bEXISTING_HEADER_ACTION_SKIP\x10\x032\xd4\x03\n" +
-	"\x14SupervisorMiddleware\x12O\n" +
-	"\bDescribe\x12\x16.google.protobuf.Empty\x1a+.openshell.middleware.v1.MiddlewareManifest\x12q\n" +
+	"\x1bEXISTING_HEADER_ACTION_SKIP\x10\x032\xf0\x03\n" +
+	"\x14SupervisorMiddleware\x12k\n" +
+	"\bDescribe\x122.openshell.middleware.v1.MiddlewareDescribeRequest\x1a+.openshell.middleware.v1.MiddlewareManifest\x12q\n" +
 	"\x0eValidateConfig\x12..openshell.middleware.v1.ValidateConfigRequest\x1a/.openshell.middleware.v1.ValidateConfigResponse\x12q\n" +
 	"\x13EvaluateHttpRequest\x12..openshell.middleware.v1.HttpRequestEvaluation\x1a*.openshell.middleware.v1.HttpRequestResult\x12\x84\x01\n" +
 	"\x18EvaluateWebSocketSession\x12..openshell.middleware.v1.WebSocketSessionEvent\x1a4.openshell.middleware.v1.WebSocketSessionEventResult(\x010\x012\x85\x01\n" +
@@ -3948,7 +4008,7 @@ func file_supervisor_middleware_proto_rawDescGZIP() []byte {
 }
 
 var file_supervisor_middleware_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_supervisor_middleware_proto_msgTypes = make([]protoimpl.MessageInfo, 45)
+var file_supervisor_middleware_proto_msgTypes = make([]protoimpl.MessageInfo, 46)
 var file_supervisor_middleware_proto_goTypes = []any{
 	(HttpResponseBodyMode)(0),               // 0: openshell.middleware.v1.HttpResponseBodyMode
 	(MiddlewareSessionEndReason)(0),         // 1: openshell.middleware.v1.MiddlewareSessionEndReason
@@ -3957,138 +4017,143 @@ var file_supervisor_middleware_proto_goTypes = []any{
 	(WebSocketPreflightAction)(0),           // 4: openshell.middleware.v1.WebSocketPreflightAction
 	(Decision)(0),                           // 5: openshell.middleware.v1.Decision
 	(ExistingHeaderAction)(0),               // 6: openshell.middleware.v1.ExistingHeaderAction
-	(*MiddlewareManifest)(nil),              // 7: openshell.middleware.v1.MiddlewareManifest
-	(*MiddlewareBinding)(nil),               // 8: openshell.middleware.v1.MiddlewareBinding
-	(*ValidateConfigRequest)(nil),           // 9: openshell.middleware.v1.ValidateConfigRequest
-	(*ValidateConfigResponse)(nil),          // 10: openshell.middleware.v1.ValidateConfigResponse
-	(*HttpRequestEvaluation)(nil),           // 11: openshell.middleware.v1.HttpRequestEvaluation
-	(*HttpHeader)(nil),                      // 12: openshell.middleware.v1.HttpHeader
-	(*HttpResponseEvent)(nil),               // 13: openshell.middleware.v1.HttpResponseEvent
-	(*HttpResponseEventResult)(nil),         // 14: openshell.middleware.v1.HttpResponseEventResult
-	(*HttpResponsePreflight)(nil),           // 15: openshell.middleware.v1.HttpResponsePreflight
-	(*HttpResponsePreflightResult)(nil),     // 16: openshell.middleware.v1.HttpResponsePreflightResult
-	(*HttpResponsePreflightSkip)(nil),       // 17: openshell.middleware.v1.HttpResponsePreflightSkip
-	(*HttpResponseBlockDelivery)(nil),       // 18: openshell.middleware.v1.HttpResponseBlockDelivery
-	(*HttpResponsePreflightInspect)(nil),    // 19: openshell.middleware.v1.HttpResponsePreflightInspect
-	(*HttpResponseBodyUnit)(nil),            // 20: openshell.middleware.v1.HttpResponseBodyUnit
-	(*HttpResponseBodyResult)(nil),          // 21: openshell.middleware.v1.HttpResponseBodyResult
-	(*HttpResponseBodyPassThrough)(nil),     // 22: openshell.middleware.v1.HttpResponseBodyPassThrough
-	(*HttpResponseBodySkipRemaining)(nil),   // 23: openshell.middleware.v1.HttpResponseBodySkipRemaining
-	(*HttpResponseBodyTransform)(nil),       // 24: openshell.middleware.v1.HttpResponseBodyTransform
-	(*HttpResponseTrailers)(nil),            // 25: openshell.middleware.v1.HttpResponseTrailers
-	(*HttpResponseTrailersResult)(nil),      // 26: openshell.middleware.v1.HttpResponseTrailersResult
-	(*MiddlewareSessionEnd)(nil),            // 27: openshell.middleware.v1.MiddlewareSessionEnd
-	(*MiddlewareSessionProtocolError)(nil),  // 28: openshell.middleware.v1.MiddlewareSessionProtocolError
-	(*WebSocketProtocolError)(nil),          // 29: openshell.middleware.v1.WebSocketProtocolError
-	(*MiddlewareExchangeProtocolError)(nil), // 30: openshell.middleware.v1.MiddlewareExchangeProtocolError
-	(*WebSocketSessionEvent)(nil),           // 31: openshell.middleware.v1.WebSocketSessionEvent
-	(*WebSocketPreflight)(nil),              // 32: openshell.middleware.v1.WebSocketPreflight
-	(*WebSocketSessionStart)(nil),           // 33: openshell.middleware.v1.WebSocketSessionStart
-	(*WebSocketMessage)(nil),                // 34: openshell.middleware.v1.WebSocketMessage
-	(*WebSocketPreflightDecision)(nil),      // 35: openshell.middleware.v1.WebSocketPreflightDecision
-	(*WebSocketMessageResult)(nil),          // 36: openshell.middleware.v1.WebSocketMessageResult
-	(*WebSocketSessionEventResult)(nil),     // 37: openshell.middleware.v1.WebSocketSessionEventResult
-	(*RequestContext)(nil),                  // 38: openshell.middleware.v1.RequestContext
-	(*HttpRequestTarget)(nil),               // 39: openshell.middleware.v1.HttpRequestTarget
-	(*Process)(nil),                         // 40: openshell.middleware.v1.Process
-	(*Finding)(nil),                         // 41: openshell.middleware.v1.Finding
-	(*WriteHeader)(nil),                     // 42: openshell.middleware.v1.WriteHeader
-	(*RemoveHeader)(nil),                    // 43: openshell.middleware.v1.RemoveHeader
-	(*HeaderMutation)(nil),                  // 44: openshell.middleware.v1.HeaderMutation
-	(*HttpRequestResult)(nil),               // 45: openshell.middleware.v1.HttpRequestResult
-	nil,                                     // 46: openshell.middleware.v1.HttpResponsePreflightResult.MetadataEntry
-	nil,                                     // 47: openshell.middleware.v1.HttpResponseBodyResult.MetadataEntry
-	nil,                                     // 48: openshell.middleware.v1.HttpResponseTrailersResult.MetadataEntry
-	nil,                                     // 49: openshell.middleware.v1.WebSocketPreflightDecision.MetadataEntry
-	nil,                                     // 50: openshell.middleware.v1.WebSocketMessageResult.MetadataEntry
-	nil,                                     // 51: openshell.middleware.v1.HttpRequestResult.MetadataEntry
-	(*structpb.Struct)(nil),                 // 52: google.protobuf.Struct
-	(*emptypb.Empty)(nil),                   // 53: google.protobuf.Empty
+	(*MiddlewareDescribeRequest)(nil),       // 7: openshell.middleware.v1.MiddlewareDescribeRequest
+	(*MiddlewareManifest)(nil),              // 8: openshell.middleware.v1.MiddlewareManifest
+	(*MiddlewareBinding)(nil),               // 9: openshell.middleware.v1.MiddlewareBinding
+	(*ValidateConfigRequest)(nil),           // 10: openshell.middleware.v1.ValidateConfigRequest
+	(*ValidateConfigResponse)(nil),          // 11: openshell.middleware.v1.ValidateConfigResponse
+	(*HttpRequestEvaluation)(nil),           // 12: openshell.middleware.v1.HttpRequestEvaluation
+	(*HttpHeader)(nil),                      // 13: openshell.middleware.v1.HttpHeader
+	(*HttpResponseEvent)(nil),               // 14: openshell.middleware.v1.HttpResponseEvent
+	(*HttpResponseEventResult)(nil),         // 15: openshell.middleware.v1.HttpResponseEventResult
+	(*HttpResponsePreflight)(nil),           // 16: openshell.middleware.v1.HttpResponsePreflight
+	(*HttpResponsePreflightResult)(nil),     // 17: openshell.middleware.v1.HttpResponsePreflightResult
+	(*HttpResponsePreflightSkip)(nil),       // 18: openshell.middleware.v1.HttpResponsePreflightSkip
+	(*HttpResponseBlockDelivery)(nil),       // 19: openshell.middleware.v1.HttpResponseBlockDelivery
+	(*HttpResponsePreflightInspect)(nil),    // 20: openshell.middleware.v1.HttpResponsePreflightInspect
+	(*HttpResponseBodyUnit)(nil),            // 21: openshell.middleware.v1.HttpResponseBodyUnit
+	(*HttpResponseBodyResult)(nil),          // 22: openshell.middleware.v1.HttpResponseBodyResult
+	(*HttpResponseBodyPassThrough)(nil),     // 23: openshell.middleware.v1.HttpResponseBodyPassThrough
+	(*HttpResponseBodySkipRemaining)(nil),   // 24: openshell.middleware.v1.HttpResponseBodySkipRemaining
+	(*HttpResponseBodyTransform)(nil),       // 25: openshell.middleware.v1.HttpResponseBodyTransform
+	(*HttpResponseTrailers)(nil),            // 26: openshell.middleware.v1.HttpResponseTrailers
+	(*HttpResponseTrailersResult)(nil),      // 27: openshell.middleware.v1.HttpResponseTrailersResult
+	(*MiddlewareSessionEnd)(nil),            // 28: openshell.middleware.v1.MiddlewareSessionEnd
+	(*MiddlewareSessionProtocolError)(nil),  // 29: openshell.middleware.v1.MiddlewareSessionProtocolError
+	(*WebSocketProtocolError)(nil),          // 30: openshell.middleware.v1.WebSocketProtocolError
+	(*MiddlewareExchangeProtocolError)(nil), // 31: openshell.middleware.v1.MiddlewareExchangeProtocolError
+	(*WebSocketSessionEvent)(nil),           // 32: openshell.middleware.v1.WebSocketSessionEvent
+	(*WebSocketPreflight)(nil),              // 33: openshell.middleware.v1.WebSocketPreflight
+	(*WebSocketSessionStart)(nil),           // 34: openshell.middleware.v1.WebSocketSessionStart
+	(*WebSocketMessage)(nil),                // 35: openshell.middleware.v1.WebSocketMessage
+	(*WebSocketPreflightDecision)(nil),      // 36: openshell.middleware.v1.WebSocketPreflightDecision
+	(*WebSocketMessageResult)(nil),          // 37: openshell.middleware.v1.WebSocketMessageResult
+	(*WebSocketSessionEventResult)(nil),     // 38: openshell.middleware.v1.WebSocketSessionEventResult
+	(*RequestContext)(nil),                  // 39: openshell.middleware.v1.RequestContext
+	(*HttpRequestTarget)(nil),               // 40: openshell.middleware.v1.HttpRequestTarget
+	(*Process)(nil),                         // 41: openshell.middleware.v1.Process
+	(*Finding)(nil),                         // 42: openshell.middleware.v1.Finding
+	(*WriteHeader)(nil),                     // 43: openshell.middleware.v1.WriteHeader
+	(*RemoveHeader)(nil),                    // 44: openshell.middleware.v1.RemoveHeader
+	(*HeaderMutation)(nil),                  // 45: openshell.middleware.v1.HeaderMutation
+	(*HttpRequestResult)(nil),               // 46: openshell.middleware.v1.HttpRequestResult
+	nil,                                     // 47: openshell.middleware.v1.HttpResponsePreflightResult.MetadataEntry
+	nil,                                     // 48: openshell.middleware.v1.HttpResponseBodyResult.MetadataEntry
+	nil,                                     // 49: openshell.middleware.v1.HttpResponseTrailersResult.MetadataEntry
+	nil,                                     // 50: openshell.middleware.v1.WebSocketPreflightDecision.MetadataEntry
+	nil,                                     // 51: openshell.middleware.v1.WebSocketMessageResult.MetadataEntry
+	nil,                                     // 52: openshell.middleware.v1.HttpRequestResult.MetadataEntry
+	(*extensionv1.PeerMetadata)(nil),        // 53: openshell.extension.v1.PeerMetadata
+	(*durationpb.Duration)(nil),             // 54: google.protobuf.Duration
+	(*structpb.Struct)(nil),                 // 55: google.protobuf.Struct
 }
 var file_supervisor_middleware_proto_depIdxs = []int32{
-	8,  // 0: openshell.middleware.v1.MiddlewareManifest.bindings:type_name -> openshell.middleware.v1.MiddlewareBinding
-	2,  // 1: openshell.middleware.v1.MiddlewareBinding.operation:type_name -> openshell.middleware.v1.SupervisorMiddlewareOperation
-	3,  // 2: openshell.middleware.v1.MiddlewareBinding.phase:type_name -> openshell.middleware.v1.SupervisorMiddlewarePhase
-	52, // 3: openshell.middleware.v1.ValidateConfigRequest.config:type_name -> google.protobuf.Struct
-	3,  // 4: openshell.middleware.v1.HttpRequestEvaluation.phase:type_name -> openshell.middleware.v1.SupervisorMiddlewarePhase
-	38, // 5: openshell.middleware.v1.HttpRequestEvaluation.context:type_name -> openshell.middleware.v1.RequestContext
-	52, // 6: openshell.middleware.v1.HttpRequestEvaluation.config:type_name -> google.protobuf.Struct
-	39, // 7: openshell.middleware.v1.HttpRequestEvaluation.target:type_name -> openshell.middleware.v1.HttpRequestTarget
-	12, // 8: openshell.middleware.v1.HttpRequestEvaluation.headers:type_name -> openshell.middleware.v1.HttpHeader
-	15, // 9: openshell.middleware.v1.HttpResponseEvent.preflight:type_name -> openshell.middleware.v1.HttpResponsePreflight
-	20, // 10: openshell.middleware.v1.HttpResponseEvent.body:type_name -> openshell.middleware.v1.HttpResponseBodyUnit
-	25, // 11: openshell.middleware.v1.HttpResponseEvent.trailers:type_name -> openshell.middleware.v1.HttpResponseTrailers
-	27, // 12: openshell.middleware.v1.HttpResponseEvent.session_end:type_name -> openshell.middleware.v1.MiddlewareSessionEnd
-	16, // 13: openshell.middleware.v1.HttpResponseEventResult.preflight_result:type_name -> openshell.middleware.v1.HttpResponsePreflightResult
-	21, // 14: openshell.middleware.v1.HttpResponseEventResult.body_result:type_name -> openshell.middleware.v1.HttpResponseBodyResult
-	26, // 15: openshell.middleware.v1.HttpResponseEventResult.trailers_result:type_name -> openshell.middleware.v1.HttpResponseTrailersResult
-	38, // 16: openshell.middleware.v1.HttpResponsePreflight.context:type_name -> openshell.middleware.v1.RequestContext
-	39, // 17: openshell.middleware.v1.HttpResponsePreflight.target:type_name -> openshell.middleware.v1.HttpRequestTarget
-	12, // 18: openshell.middleware.v1.HttpResponsePreflight.headers:type_name -> openshell.middleware.v1.HttpHeader
-	52, // 19: openshell.middleware.v1.HttpResponsePreflight.config:type_name -> google.protobuf.Struct
-	0,  // 20: openshell.middleware.v1.HttpResponsePreflight.permitted_body_modes:type_name -> openshell.middleware.v1.HttpResponseBodyMode
-	17, // 21: openshell.middleware.v1.HttpResponsePreflightResult.skip:type_name -> openshell.middleware.v1.HttpResponsePreflightSkip
-	19, // 22: openshell.middleware.v1.HttpResponsePreflightResult.inspect:type_name -> openshell.middleware.v1.HttpResponsePreflightInspect
-	18, // 23: openshell.middleware.v1.HttpResponsePreflightResult.block_delivery:type_name -> openshell.middleware.v1.HttpResponseBlockDelivery
-	41, // 24: openshell.middleware.v1.HttpResponsePreflightResult.findings:type_name -> openshell.middleware.v1.Finding
-	46, // 25: openshell.middleware.v1.HttpResponsePreflightResult.metadata:type_name -> openshell.middleware.v1.HttpResponsePreflightResult.MetadataEntry
-	0,  // 26: openshell.middleware.v1.HttpResponsePreflightInspect.body_mode:type_name -> openshell.middleware.v1.HttpResponseBodyMode
-	44, // 27: openshell.middleware.v1.HttpResponsePreflightInspect.header_mutations:type_name -> openshell.middleware.v1.HeaderMutation
-	22, // 28: openshell.middleware.v1.HttpResponseBodyResult.pass_through:type_name -> openshell.middleware.v1.HttpResponseBodyPassThrough
-	24, // 29: openshell.middleware.v1.HttpResponseBodyResult.transform:type_name -> openshell.middleware.v1.HttpResponseBodyTransform
-	18, // 30: openshell.middleware.v1.HttpResponseBodyResult.block_delivery:type_name -> openshell.middleware.v1.HttpResponseBlockDelivery
-	23, // 31: openshell.middleware.v1.HttpResponseBodyResult.skip_remaining:type_name -> openshell.middleware.v1.HttpResponseBodySkipRemaining
-	41, // 32: openshell.middleware.v1.HttpResponseBodyResult.findings:type_name -> openshell.middleware.v1.Finding
-	47, // 33: openshell.middleware.v1.HttpResponseBodyResult.metadata:type_name -> openshell.middleware.v1.HttpResponseBodyResult.MetadataEntry
-	22, // 34: openshell.middleware.v1.HttpResponseBodySkipRemaining.pass_through:type_name -> openshell.middleware.v1.HttpResponseBodyPassThrough
-	24, // 35: openshell.middleware.v1.HttpResponseBodySkipRemaining.transform:type_name -> openshell.middleware.v1.HttpResponseBodyTransform
-	12, // 36: openshell.middleware.v1.HttpResponseTrailers.headers:type_name -> openshell.middleware.v1.HttpHeader
-	44, // 37: openshell.middleware.v1.HttpResponseTrailersResult.trailer_mutations:type_name -> openshell.middleware.v1.HeaderMutation
-	41, // 38: openshell.middleware.v1.HttpResponseTrailersResult.findings:type_name -> openshell.middleware.v1.Finding
-	48, // 39: openshell.middleware.v1.HttpResponseTrailersResult.metadata:type_name -> openshell.middleware.v1.HttpResponseTrailersResult.MetadataEntry
-	1,  // 40: openshell.middleware.v1.MiddlewareSessionEnd.reason:type_name -> openshell.middleware.v1.MiddlewareSessionEndReason
-	28, // 41: openshell.middleware.v1.MiddlewareSessionEnd.protocol_error:type_name -> openshell.middleware.v1.MiddlewareSessionProtocolError
-	29, // 42: openshell.middleware.v1.MiddlewareSessionProtocolError.web_socket:type_name -> openshell.middleware.v1.WebSocketProtocolError
-	30, // 43: openshell.middleware.v1.MiddlewareSessionProtocolError.middleware_exchange:type_name -> openshell.middleware.v1.MiddlewareExchangeProtocolError
-	32, // 44: openshell.middleware.v1.WebSocketSessionEvent.preflight:type_name -> openshell.middleware.v1.WebSocketPreflight
-	33, // 45: openshell.middleware.v1.WebSocketSessionEvent.session_start:type_name -> openshell.middleware.v1.WebSocketSessionStart
-	34, // 46: openshell.middleware.v1.WebSocketSessionEvent.message:type_name -> openshell.middleware.v1.WebSocketMessage
-	27, // 47: openshell.middleware.v1.WebSocketSessionEvent.session_end:type_name -> openshell.middleware.v1.MiddlewareSessionEnd
-	3,  // 48: openshell.middleware.v1.WebSocketPreflight.phase:type_name -> openshell.middleware.v1.SupervisorMiddlewarePhase
-	38, // 49: openshell.middleware.v1.WebSocketPreflight.context:type_name -> openshell.middleware.v1.RequestContext
-	39, // 50: openshell.middleware.v1.WebSocketPreflight.target:type_name -> openshell.middleware.v1.HttpRequestTarget
-	52, // 51: openshell.middleware.v1.WebSocketPreflight.config:type_name -> google.protobuf.Struct
-	4,  // 52: openshell.middleware.v1.WebSocketPreflightDecision.action:type_name -> openshell.middleware.v1.WebSocketPreflightAction
-	41, // 53: openshell.middleware.v1.WebSocketPreflightDecision.findings:type_name -> openshell.middleware.v1.Finding
-	49, // 54: openshell.middleware.v1.WebSocketPreflightDecision.metadata:type_name -> openshell.middleware.v1.WebSocketPreflightDecision.MetadataEntry
-	5,  // 55: openshell.middleware.v1.WebSocketMessageResult.decision:type_name -> openshell.middleware.v1.Decision
-	41, // 56: openshell.middleware.v1.WebSocketMessageResult.findings:type_name -> openshell.middleware.v1.Finding
-	50, // 57: openshell.middleware.v1.WebSocketMessageResult.metadata:type_name -> openshell.middleware.v1.WebSocketMessageResult.MetadataEntry
-	35, // 58: openshell.middleware.v1.WebSocketSessionEventResult.preflight_decision:type_name -> openshell.middleware.v1.WebSocketPreflightDecision
-	36, // 59: openshell.middleware.v1.WebSocketSessionEventResult.message_result:type_name -> openshell.middleware.v1.WebSocketMessageResult
-	40, // 60: openshell.middleware.v1.RequestContext.originating_process:type_name -> openshell.middleware.v1.Process
-	6,  // 61: openshell.middleware.v1.WriteHeader.on_existing:type_name -> openshell.middleware.v1.ExistingHeaderAction
-	42, // 62: openshell.middleware.v1.HeaderMutation.write:type_name -> openshell.middleware.v1.WriteHeader
-	43, // 63: openshell.middleware.v1.HeaderMutation.remove:type_name -> openshell.middleware.v1.RemoveHeader
-	5,  // 64: openshell.middleware.v1.HttpRequestResult.decision:type_name -> openshell.middleware.v1.Decision
-	44, // 65: openshell.middleware.v1.HttpRequestResult.header_mutations:type_name -> openshell.middleware.v1.HeaderMutation
-	41, // 66: openshell.middleware.v1.HttpRequestResult.findings:type_name -> openshell.middleware.v1.Finding
-	51, // 67: openshell.middleware.v1.HttpRequestResult.metadata:type_name -> openshell.middleware.v1.HttpRequestResult.MetadataEntry
-	53, // 68: openshell.middleware.v1.SupervisorMiddleware.Describe:input_type -> google.protobuf.Empty
-	9,  // 69: openshell.middleware.v1.SupervisorMiddleware.ValidateConfig:input_type -> openshell.middleware.v1.ValidateConfigRequest
-	11, // 70: openshell.middleware.v1.SupervisorMiddleware.EvaluateHttpRequest:input_type -> openshell.middleware.v1.HttpRequestEvaluation
-	31, // 71: openshell.middleware.v1.SupervisorMiddleware.EvaluateWebSocketSession:input_type -> openshell.middleware.v1.WebSocketSessionEvent
-	13, // 72: openshell.middleware.v1.HttpResponsePreReturn.Evaluate:input_type -> openshell.middleware.v1.HttpResponseEvent
-	7,  // 73: openshell.middleware.v1.SupervisorMiddleware.Describe:output_type -> openshell.middleware.v1.MiddlewareManifest
-	10, // 74: openshell.middleware.v1.SupervisorMiddleware.ValidateConfig:output_type -> openshell.middleware.v1.ValidateConfigResponse
-	45, // 75: openshell.middleware.v1.SupervisorMiddleware.EvaluateHttpRequest:output_type -> openshell.middleware.v1.HttpRequestResult
-	37, // 76: openshell.middleware.v1.SupervisorMiddleware.EvaluateWebSocketSession:output_type -> openshell.middleware.v1.WebSocketSessionEventResult
-	14, // 77: openshell.middleware.v1.HttpResponsePreReturn.Evaluate:output_type -> openshell.middleware.v1.HttpResponseEventResult
-	73, // [73:78] is the sub-list for method output_type
-	68, // [68:73] is the sub-list for method input_type
-	68, // [68:68] is the sub-list for extension type_name
-	68, // [68:68] is the sub-list for extension extendee
-	0,  // [0:68] is the sub-list for field type_name
+	53, // 0: openshell.middleware.v1.MiddlewareDescribeRequest.gateway:type_name -> openshell.extension.v1.PeerMetadata
+	9,  // 1: openshell.middleware.v1.MiddlewareManifest.bindings:type_name -> openshell.middleware.v1.MiddlewareBinding
+	53, // 2: openshell.middleware.v1.MiddlewareManifest.extension:type_name -> openshell.extension.v1.PeerMetadata
+	2,  // 3: openshell.middleware.v1.MiddlewareBinding.operation:type_name -> openshell.middleware.v1.SupervisorMiddlewareOperation
+	3,  // 4: openshell.middleware.v1.MiddlewareBinding.phase:type_name -> openshell.middleware.v1.SupervisorMiddlewarePhase
+	54, // 5: openshell.middleware.v1.MiddlewareBinding.request_timeout:type_name -> google.protobuf.Duration
+	55, // 6: openshell.middleware.v1.ValidateConfigRequest.config:type_name -> google.protobuf.Struct
+	3,  // 7: openshell.middleware.v1.HttpRequestEvaluation.phase:type_name -> openshell.middleware.v1.SupervisorMiddlewarePhase
+	39, // 8: openshell.middleware.v1.HttpRequestEvaluation.context:type_name -> openshell.middleware.v1.RequestContext
+	55, // 9: openshell.middleware.v1.HttpRequestEvaluation.config:type_name -> google.protobuf.Struct
+	40, // 10: openshell.middleware.v1.HttpRequestEvaluation.target:type_name -> openshell.middleware.v1.HttpRequestTarget
+	13, // 11: openshell.middleware.v1.HttpRequestEvaluation.headers:type_name -> openshell.middleware.v1.HttpHeader
+	16, // 12: openshell.middleware.v1.HttpResponseEvent.preflight:type_name -> openshell.middleware.v1.HttpResponsePreflight
+	21, // 13: openshell.middleware.v1.HttpResponseEvent.body:type_name -> openshell.middleware.v1.HttpResponseBodyUnit
+	26, // 14: openshell.middleware.v1.HttpResponseEvent.trailers:type_name -> openshell.middleware.v1.HttpResponseTrailers
+	28, // 15: openshell.middleware.v1.HttpResponseEvent.session_end:type_name -> openshell.middleware.v1.MiddlewareSessionEnd
+	17, // 16: openshell.middleware.v1.HttpResponseEventResult.preflight_result:type_name -> openshell.middleware.v1.HttpResponsePreflightResult
+	22, // 17: openshell.middleware.v1.HttpResponseEventResult.body_result:type_name -> openshell.middleware.v1.HttpResponseBodyResult
+	27, // 18: openshell.middleware.v1.HttpResponseEventResult.trailers_result:type_name -> openshell.middleware.v1.HttpResponseTrailersResult
+	39, // 19: openshell.middleware.v1.HttpResponsePreflight.context:type_name -> openshell.middleware.v1.RequestContext
+	40, // 20: openshell.middleware.v1.HttpResponsePreflight.target:type_name -> openshell.middleware.v1.HttpRequestTarget
+	13, // 21: openshell.middleware.v1.HttpResponsePreflight.headers:type_name -> openshell.middleware.v1.HttpHeader
+	55, // 22: openshell.middleware.v1.HttpResponsePreflight.config:type_name -> google.protobuf.Struct
+	0,  // 23: openshell.middleware.v1.HttpResponsePreflight.permitted_body_modes:type_name -> openshell.middleware.v1.HttpResponseBodyMode
+	18, // 24: openshell.middleware.v1.HttpResponsePreflightResult.skip:type_name -> openshell.middleware.v1.HttpResponsePreflightSkip
+	20, // 25: openshell.middleware.v1.HttpResponsePreflightResult.inspect:type_name -> openshell.middleware.v1.HttpResponsePreflightInspect
+	19, // 26: openshell.middleware.v1.HttpResponsePreflightResult.block_delivery:type_name -> openshell.middleware.v1.HttpResponseBlockDelivery
+	42, // 27: openshell.middleware.v1.HttpResponsePreflightResult.findings:type_name -> openshell.middleware.v1.Finding
+	47, // 28: openshell.middleware.v1.HttpResponsePreflightResult.metadata:type_name -> openshell.middleware.v1.HttpResponsePreflightResult.MetadataEntry
+	0,  // 29: openshell.middleware.v1.HttpResponsePreflightInspect.body_mode:type_name -> openshell.middleware.v1.HttpResponseBodyMode
+	45, // 30: openshell.middleware.v1.HttpResponsePreflightInspect.header_mutations:type_name -> openshell.middleware.v1.HeaderMutation
+	23, // 31: openshell.middleware.v1.HttpResponseBodyResult.pass_through:type_name -> openshell.middleware.v1.HttpResponseBodyPassThrough
+	25, // 32: openshell.middleware.v1.HttpResponseBodyResult.transform:type_name -> openshell.middleware.v1.HttpResponseBodyTransform
+	19, // 33: openshell.middleware.v1.HttpResponseBodyResult.block_delivery:type_name -> openshell.middleware.v1.HttpResponseBlockDelivery
+	24, // 34: openshell.middleware.v1.HttpResponseBodyResult.skip_remaining:type_name -> openshell.middleware.v1.HttpResponseBodySkipRemaining
+	42, // 35: openshell.middleware.v1.HttpResponseBodyResult.findings:type_name -> openshell.middleware.v1.Finding
+	48, // 36: openshell.middleware.v1.HttpResponseBodyResult.metadata:type_name -> openshell.middleware.v1.HttpResponseBodyResult.MetadataEntry
+	23, // 37: openshell.middleware.v1.HttpResponseBodySkipRemaining.pass_through:type_name -> openshell.middleware.v1.HttpResponseBodyPassThrough
+	25, // 38: openshell.middleware.v1.HttpResponseBodySkipRemaining.transform:type_name -> openshell.middleware.v1.HttpResponseBodyTransform
+	13, // 39: openshell.middleware.v1.HttpResponseTrailers.headers:type_name -> openshell.middleware.v1.HttpHeader
+	45, // 40: openshell.middleware.v1.HttpResponseTrailersResult.trailer_mutations:type_name -> openshell.middleware.v1.HeaderMutation
+	42, // 41: openshell.middleware.v1.HttpResponseTrailersResult.findings:type_name -> openshell.middleware.v1.Finding
+	49, // 42: openshell.middleware.v1.HttpResponseTrailersResult.metadata:type_name -> openshell.middleware.v1.HttpResponseTrailersResult.MetadataEntry
+	1,  // 43: openshell.middleware.v1.MiddlewareSessionEnd.reason:type_name -> openshell.middleware.v1.MiddlewareSessionEndReason
+	29, // 44: openshell.middleware.v1.MiddlewareSessionEnd.protocol_error:type_name -> openshell.middleware.v1.MiddlewareSessionProtocolError
+	30, // 45: openshell.middleware.v1.MiddlewareSessionProtocolError.web_socket:type_name -> openshell.middleware.v1.WebSocketProtocolError
+	31, // 46: openshell.middleware.v1.MiddlewareSessionProtocolError.middleware_exchange:type_name -> openshell.middleware.v1.MiddlewareExchangeProtocolError
+	33, // 47: openshell.middleware.v1.WebSocketSessionEvent.preflight:type_name -> openshell.middleware.v1.WebSocketPreflight
+	34, // 48: openshell.middleware.v1.WebSocketSessionEvent.session_start:type_name -> openshell.middleware.v1.WebSocketSessionStart
+	35, // 49: openshell.middleware.v1.WebSocketSessionEvent.message:type_name -> openshell.middleware.v1.WebSocketMessage
+	28, // 50: openshell.middleware.v1.WebSocketSessionEvent.session_end:type_name -> openshell.middleware.v1.MiddlewareSessionEnd
+	3,  // 51: openshell.middleware.v1.WebSocketPreflight.phase:type_name -> openshell.middleware.v1.SupervisorMiddlewarePhase
+	39, // 52: openshell.middleware.v1.WebSocketPreflight.context:type_name -> openshell.middleware.v1.RequestContext
+	40, // 53: openshell.middleware.v1.WebSocketPreflight.target:type_name -> openshell.middleware.v1.HttpRequestTarget
+	55, // 54: openshell.middleware.v1.WebSocketPreflight.config:type_name -> google.protobuf.Struct
+	4,  // 55: openshell.middleware.v1.WebSocketPreflightDecision.action:type_name -> openshell.middleware.v1.WebSocketPreflightAction
+	42, // 56: openshell.middleware.v1.WebSocketPreflightDecision.findings:type_name -> openshell.middleware.v1.Finding
+	50, // 57: openshell.middleware.v1.WebSocketPreflightDecision.metadata:type_name -> openshell.middleware.v1.WebSocketPreflightDecision.MetadataEntry
+	5,  // 58: openshell.middleware.v1.WebSocketMessageResult.decision:type_name -> openshell.middleware.v1.Decision
+	42, // 59: openshell.middleware.v1.WebSocketMessageResult.findings:type_name -> openshell.middleware.v1.Finding
+	51, // 60: openshell.middleware.v1.WebSocketMessageResult.metadata:type_name -> openshell.middleware.v1.WebSocketMessageResult.MetadataEntry
+	36, // 61: openshell.middleware.v1.WebSocketSessionEventResult.preflight_decision:type_name -> openshell.middleware.v1.WebSocketPreflightDecision
+	37, // 62: openshell.middleware.v1.WebSocketSessionEventResult.message_result:type_name -> openshell.middleware.v1.WebSocketMessageResult
+	41, // 63: openshell.middleware.v1.RequestContext.originating_process:type_name -> openshell.middleware.v1.Process
+	6,  // 64: openshell.middleware.v1.WriteHeader.on_existing:type_name -> openshell.middleware.v1.ExistingHeaderAction
+	43, // 65: openshell.middleware.v1.HeaderMutation.write:type_name -> openshell.middleware.v1.WriteHeader
+	44, // 66: openshell.middleware.v1.HeaderMutation.remove:type_name -> openshell.middleware.v1.RemoveHeader
+	5,  // 67: openshell.middleware.v1.HttpRequestResult.decision:type_name -> openshell.middleware.v1.Decision
+	45, // 68: openshell.middleware.v1.HttpRequestResult.header_mutations:type_name -> openshell.middleware.v1.HeaderMutation
+	42, // 69: openshell.middleware.v1.HttpRequestResult.findings:type_name -> openshell.middleware.v1.Finding
+	52, // 70: openshell.middleware.v1.HttpRequestResult.metadata:type_name -> openshell.middleware.v1.HttpRequestResult.MetadataEntry
+	7,  // 71: openshell.middleware.v1.SupervisorMiddleware.Describe:input_type -> openshell.middleware.v1.MiddlewareDescribeRequest
+	10, // 72: openshell.middleware.v1.SupervisorMiddleware.ValidateConfig:input_type -> openshell.middleware.v1.ValidateConfigRequest
+	12, // 73: openshell.middleware.v1.SupervisorMiddleware.EvaluateHttpRequest:input_type -> openshell.middleware.v1.HttpRequestEvaluation
+	32, // 74: openshell.middleware.v1.SupervisorMiddleware.EvaluateWebSocketSession:input_type -> openshell.middleware.v1.WebSocketSessionEvent
+	14, // 75: openshell.middleware.v1.HttpResponsePreReturn.Evaluate:input_type -> openshell.middleware.v1.HttpResponseEvent
+	8,  // 76: openshell.middleware.v1.SupervisorMiddleware.Describe:output_type -> openshell.middleware.v1.MiddlewareManifest
+	11, // 77: openshell.middleware.v1.SupervisorMiddleware.ValidateConfig:output_type -> openshell.middleware.v1.ValidateConfigResponse
+	46, // 78: openshell.middleware.v1.SupervisorMiddleware.EvaluateHttpRequest:output_type -> openshell.middleware.v1.HttpRequestResult
+	38, // 79: openshell.middleware.v1.SupervisorMiddleware.EvaluateWebSocketSession:output_type -> openshell.middleware.v1.WebSocketSessionEventResult
+	15, // 80: openshell.middleware.v1.HttpResponsePreReturn.Evaluate:output_type -> openshell.middleware.v1.HttpResponseEventResult
+	76, // [76:81] is the sub-list for method output_type
+	71, // [71:76] is the sub-list for method input_type
+	71, // [71:71] is the sub-list for extension type_name
+	71, // [71:71] is the sub-list for extension extendee
+	0,  // [0:71] is the sub-list for field type_name
 }
 
 func init() { file_supervisor_middleware_proto_init() }
@@ -4096,61 +4161,61 @@ func file_supervisor_middleware_proto_init() {
 	if File_supervisor_middleware_proto != nil {
 		return
 	}
-	file_supervisor_middleware_proto_msgTypes[6].OneofWrappers = []any{
+	file_supervisor_middleware_proto_msgTypes[7].OneofWrappers = []any{
 		(*HttpResponseEvent_Preflight)(nil),
 		(*HttpResponseEvent_Body)(nil),
 		(*HttpResponseEvent_Trailers)(nil),
 		(*HttpResponseEvent_SessionEnd)(nil),
 	}
-	file_supervisor_middleware_proto_msgTypes[7].OneofWrappers = []any{
+	file_supervisor_middleware_proto_msgTypes[8].OneofWrappers = []any{
 		(*HttpResponseEventResult_PreflightResult)(nil),
 		(*HttpResponseEventResult_BodyResult)(nil),
 		(*HttpResponseEventResult_TrailersResult)(nil),
 	}
-	file_supervisor_middleware_proto_msgTypes[9].OneofWrappers = []any{
+	file_supervisor_middleware_proto_msgTypes[10].OneofWrappers = []any{
 		(*HttpResponsePreflightResult_Skip)(nil),
 		(*HttpResponsePreflightResult_Inspect)(nil),
 		(*HttpResponsePreflightResult_BlockDelivery)(nil),
 	}
-	file_supervisor_middleware_proto_msgTypes[13].OneofWrappers = []any{
+	file_supervisor_middleware_proto_msgTypes[14].OneofWrappers = []any{
 		(*HttpResponseBodyUnit_Data)(nil),
 	}
-	file_supervisor_middleware_proto_msgTypes[14].OneofWrappers = []any{
+	file_supervisor_middleware_proto_msgTypes[15].OneofWrappers = []any{
 		(*HttpResponseBodyResult_PassThrough)(nil),
 		(*HttpResponseBodyResult_Transform)(nil),
 		(*HttpResponseBodyResult_BlockDelivery)(nil),
 		(*HttpResponseBodyResult_SkipRemaining)(nil),
 	}
-	file_supervisor_middleware_proto_msgTypes[16].OneofWrappers = []any{
+	file_supervisor_middleware_proto_msgTypes[17].OneofWrappers = []any{
 		(*HttpResponseBodySkipRemaining_PassThrough)(nil),
 		(*HttpResponseBodySkipRemaining_Transform)(nil),
 	}
-	file_supervisor_middleware_proto_msgTypes[17].OneofWrappers = []any{
+	file_supervisor_middleware_proto_msgTypes[18].OneofWrappers = []any{
 		(*HttpResponseBodyTransform_Data)(nil),
 	}
-	file_supervisor_middleware_proto_msgTypes[21].OneofWrappers = []any{
+	file_supervisor_middleware_proto_msgTypes[22].OneofWrappers = []any{
 		(*MiddlewareSessionProtocolError_WebSocket)(nil),
 		(*MiddlewareSessionProtocolError_MiddlewareExchange)(nil),
 	}
-	file_supervisor_middleware_proto_msgTypes[24].OneofWrappers = []any{
+	file_supervisor_middleware_proto_msgTypes[25].OneofWrappers = []any{
 		(*WebSocketSessionEvent_Preflight)(nil),
 		(*WebSocketSessionEvent_SessionStart)(nil),
 		(*WebSocketSessionEvent_Message)(nil),
 		(*WebSocketSessionEvent_SessionEnd)(nil),
 	}
-	file_supervisor_middleware_proto_msgTypes[27].OneofWrappers = []any{
+	file_supervisor_middleware_proto_msgTypes[28].OneofWrappers = []any{
 		(*WebSocketMessage_Text)(nil),
 		(*WebSocketMessage_Binary)(nil),
 	}
-	file_supervisor_middleware_proto_msgTypes[29].OneofWrappers = []any{
+	file_supervisor_middleware_proto_msgTypes[30].OneofWrappers = []any{
 		(*WebSocketMessageResult_Text)(nil),
 		(*WebSocketMessageResult_Binary)(nil),
 	}
-	file_supervisor_middleware_proto_msgTypes[30].OneofWrappers = []any{
+	file_supervisor_middleware_proto_msgTypes[31].OneofWrappers = []any{
 		(*WebSocketSessionEventResult_PreflightDecision)(nil),
 		(*WebSocketSessionEventResult_MessageResult)(nil),
 	}
-	file_supervisor_middleware_proto_msgTypes[37].OneofWrappers = []any{
+	file_supervisor_middleware_proto_msgTypes[38].OneofWrappers = []any{
 		(*HeaderMutation_Write)(nil),
 		(*HeaderMutation_Remove)(nil),
 	}
@@ -4160,7 +4225,7 @@ func file_supervisor_middleware_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_supervisor_middleware_proto_rawDesc), len(file_supervisor_middleware_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   45,
+			NumMessages:   46,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

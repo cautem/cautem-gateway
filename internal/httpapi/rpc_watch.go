@@ -3,18 +3,19 @@ package httpapi
 import (
 	"context"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	core "github.com/cautem/cautem-core"
+	"github.com/cautem/cautem-driver/driver"
 	"github.com/cautem/cautem-gateway/internal/logbuf"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
-	computev1 "github.com/cautem/cautem-gateway/internal/upstreamproto/computev1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -22,17 +23,17 @@ const (
 	maxWatchLogTail     uint32 = 10000
 )
 
-func (s *openShellRPC) WatchSandbox(req *openshellv1.WatchSandboxRequest, stream grpc.ServerStreamingServer[openshellv1.SandboxStreamEvent]) error {
+func (s *compatRPCAdapter) WatchSandbox(req *compatv1.WatchSandboxRequest, stream grpc.ServerStreamingServer[compatv1.SandboxStreamEvent]) error {
 	if s.runtime == nil || s.runtime.st == nil {
 		return status.Error(codes.Unavailable, "sandbox store is not initialized")
 	}
-	if req == nil || strings.TrimSpace(req.GetId()) == "" {
+	if req == nil || strings.TrimSpace(req.GetSandbox()) == "" {
 		return status.Error(codes.InvalidArgument, "id is required")
 	}
-	if req.GetLogSinceMs() < 0 {
-		return status.Error(codes.InvalidArgument, "log_since_ms must not be negative")
+	if req.GetSinceTime() != nil && req.GetSinceTime().AsTime().Before(time.Unix(0, 0)) {
+		return status.Error(codes.InvalidArgument, "since_time must not be negative")
 	}
-	sandbox, err := s.sandboxRecordByReference(req.GetId())
+	sandbox, err := s.sandboxRecordByReference(req.GetSandbox())
 	if err != nil {
 		return status.Error(codes.NotFound, "sandbox not found")
 	}
@@ -53,7 +54,7 @@ func (s *openShellRPC) WatchSandbox(req *openshellv1.WatchSandboxRequest, stream
 	if err != nil {
 		return status.Error(codes.FailedPrecondition, "stored sandbox spec is invalid")
 	}
-	if err := stream.Send(&openshellv1.SandboxStreamEvent{Payload: &openshellv1.SandboxStreamEvent_Sandbox{Sandbox: current}}); err != nil {
+	if err := stream.Send(&compatv1.SandboxStreamEvent{Payload: &compatv1.SandboxStreamEvent_Sandbox{Sandbox: current}}); err != nil {
 		return err
 	}
 	if req.GetStopOnTerminal() && watchSandboxTerminal(current) {
@@ -82,7 +83,7 @@ func (s *openShellRPC) WatchSandbox(req *openshellv1.WatchSandboxRequest, stream
 			if !watchLogMatches(line, req) {
 				continue
 			}
-			if err := stream.Send(&openshellv1.SandboxStreamEvent{Payload: &openshellv1.SandboxStreamEvent_Log{Log: sandboxLogToProto(sandbox.ID, line)}}); err != nil {
+			if err := stream.Send(&compatv1.SandboxStreamEvent{Payload: &compatv1.SandboxStreamEvent_Log{Log: sandboxLogToProto(sandbox.ID, line)}}); err != nil {
 				return err
 			}
 		}
@@ -108,7 +109,7 @@ func (s *openShellRPC) WatchSandbox(req *openshellv1.WatchSandboxRequest, stream
 				return result.err
 			}
 			if result.event != nil {
-				if err := stream.Send(&openshellv1.SandboxStreamEvent{Payload: &openshellv1.SandboxStreamEvent_Event{Event: result.event}}); err != nil {
+				if err := stream.Send(&compatv1.SandboxStreamEvent{Payload: &compatv1.SandboxStreamEvent_Event{Event: result.event}}); err != nil {
 					return err
 				}
 				if result.terminal && req.GetStopOnTerminal() {
@@ -118,8 +119,8 @@ func (s *openShellRPC) WatchSandbox(req *openshellv1.WatchSandboxRequest, stream
 		case <-logNotifications:
 			lines := s.runtime.logs.After(sandbox.Name, logSequence)
 			if len(lines) > 0 && lines[0].Sequence > logSequence+1 {
-				warning := &openshellv1.SandboxStreamWarning{Message: "some sandbox log events were dropped from the gateway buffer"}
-				if err := stream.Send(&openshellv1.SandboxStreamEvent{Payload: &openshellv1.SandboxStreamEvent_Warning{Warning: warning}}); err != nil {
+				warning := &compatv1.SandboxStreamWarning{Message: "some sandbox log events were dropped from the gateway buffer"}
+				if err := stream.Send(&compatv1.SandboxStreamEvent{Payload: &compatv1.SandboxStreamEvent_Warning{Warning: warning}}); err != nil {
 					return err
 				}
 			}
@@ -128,7 +129,7 @@ func (s *openShellRPC) WatchSandbox(req *openshellv1.WatchSandboxRequest, stream
 				if !watchLogMatches(line, req) {
 					continue
 				}
-				if err := stream.Send(&openshellv1.SandboxStreamEvent{Payload: &openshellv1.SandboxStreamEvent_Log{Log: sandboxLogToProto(sandbox.ID, line)}}); err != nil {
+				if err := stream.Send(&compatv1.SandboxStreamEvent{Payload: &compatv1.SandboxStreamEvent_Log{Log: sandboxLogToProto(sandbox.ID, line)}}); err != nil {
 					return err
 				}
 			}
@@ -145,7 +146,7 @@ func (s *openShellRPC) WatchSandbox(req *openshellv1.WatchSandboxRequest, stream
 			if err != nil {
 				return status.Error(codes.FailedPrecondition, "stored sandbox spec is invalid")
 			}
-			if err := stream.Send(&openshellv1.SandboxStreamEvent{Payload: &openshellv1.SandboxStreamEvent_Sandbox{Sandbox: snapshot}}); err != nil {
+			if err := stream.Send(&compatv1.SandboxStreamEvent{Payload: &compatv1.SandboxStreamEvent_Sandbox{Sandbox: snapshot}}); err != nil {
 				return err
 			}
 			if req.GetStopOnTerminal() && watchSandboxTerminal(snapshot) {
@@ -156,64 +157,88 @@ func (s *openShellRPC) WatchSandbox(req *openshellv1.WatchSandboxRequest, stream
 }
 
 type platformWatchResult struct {
-	event    *openshellv1.PlatformEvent
+	event    *compatv1.PlatformEvent
 	err      error
 	terminal bool
 }
 
-// watchSandboxPlatformEvents bridges the typed external ComputeDriver watch
-// stream to the public OpenShell event shape. Built-in Docker/Podman engines do
-// not currently expose a platform event stream and fail explicitly instead of
-// fabricating one from status polling.
-func (s *openShellRPC) watchSandboxPlatformEvents(ctx context.Context, sandbox store.Sandbox) (<-chan platformWatchResult, error) {
+// watchSandboxPlatformEvents resolves optional platform events through the
+// product Backend contract. Backends without that capability use durable
+// Gateway status observations rather than claiming to provide native events.
+func (s *compatRPCAdapter) watchSandboxPlatformEvents(ctx context.Context, sandbox store.Sandbox) (<-chan platformWatchResult, error) {
 	if s.runtime != nil && s.runtime.compute != nil {
-		if engine, err := s.runtime.compute.engine(sandbox.ComputeDriver); err == nil {
-			if remote, ok := engine.(*remoteComputeEngine); ok && remote != nil && remote.client != nil {
-				return s.watchRemoteSandboxPlatformEvents(ctx, remote, sandbox)
+		if backend, err := s.runtime.compute.backend(sandbox.ComputeDriver); err == nil {
+			info, err := backend.Capabilities(ctx)
+			if err != nil {
+				return nil, status.Errorf(codes.Unavailable, "compute backend capabilities are unavailable: %v", err)
+			}
+			if info.Has(driver.CapabilityPlatformEvents) {
+				watcher, err := driver.RequireExtension[driver.PlatformEventStream](ctx, backend, driver.CapabilityPlatformEvents, "watch platform events")
+				if err != nil {
+					return nil, status.Errorf(codes.FailedPrecondition, "compute backend event capability is unavailable: %v", err)
+				}
+				request := driver.PlatformEventWatchRequest{SandboxID: core.ID(sandbox.ID), SandboxName: sandbox.Name}
+				remoteEvents, err := watcher.WatchPlatformEvents(ctx, request)
+				if err != nil {
+					return nil, status.Errorf(codes.Unavailable, "compute backend watch is unavailable: %v", err)
+				}
+				return bridgeBackendPlatformEvents(ctx, core.ID(sandbox.ID), remoteEvents), nil
 			}
 		}
 	}
 	return s.watchLocalSandboxPlatformEvents(ctx, sandbox), nil
 }
 
-func (s *openShellRPC) watchRemoteSandboxPlatformEvents(ctx context.Context, remote *remoteComputeEngine, sandbox store.Sandbox) (<-chan platformWatchResult, error) {
-	remoteStream, err := remote.client.WatchSandboxes(ctx, &computev1.WatchSandboxesRequest{})
-	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "compute driver watch is unavailable: %v", err)
-	}
+func bridgeBackendPlatformEvents(ctx context.Context, sandboxID core.ID, events <-chan driver.PlatformEventResult) <-chan platformWatchResult {
 	results := make(chan platformWatchResult, 1)
 	go func() {
 		defer close(results)
 		for {
-			item, recvErr := remoteStream.Recv()
-			if recvErr != nil {
-				if ctx.Err() != nil {
-					return
-				}
-				if recvErr == io.EOF {
-					return
-				}
-				results <- platformWatchResult{err: status.Errorf(codes.Unavailable, "compute driver watch failed: %v", recvErr)}
+			select {
+			case <-ctx.Done():
 				return
-			}
-			if event := convertRemotePlatformEvent(item, sandbox); event != nil {
+			case result, ok := <-events:
+				if !ok {
+					return
+				}
+				if result.Err != nil {
+					select {
+					case results <- platformWatchResult{err: status.Errorf(codes.Unavailable, "compute backend watch failed: %v", result.Err)}:
+					case <-ctx.Done():
+					}
+					return
+				}
+				event := result.Event
+				if event.SandboxID != sandboxID {
+					continue
+				}
+				timestamp := event.Time
+				if timestamp.IsZero() {
+					timestamp = time.Now()
+				}
+				converted := &compatv1.PlatformEvent{
+					EventTime: timestamppb.New(timestamp),
+					Source:    event.Source,
+					Type:      event.Type,
+					Reason:    event.Reason,
+					Message:   event.Message,
+					Metadata:  cloneStringMap(event.Metadata),
+				}
 				select {
-				case results <- platformWatchResult{event: event}:
+				case results <- platformWatchResult{event: converted, terminal: event.Terminal}:
 				case <-ctx.Done():
 					return
 				}
 			}
 		}
 	}()
-	return results, nil
+	return results
 }
 
-// watchLocalSandboxPlatformEvents supplies lifecycle events for Docker and
-// Podman, whose Engine APIs do not expose the raw ComputeDriver event stream.
-// It observes the durable status/resource-version pair, so it never invents a
-// backend event that was not persisted by the gateway. External drivers use
-// watchRemoteSandboxPlatformEvents above and retain their native event detail.
-func (s *openShellRPC) watchLocalSandboxPlatformEvents(ctx context.Context, sandbox store.Sandbox) <-chan platformWatchResult {
+// watchLocalSandboxPlatformEvents supplies lifecycle events for backends that
+// do not advertise native platform events. It observes the durable
+// status/resource-version pair and does not claim to expose backend details.
+func (s *compatRPCAdapter) watchLocalSandboxPlatformEvents(ctx context.Context, sandbox store.Sandbox) <-chan platformWatchResult {
 	results := make(chan platformWatchResult, 1)
 	go func() {
 		defer close(results)
@@ -228,7 +253,7 @@ func (s *openShellRPC) watchLocalSandboxPlatformEvents(ctx context.Context, sand
 				latest, ok := s.runtime.st.GetSandbox(sandbox.Name)
 				if !ok {
 					select {
-					case results <- platformWatchResult{event: &openshellv1.PlatformEvent{TimestampMs: time.Now().UnixMilli(), Source: "gateway", Type: "Normal", Reason: "Deleted", Message: "sandbox was deleted", Metadata: map[string]string{"sandbox_id": sandbox.ID}}, terminal: true}:
+					case results <- platformWatchResult{event: &compatv1.PlatformEvent{EventTime: timestamppb.New(time.Now()), Source: "gateway", Type: "Normal", Reason: "Deleted", Message: "sandbox was deleted", Metadata: map[string]string{"sandbox_id": sandbox.ID}}, terminal: true}:
 					case <-ctx.Done():
 					}
 					return
@@ -245,7 +270,7 @@ func (s *openShellRPC) watchLocalSandboxPlatformEvents(ctx context.Context, sand
 				if timestamp <= 0 {
 					timestamp = time.Now().UnixMilli()
 				}
-				event := &openshellv1.PlatformEvent{TimestampMs: timestamp, Source: firstNonEmpty(latest.ComputeDriver, "gateway"), Type: typeName, Reason: "SandboxStatusChanged", Message: fmt.Sprintf("sandbox status changed to %s", latest.Status), Metadata: map[string]string{"sandbox_id": latest.ID, "resource_version": strconv.FormatUint(latest.ResourceVersion, 10), "status": latest.Status}}
+				event := &compatv1.PlatformEvent{EventTime: timestamppb.New(time.UnixMilli(timestamp)), Source: firstNonEmpty(latest.ComputeDriver, "gateway"), Type: typeName, Reason: "SandboxStatusChanged", Message: fmt.Sprintf("sandbox status changed to %s", latest.Status), Metadata: map[string]string{"sandbox_id": latest.ID, "resource_version": strconv.FormatUint(latest.ResourceVersion, 10), "status": latest.Status}}
 				select {
 				case results <- platformWatchResult{event: event, terminal: watchSandboxTerminalStatus(latest.Status)}:
 				case <-ctx.Done():
@@ -266,37 +291,8 @@ func watchSandboxTerminalStatus(statusValue string) bool {
 	}
 }
 
-func convertRemotePlatformEvent(item *computev1.WatchSandboxesEvent, sandbox store.Sandbox) *openshellv1.PlatformEvent {
-	if item == nil {
-		return nil
-	}
-	if platform := item.GetPlatformEvent(); platform != nil && remoteSandboxMatches(platform.GetSandboxId(), sandbox) {
-		event := platform.GetEvent()
-		if event == nil {
-			return nil
-		}
-		return &openshellv1.PlatformEvent{TimestampMs: event.GetTimestampMs(), Source: event.GetSource(), Type: event.GetType(), Reason: event.GetReason(), Message: event.GetMessage(), Metadata: cloneStringMap(event.GetMetadata())}
-	}
-	if deleted := item.GetDeleted(); deleted != nil && remoteSandboxMatches(deleted.GetSandboxId(), sandbox) {
-		return &openshellv1.PlatformEvent{TimestampMs: time.Now().UnixMilli(), Source: "compute", Type: "Normal", Reason: "Deleted", Message: "sandbox was deleted", Metadata: map[string]string{"sandbox_id": sandbox.ID}}
-	}
-	if updated := item.GetSandbox(); updated != nil && updated.GetSandbox() != nil {
-		remote := updated.GetSandbox()
-		if !remoteSandboxMatches(remote.GetId(), sandbox) && !remoteSandboxMatches(remote.GetName(), sandbox) {
-			return nil
-		}
-		return &openshellv1.PlatformEvent{TimestampMs: time.Now().UnixMilli(), Source: "compute", Type: "Normal", Reason: "SandboxUpdated", Message: "compute driver reported a sandbox update", Metadata: map[string]string{"sandbox_id": sandbox.ID}}
-	}
-	return nil
-}
-
-func remoteSandboxMatches(value string, sandbox store.Sandbox) bool {
-	value = strings.TrimSpace(value)
-	return value != "" && (value == sandbox.ID || value == sandbox.Name)
-}
-
-func watchLogMatches(line logbuf.Line, req *openshellv1.WatchSandboxRequest) bool {
-	if req.GetLogSinceMs() > 0 && line.TS.UnixMilli() < req.GetLogSinceMs() {
+func watchLogMatches(line logbuf.Line, req *compatv1.WatchSandboxRequest) bool {
+	if req.GetSinceTime() != nil && line.TS.Before(req.GetSinceTime().AsTime()) {
 		return false
 	}
 	if len(req.GetLogSources()) > 0 {
@@ -315,10 +311,10 @@ func watchLogMatches(line logbuf.Line, req *openshellv1.WatchSandboxRequest) boo
 			return false
 		}
 	}
-	return openShellLevelMatches(line.Level, req.GetLogMinLevel())
+	return logLevelMatches(line.Level, req.GetLogMinLevel())
 }
 
-func sandboxLogToProto(sandboxID string, line logbuf.Line) *openshellv1.SandboxLogLine {
+func sandboxLogToProto(sandboxID string, line logbuf.Line) *compatv1.SandboxLogLine {
 	source := line.Source
 	if source == "" {
 		source = "gateway"
@@ -327,18 +323,18 @@ func sandboxLogToProto(sandboxID string, line logbuf.Line) *openshellv1.SandboxL
 	if fields == nil {
 		fields = map[string]string{}
 	}
-	return &openshellv1.SandboxLogLine{SandboxId: sandboxID, TimestampMs: line.TS.UnixMilli(), Level: line.Level, Target: line.Target, Message: line.Text, Source: source, Fields: fields}
+	return &compatv1.SandboxLogLine{SandboxId: sandboxID, EventTime: timestamppb.New(line.TS), Level: line.Level, Target: line.Target, Message: line.Text, Source: source, Fields: fields}
 }
 
-func watchSandboxTerminal(sandbox *openshellv1.Sandbox) bool {
+func watchSandboxTerminal(sandbox *compatv1.Sandbox) bool {
 	if sandbox == nil || sandbox.GetStatus() == nil {
 		return false
 	}
 	switch sandbox.GetStatus().GetPhase() {
-	case openshellv1.SandboxPhase_SANDBOX_PHASE_READY,
-		openshellv1.SandboxPhase_SANDBOX_PHASE_COMPLETED,
-		openshellv1.SandboxPhase_SANDBOX_PHASE_STOPPED,
-		openshellv1.SandboxPhase_SANDBOX_PHASE_ERROR:
+	case compatv1.SandboxPhase_SANDBOX_PHASE_READY,
+		compatv1.SandboxPhase_SANDBOX_PHASE_COMPLETED,
+		compatv1.SandboxPhase_SANDBOX_PHASE_STOPPED,
+		compatv1.SandboxPhase_SANDBOX_PHASE_ERROR:
 		return true
 	default:
 		return false

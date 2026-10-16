@@ -1,7 +1,7 @@
 {
-  "upstream_commit": "a0814443f19c07102b19ff09d6ead3d3ba59f9c5",
+  "upstream_commit": "5a7728c304b5528e954e9ae900cf21f84e1a12b1",
   "generated_from": [
-    "tools/upstream/openshell/proto/*.proto",
+    "tools/upstream/openshell-v0.1.4/proto/*.proto",
     "https://cautem.github.io/sandbox.dev/reference/openshell-compatibility/"
   ],
   "services": [
@@ -24,7 +24,7 @@
             "internal/httpapi/grpc_mux_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go",
+            "internal/httpapi/rpc_core.go",
             "internal/httpapi/grpc_mux_test.go"
           ]
         },
@@ -42,7 +42,7 @@
             "internal/httpapi/grpc_mux_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go",
+            "internal/httpapi/rpc_core.go",
             "internal/httpapi/grpc_mux_test.go"
           ]
         },
@@ -60,7 +60,7 @@
             "internal/httpapi/rpc_inventory_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go",
+            "internal/httpapi/rpc_core.go",
             "internal/httpapi/rpc_inventory_test.go"
           ]
         },
@@ -77,10 +77,10 @@
           "tests": [
             "internal/httpapi/rpc_sandbox_test.go",
             "TestCreateSandboxResolvesWorkspaceTemplateAndGovernanceOverrides",
-            "TestOpenShellCreateSandboxValidationMatchesPinnedFieldBoundaries"
+            "TestCompatCreateSandboxValidationMatchesPinnedFieldBoundaries"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go",
+            "internal/httpapi/sandbox_lifecycle_rpc.go",
             "internal/httpapi/rpc_sandbox_test.go",
             "workspace-scoped workload template resolution",
             "portable CPU/memory mapped into compute request",
@@ -242,9 +242,9 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "TestOpenShellSandboxProviderAttachmentLifecycle",
-            "TestOpenShellSandboxProviderAttachmentAuthorizationAndCAS",
-            "TestOpenShellSandboxProviderAttachmentLimit"
+            "TestCompatSandboxProviderAttachmentLifecycle",
+            "TestCompatSandboxProviderAttachmentAuthorizationAndCAS",
+            "TestCompatSandboxProviderAttachmentLimit"
           ],
           "evidence": [
             "internal/httpapi/rpc_attachments.go",
@@ -262,9 +262,9 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "TestOpenShellSandboxProviderAttachmentLifecycle",
-            "TestOpenShellSandboxProviderAttachmentAuthorizationAndCAS",
-            "TestOpenShellSandboxProviderAttachmentLimit"
+            "TestCompatSandboxProviderAttachmentLifecycle",
+            "TestCompatSandboxProviderAttachmentAuthorizationAndCAS",
+            "TestCompatSandboxProviderAttachmentLimit"
           ],
           "evidence": [
             "internal/httpapi/rpc_attachments.go",
@@ -282,9 +282,9 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "TestOpenShellSandboxProviderAttachmentLifecycle",
-            "TestOpenShellSandboxProviderAttachmentAuthorizationAndCAS",
-            "TestOpenShellSandboxProviderAttachmentLimit"
+            "TestCompatSandboxProviderAttachmentLifecycle",
+            "TestCompatSandboxProviderAttachmentAuthorizationAndCAS",
+            "TestCompatSandboxProviderAttachmentLimit"
           ],
           "evidence": [
             "internal/httpapi/rpc_attachments.go",
@@ -305,7 +305,7 @@
             "internal/httpapi/rpc_sandbox_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go",
+            "internal/httpapi/sandbox_lifecycle_rpc.go",
             "internal/httpapi/rpc_sandbox_test.go"
           ]
         },
@@ -324,7 +324,7 @@
             "tests/e2e/engine_connect_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go",
+            "internal/httpapi/sandbox_lifecycle_rpc.go",
             "internal/httpapi/rpc_sandbox_test.go",
             "tests/e2e/engine_connect_test.go"
           ]
@@ -344,7 +344,7 @@
             "tests/e2e/engine_connect_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go",
+            "internal/httpapi/sandbox_lifecycle_rpc.go",
             "internal/httpapi/rpc_sandbox_test.go",
             "tests/e2e/engine_connect_test.go"
           ]
@@ -360,8 +360,8 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "TestOpenShellGRPCSSHSessionLifecycle",
-            "TestOpenShellGRPCSSHSessionRequiresRelayAndScopedOwner"
+            "TestCompatGRPCSSHSessionLifecycle",
+            "TestCompatGRPCSSHSessionRequiresRelayAndScopedOwner"
           ],
           "evidence": [
             "internal/httpapi/rpc_ssh.go",
@@ -378,7 +378,9 @@
           "scope": "sandbox:write / user",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellServiceEndpointLifecycle"],
+          "tests": [
+            "TestCompatServiceEndpointLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_services.go",
             "internal/httpapi/rpc_services_test.go"
@@ -394,7 +396,9 @@
           "scope": "sandbox:read / user",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellServiceEndpointLifecycle"],
+          "tests": [
+            "TestCompatServiceEndpointLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_services.go",
             "internal/httpapi/rpc_services_test.go"
@@ -410,7 +414,9 @@
           "scope": "sandbox:read / user",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellServiceEndpointLifecycle"],
+          "tests": [
+            "TestCompatServiceEndpointLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_services.go",
             "internal/httpapi/rpc_services_test.go"
@@ -426,7 +432,9 @@
           "scope": "sandbox:write / user",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellServiceEndpointLifecycle"],
+          "tests": [
+            "TestCompatServiceEndpointLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_services.go",
             "internal/httpapi/rpc_services_test.go"
@@ -443,8 +451,8 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "TestOpenShellGRPCSSHSessionLifecycle",
-            "TestOpenShellGRPCSSHSessionRequiresRelayAndScopedOwner"
+            "TestCompatGRPCSSHSessionLifecycle",
+            "TestCompatGRPCSSHSessionRequiresRelayAndScopedOwner"
           ],
           "evidence": [
             "internal/httpapi/rpc_ssh.go",
@@ -462,8 +470,8 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "TestOpenShellExecSandboxRequiresWorkspaceWrite",
-            "TestOpenShellRPCInventoryMatchesPinnedServiceAndHandlers"
+            "TestCompatExecSandboxRequiresWorkspaceWrite",
+            "TestCompatRPCInventoryMatchesPinnedServiceAndHandlers"
           ],
           "evidence": [
             "internal/httpapi/rpc_exec.go",
@@ -486,8 +494,8 @@
             "TestForwardTCPClientHalfCloseKeepsTargetResponseOpen",
             "TestForwardTCPContextCancellationAndDeadline",
             "TestForwardConnectionLimits",
-            "TestOpenShellGRPCForwardTCPBridgeAndAuthorization",
-            "TestOpenShellGRPCExternalClientAuthentication",
+            "TestCompatGRPCForwardTCPBridgeAndAuthorization",
+            "TestCompatGRPCExternalClientAuthentication",
             "TestHalfPipePreservesResponseAfterWriteClose",
             "TestHalfPipeDeadlineInterruptsBlockedRead",
             "TestEngineGatewayConnectE2E"
@@ -498,7 +506,7 @@
             "internal/httpapi/grpc_mux_test.go",
             "internal/sshrelay/halfpipe.go",
             "internal/sshrelay/halfpipe_test.go",
-            "internal/httpapi/engine_connect_e2e_test.go"
+            "tests/e2e/engine_connect_test.go"
           ]
         },
         {
@@ -513,11 +521,11 @@
           "conformance_fixture": "partial",
           "tests": [
             "TestEngineGatewayConnectE2E",
-            "TestOpenShellRPCInventoryMatchesPinnedServiceAndHandlers"
+            "TestCompatRPCInventoryMatchesPinnedServiceAndHandlers"
           ],
           "evidence": [
             "internal/httpapi/rpc_exec.go",
-            "internal/httpapi/engine_connect_e2e_test.go"
+            "tests/e2e/engine_connect_test.go"
           ]
         },
         {
@@ -530,7 +538,9 @@
           "scope": "provider:write / admin",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellProviderLifecycle"],
+          "tests": [
+            "TestCompatProviderLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_providers.go",
             "internal/httpapi/rpc_providers_test.go"
@@ -546,7 +556,9 @@
           "scope": "provider:read / user",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellProviderLifecycle"],
+          "tests": [
+            "TestCompatProviderLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_providers.go",
             "internal/httpapi/rpc_providers_test.go"
@@ -562,7 +574,9 @@
           "scope": "provider:read / user",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellProviderLifecycle"],
+          "tests": [
+            "TestCompatProviderLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_providers.go",
             "internal/httpapi/rpc_providers_test.go"
@@ -578,7 +592,9 @@
           "scope": "provider:read / user",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellProviderProfilesLifecycle"],
+          "tests": [
+            "TestCompatProviderProfilesLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_profiles.go",
             "internal/httpapi/rpc_profiles_test.go"
@@ -594,7 +610,9 @@
           "scope": "provider:read / user",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellProviderProfilesLifecycle"],
+          "tests": [
+            "TestCompatProviderProfilesLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_profiles.go",
             "internal/httpapi/rpc_profiles_test.go"
@@ -610,7 +628,9 @@
           "scope": "provider:write / admin",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellProviderProfilesLifecycle"],
+          "tests": [
+            "TestCompatProviderProfilesLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_profiles.go",
             "internal/httpapi/rpc_profiles_test.go"
@@ -626,7 +646,9 @@
           "scope": "provider:write / admin",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellProviderProfilesLifecycle"],
+          "tests": [
+            "TestCompatProviderProfilesLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_profiles.go",
             "internal/httpapi/rpc_profiles_test.go"
@@ -642,7 +664,9 @@
           "scope": "provider:read / user",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellProviderProfilesLifecycle"],
+          "tests": [
+            "TestCompatProviderProfilesLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_profiles.go",
             "internal/httpapi/rpc_profiles_test.go"
@@ -658,7 +682,9 @@
           "scope": "provider:write / admin",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellProviderLifecycle"],
+          "tests": [
+            "TestCompatProviderLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_providers.go",
             "internal/httpapi/rpc_providers_test.go"
@@ -678,7 +704,7 @@
             "internal/httpapi/rpc_credentials_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go",
+            "internal/httpapi/provider_credentials_rpc.go",
             "internal/httpapi/rpc_credentials_test.go"
           ]
         },
@@ -696,7 +722,7 @@
             "internal/httpapi/rpc_credentials_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go",
+            "internal/httpapi/provider_credentials_rpc.go",
             "internal/httpapi/rpc_credentials_test.go"
           ]
         },
@@ -714,7 +740,7 @@
             "internal/httpapi/rpc_credentials_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go",
+            "internal/httpapi/provider_credentials_rpc.go",
             "internal/httpapi/rpc_credentials_test.go"
           ]
         },
@@ -732,7 +758,7 @@
             "internal/httpapi/rpc_credentials_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go",
+            "internal/httpapi/provider_credentials_rpc.go",
             "internal/httpapi/rpc_credentials_test.go"
           ]
         },
@@ -746,7 +772,9 @@
           "scope": "provider:write / admin",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellProviderLifecycle"],
+          "tests": [
+            "TestCompatProviderLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_providers.go",
             "internal/httpapi/rpc_providers_test.go"
@@ -762,7 +790,9 @@
           "scope": "provider:write / admin",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellProviderProfilesLifecycle"],
+          "tests": [
+            "TestCompatProviderProfilesLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_profiles.go",
             "internal/httpapi/rpc_profiles_test.go"
@@ -806,7 +836,7 @@
             "TestGetGatewayConfigRejectsUnavailableAndMalformedState"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go GetGatewayConfig",
+            "internal/httpapi/rpc_core.go GetGatewayConfig",
             "settings allowlist excludes unregistered and reserved policy keys",
             "typed bool/string settings and monotonic revision are returned"
           ]
@@ -827,7 +857,7 @@
             "TestUpdateConfigAllowsSandboxPolicySyncOnlyForOwnSandbox",
             "TestUpdateConfigAppliesSandboxPolicyMergeOperationsAtomically",
             "TestUpdateConfigPolicyMergeEnforcesGlobalPolicyAndCAS",
-            "TestApplyOpenShellPolicyMergeRuleAndRemovalOperations"
+            "TestApplyPolicyMergeRuleAndRemovalOperations"
           ],
           "evidence": [
             "internal/httpapi/rpc_update_config.go UpdateConfig",
@@ -911,7 +941,7 @@
             "internal/httpapi/rpc_credentials_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go",
+            "internal/httpapi/provider_credentials_rpc.go",
             "internal/httpapi/rpc_credentials_test.go"
           ]
         },
@@ -929,8 +959,8 @@
             "internal/httpapi/rpc_subject_token_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go"
-            ,"internal/httpapi/rpc_subject_token_test.go"
+            "internal/httpapi/provider_credentials_rpc.go",
+            "internal/httpapi/rpc_subject_token_test.go"
           ]
         },
         {
@@ -944,7 +974,7 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "TestOpenShellGatewaySandboxLogsRPC"
+            "TestCompatGatewaySandboxLogsRPC"
           ],
           "evidence": [
             "bounded gateway log buffer with sandbox workspace authorization and source/level/time filters"
@@ -961,7 +991,7 @@
           "handler": "explicit",
           "conformance_fixture": "partial",
           "tests": [
-            "TestOpenShellGatewaySandboxLogsRPC"
+            "TestCompatGatewaySandboxLogsRPC"
           ],
           "evidence": [
             "sandbox-token client stream validates sandbox ownership, bounds records and forces sandbox source"
@@ -982,7 +1012,7 @@
             "internal/httpapi/grpc_mux_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go",
+            "internal/httpapi/supervisor_rpc.go",
             "internal/httpapi/grpc_mux_test.go",
             "internal/httpapi/grpc_mux_test.go"
           ]
@@ -1003,7 +1033,7 @@
           ],
           "evidence": [
             "internal/httpapi/rpc_main_process.go",
-            "internal/storage/store/store.go",
+            "internal/storage/store/sandbox.go",
             "internal/httpapi/rpc_main_process_test.go",
             "internal/httpapi/grpc_mux_test.go"
           ]
@@ -1024,7 +1054,7 @@
           ],
           "evidence": [
             "internal/httpapi/rpc_main_process.go",
-            "internal/storage/store/store.go",
+            "internal/storage/store/sandbox.go",
             "internal/httpapi/rpc_main_process_test.go",
             "internal/httpapi/grpc_mux_test.go"
           ]
@@ -1044,7 +1074,7 @@
             "internal/httpapi/grpc_mux_test.go"
           ],
           "evidence": [
-            "internal/httpapi/openshell_rpc.go",
+            "internal/httpapi/supervisor_rpc.go",
             "internal/httpapi/grpc_mux_test.go",
             "internal/httpapi/grpc_mux_test.go"
           ]
@@ -1077,7 +1107,9 @@
           "scope": "see options.proto",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellPolicyDraftLifecycle"],
+          "tests": [
+            "TestCompatPolicyDraftLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_policy_draft.go",
             "internal/httpapi/rpc_policy_draft_test.go"
@@ -1093,7 +1125,9 @@
           "scope": "config:read / user",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellPolicyDraftLifecycle"],
+          "tests": [
+            "TestCompatPolicyDraftLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_policy_draft.go",
             "internal/httpapi/rpc_policy_draft_test.go"
@@ -1109,7 +1143,9 @@
           "scope": "config:write / admin",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellPolicyDraftLifecycle"],
+          "tests": [
+            "TestCompatPolicyDraftLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_policy_draft.go",
             "internal/httpapi/rpc_policy_draft_test.go"
@@ -1125,7 +1161,9 @@
           "scope": "config:write / admin",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellPolicyDraftLifecycle"],
+          "tests": [
+            "TestCompatPolicyDraftLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_policy_draft.go",
             "internal/httpapi/rpc_policy_draft_test.go"
@@ -1141,7 +1179,9 @@
           "scope": "config:write / admin",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellPolicyDraftLifecycle"],
+          "tests": [
+            "TestCompatPolicyDraftLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_policy_draft.go",
             "internal/httpapi/rpc_policy_draft_test.go"
@@ -1157,7 +1197,9 @@
           "scope": "config:write / admin",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellPolicyDraftLifecycle"],
+          "tests": [
+            "TestCompatPolicyDraftLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_policy_draft.go",
             "internal/httpapi/rpc_policy_draft_test.go"
@@ -1173,7 +1215,9 @@
           "scope": "config:write / admin",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellPolicyDraftLifecycle"],
+          "tests": [
+            "TestCompatPolicyDraftLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_policy_draft.go",
             "internal/httpapi/rpc_policy_draft_test.go"
@@ -1189,7 +1233,9 @@
           "scope": "config:write / admin",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellPolicyDraftLifecycle"],
+          "tests": [
+            "TestCompatPolicyDraftLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_policy_draft.go",
             "internal/httpapi/rpc_policy_draft_test.go"
@@ -1205,7 +1251,9 @@
           "scope": "config:read / user",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellPolicyDraftLifecycle"],
+          "tests": [
+            "TestCompatPolicyDraftLifecycle"
+          ],
           "evidence": [
             "internal/httpapi/rpc_policy_draft.go",
             "internal/httpapi/rpc_policy_draft_test.go"
@@ -1221,7 +1269,9 @@
           "scope": "see options.proto",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellSandboxTokenRotation"],
+          "tests": [
+            "TestCompatSandboxTokenRotation"
+          ],
           "evidence": [
             "internal/httpapi/rpc_services.go",
             "internal/httpapi/rpc_services_test.go"
@@ -1237,7 +1287,9 @@
           "scope": "see options.proto",
           "handler": "explicit",
           "conformance_fixture": "partial",
-          "tests": ["TestOpenShellSandboxTokenRotation"],
+          "tests": [
+            "TestCompatSandboxTokenRotation"
+          ],
           "evidence": [
             "internal/httpapi/rpc_services.go",
             "internal/httpapi/rpc_services_test.go"
@@ -1361,6 +1413,186 @@
           "evidence": [
             "workspace CRUD, membership, pagination, scope and role authorization handlers"
           ]
+        },
+        {
+          "name": "GetSandboxProviderStatus",
+          "request": "GetSandboxProviderStatusRequest",
+          "response": "GetSandboxProviderStatusResponse",
+          "client_streaming": false,
+          "server_streaming": false,
+          "auth": "bearer",
+          "scope": "sandbox:read / user",
+          "handler": "explicit",
+          "conformance_fixture": "missing",
+          "tests": [
+            "TestGetSandboxProviderStatusFailsClosedWithoutReadinessStore",
+            "internal/httpapi/compat_v014_contract_test.go"
+          ],
+          "evidence": [
+            "internal/httpapi/compat_v014_contract.go",
+            "internal/httpapi/compat_v014_contract_test.go",
+            "explicit Unimplemented for unavailable readiness and peer relay capabilities"
+          ]
+        },
+        {
+          "name": "ReportEndpointStatus",
+          "request": "ReportEndpointStatusRequest",
+          "response": "ReportEndpointStatusResponse",
+          "client_streaming": false,
+          "server_streaming": false,
+          "auth": "sandbox",
+          "scope": "see options.proto",
+          "handler": "explicit",
+          "conformance_fixture": "missing",
+          "tests": [
+            "TestCompatV014ReportRPCsValidateRequestsAndExposeKnownGaps",
+            "internal/httpapi/compat_v014_contract_test.go"
+          ],
+          "evidence": [
+            "internal/httpapi/compat_v014_contract.go",
+            "internal/httpapi/compat_v014_contract_test.go",
+            "explicit Unimplemented for unavailable readiness and peer relay capabilities"
+          ]
+        },
+        {
+          "name": "ReportProviderReadiness",
+          "request": "ReportProviderReadinessRequest",
+          "response": "ReportProviderReadinessResponse",
+          "client_streaming": false,
+          "server_streaming": false,
+          "auth": "sandbox",
+          "scope": "see options.proto",
+          "handler": "explicit",
+          "conformance_fixture": "missing",
+          "tests": [
+            "TestCompatV014ReportRPCsValidateRequestsAndExposeKnownGaps",
+            "internal/httpapi/compat_v014_contract_test.go"
+          ],
+          "evidence": [
+            "internal/httpapi/compat_v014_contract.go",
+            "internal/httpapi/compat_v014_contract_test.go",
+            "explicit Unimplemented for unavailable readiness and peer relay capabilities"
+          ]
+        },
+        {
+          "name": "ReportSandboxConfiguration",
+          "request": "ReportSandboxConfigurationRequest",
+          "response": "ReportSandboxConfigurationResponse",
+          "client_streaming": false,
+          "server_streaming": false,
+          "auth": "sandbox",
+          "scope": "see options.proto",
+          "handler": "explicit",
+          "conformance_fixture": "missing",
+          "tests": [
+            "TestCompatV014ReportRPCsValidateRequestsAndExposeKnownGaps",
+            "internal/httpapi/compat_v014_contract_test.go"
+          ],
+          "evidence": [
+            "internal/httpapi/compat_v014_contract.go",
+            "internal/httpapi/compat_v014_contract_test.go",
+            "explicit Unimplemented for unavailable readiness and peer relay capabilities"
+          ]
+        },
+        {
+          "name": "PeerRelay",
+          "request": "PeerRelayFrame",
+          "response": "PeerRelayFrame",
+          "client_streaming": true,
+          "server_streaming": true,
+          "auth": "peer",
+          "scope": "see options.proto",
+          "handler": "explicit",
+          "conformance_fixture": "missing",
+          "tests": [
+            "TestCompatV014ReportRPCsValidateRequestsAndExposeKnownGaps",
+            "internal/httpapi/compat_v014_contract_test.go"
+          ],
+          "evidence": [
+            "internal/httpapi/compat_v014_contract.go",
+            "internal/httpapi/compat_v014_contract_test.go",
+            "explicit Unimplemented for unavailable readiness and peer relay capabilities"
+          ]
+        },
+        {
+          "name": "PeerReportProviderReadiness",
+          "request": "ReportProviderReadinessRequest",
+          "response": "ReportProviderReadinessResponse",
+          "client_streaming": false,
+          "server_streaming": false,
+          "auth": "peer",
+          "scope": "see options.proto",
+          "handler": "explicit",
+          "conformance_fixture": "missing",
+          "tests": [
+            "TestCompatV014ReportRPCsValidateRequestsAndExposeKnownGaps",
+            "internal/httpapi/compat_v014_contract_test.go"
+          ],
+          "evidence": [
+            "internal/httpapi/compat_v014_contract.go",
+            "internal/httpapi/compat_v014_contract_test.go",
+            "explicit Unimplemented for unavailable readiness and peer relay capabilities"
+          ]
+        },
+        {
+          "name": "PeerReportEndpointStatus",
+          "request": "ReportEndpointStatusRequest",
+          "response": "ReportEndpointStatusResponse",
+          "client_streaming": false,
+          "server_streaming": false,
+          "auth": "peer",
+          "scope": "see options.proto",
+          "handler": "explicit",
+          "conformance_fixture": "missing",
+          "tests": [
+            "TestCompatV014ReportRPCsValidateRequestsAndExposeKnownGaps",
+            "internal/httpapi/compat_v014_contract_test.go"
+          ],
+          "evidence": [
+            "internal/httpapi/compat_v014_contract.go",
+            "internal/httpapi/compat_v014_contract_test.go",
+            "explicit Unimplemented for unavailable readiness and peer relay capabilities"
+          ]
+        },
+        {
+          "name": "PeerGetSandboxProviderStatus",
+          "request": "GetSandboxProviderStatusRequest",
+          "response": "GetSandboxProviderStatusResponse",
+          "client_streaming": false,
+          "server_streaming": false,
+          "auth": "peer",
+          "scope": "see options.proto",
+          "handler": "explicit",
+          "conformance_fixture": "missing",
+          "tests": [
+            "TestCompatV014ReportRPCsValidateRequestsAndExposeKnownGaps",
+            "internal/httpapi/compat_v014_contract_test.go"
+          ],
+          "evidence": [
+            "internal/httpapi/compat_v014_contract.go",
+            "internal/httpapi/compat_v014_contract_test.go",
+            "explicit Unimplemented for unavailable readiness and peer relay capabilities"
+          ]
+        },
+        {
+          "name": "GetProviderCredentials",
+          "request": "GetProviderCredentialsRequest",
+          "response": "GetProviderCredentialsResponse",
+          "client_streaming": false,
+          "server_streaming": false,
+          "auth": "operator",
+          "scope": "see options.proto",
+          "handler": "explicit",
+          "conformance_fixture": "partial",
+          "tests": [
+            "TestGetProviderCredentialsRequiresVerifiedMTLSOperator",
+            "TestGetProviderCredentialsValidatesSelectionAndExportsAllOrNothing"
+          ],
+          "evidence": [
+            "operator-only direct mTLS authentication; bearer/local auth is rejected",
+            "named workspace, unique declared runtime keys, minimum lifetime, expiry, and response-size checks",
+            "refresh and token-grant materials are never included in the response"
+          ]
         }
       ]
     },
@@ -1388,21 +1620,6 @@
           "name": "AuthenticateSandbox",
           "request": "AuthenticateSandboxRequest",
           "response": "AuthenticateSandboxResponse",
-          "client_streaming": false,
-          "server_streaming": false,
-          "auth": "see_method_options",
-          "scope": "see_method_options",
-          "handler": "embedded_unimplemented",
-          "conformance_fixture": "missing",
-          "tests": [],
-          "evidence": [
-            "generated UnimplementedOpenShellServer embedding"
-          ]
-        },
-        {
-          "name": "GetGatewayListenerRequirements",
-          "request": "GetGatewayListenerRequirementsRequest",
-          "response": "GetGatewayListenerRequirementsResponse",
           "client_streaming": false,
           "server_streaming": false,
           "auth": "see_method_options",
@@ -1789,5 +2006,6 @@
         }
       ]
     }
-  ]
+  ],
+  "upstream_version": "v0.1.4"
 }

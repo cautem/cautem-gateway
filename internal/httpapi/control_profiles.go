@@ -185,7 +185,7 @@ func (a *controlAPI) requireProviderProfileAccess(ctx context.Context, workspace
 	if a.opt.grpcRuntime == nil {
 		return connect.NewError(connect.CodeUnavailable, errors.New("provider access service is unavailable"))
 	}
-	access := (&openShellRPC{runtime: a.opt.grpcRuntime}).requireProviderAccess(ctx, workspace, write)
+	access := (&compatRPCAdapter{runtime: a.opt.grpcRuntime}).requireProviderAccess(ctx, workspace, write)
 	if access == nil {
 		return nil
 	}

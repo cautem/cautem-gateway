@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-10-16
+
+### Added
+
+- Stream bounded non-interactive VM exec output through the OpenShell stdout/stderr/exit event contract.
+- Upload VM rootfs tar archives to authenticated, workspace-bound Gateway staging slots from remote clients.
+- Preflight optional backend Gateway-runtime capabilities before consuming one-shot rootfs uploads or persisting sandbox lifecycle state.
+- Restore process-local workload argv and environment from the durable sandbox spec before restarting a backend that implements `LaunchSpecRestorer`.
+
 ## [v0.2.1] - 2026-10-13
 
 ### Fixed

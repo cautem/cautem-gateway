@@ -29,6 +29,7 @@ var controlSecurityPolicies = map[string]controlSecurityPolicy{
 	"/cautem.control.v1.SandboxService/AppendSandboxLogs":                    {http.MethodPost, "/v1/logs", "write-only bounded log records"},
 	"/cautem.control.v1.SandboxService/WatchSandboxLogs":                     {http.MethodGet, "/v1/logs", "bounded workspace sandbox log stream"},
 	"/cautem.control.v1.SandboxService/CreateSandbox":                        {http.MethodPost, "/v1/sandboxes", "redacted result and durable operation id"},
+	"/cautem.control.v1.SandboxService/AttachMainProcess":                    {http.MethodGet, "/v1/sandboxes", "workspace-scoped canonical process stream"},
 	"/cautem.control.v1.SandboxService/StartSandbox":                         {http.MethodPost, "/v1/sandboxes", "redacted result and durable operation id"},
 	"/cautem.control.v1.SandboxService/StopSandbox":                          {http.MethodPost, "/v1/sandboxes", "redacted result and durable operation id"},
 	"/cautem.control.v1.SandboxService/DeleteSandbox":                        {http.MethodDelete, "/v1/sandboxes", "deletion result and durable operation id"},

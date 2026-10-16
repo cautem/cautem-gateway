@@ -6,39 +6,40 @@ import (
 	"strings"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/logbuf"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
-	defaultOpenShellLogLines    uint32 = 2000
-	maxOpenShellLogLines        uint32 = 10000
-	maxOpenShellLogBatch               = 100
-	maxOpenShellLogMessageBytes        = 64 << 10
-	maxOpenShellLogFieldCount          = 128
+	compatDefaultLogLines    uint32 = 2000
+	compatMaxLogLines        uint32 = 10000
+	compatMaxLogBatch               = 100
+	compatMaxLogMessageBytes        = 64 << 10
+	compatMaxLogFieldCount          = 128
 )
 
-func (s *openShellRPC) GetSandboxLogs(ctx context.Context, req *openshellv1.GetSandboxLogsRequest) (*openshellv1.GetSandboxLogsResponse, error) {
+func (s *compatRPCAdapter) GetSandboxLogs(ctx context.Context, req *compatv1.GetSandboxLogsRequest) (*compatv1.GetSandboxLogsResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil || s.runtime.logs == nil {
 		return nil, status.Error(codes.Unavailable, "sandbox log buffer is not initialized")
 	}
 	s.runtime.logLifecycleMu.Lock()
 	defer s.runtime.logLifecycleMu.Unlock()
-	if req == nil || strings.TrimSpace(req.GetSandboxId()) == "" {
+	if req == nil || strings.TrimSpace(req.GetSandbox()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "sandbox_id is required")
 	}
-	if req.GetSinceMs() < 0 {
-		return nil, status.Error(codes.InvalidArgument, "since_ms must not be negative")
+	if req.GetSinceTime() != nil && req.GetSinceTime().AsTime().Before(time.Unix(0, 0)) {
+		return nil, status.Error(codes.InvalidArgument, "since_time must not be negative")
 	}
-	sandbox, err := s.sandboxRecordByReference(req.GetSandboxId())
+	sandbox, err := s.sandboxRecordByReference(req.GetSandbox())
 	if err != nil {
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
-	workspace := strings.TrimSpace(req.GetWorkspace())
+	workspace := strings.TrimSpace(requestWorkspace(req.GetWorkspaceScope()))
 	if workspace == "" {
 		workspace = sandbox.Workspace
 	}
@@ -50,22 +51,22 @@ func (s *openShellRPC) GetSandboxLogs(ctx context.Context, req *openshellv1.GetS
 	}
 	limit := req.GetLines()
 	if limit == 0 {
-		limit = defaultOpenShellLogLines
+		limit = compatDefaultLogLines
 	}
-	if limit > maxOpenShellLogLines {
-		limit = maxOpenShellLogLines
+	if limit > compatMaxLogLines {
+		limit = compatMaxLogLines
 	}
 	// OpenShell captures the tail first and applies filters to that bounded
 	// snapshot; buffer_total therefore describes the unfiltered tail size.
 	tail := s.runtime.logs.Snapshot(sandbox.Name, time.Time{}, "", "", int(limit))
-	response := &openshellv1.GetSandboxLogsResponse{BufferTotal: uint32(len(tail))}
+	response := &compatv1.GetSandboxLogsResponse{BufferTotal: uint32(len(tail))}
 	sources := make(map[string]struct{}, len(req.GetSources()))
 	for _, source := range req.GetSources() {
 		sources[source] = struct{}{}
 	}
-	since := time.UnixMilli(req.GetSinceMs())
+	since := req.GetSinceTime().AsTime()
 	for _, line := range tail {
-		if req.GetSinceMs() > 0 && line.TS.Before(since) {
+		if req.GetSinceTime() != nil && line.TS.Before(since) {
 			continue
 		}
 		source := line.Source
@@ -77,22 +78,22 @@ func (s *openShellRPC) GetSandboxLogs(ctx context.Context, req *openshellv1.GetS
 				continue
 			}
 		}
-		if !openShellLevelMatches(line.Level, req.GetMinLevel()) {
+		if !logLevelMatches(line.Level, req.GetMinLevel()) {
 			continue
 		}
 		fields := line.Fields
 		if fields == nil {
 			fields = map[string]string{}
 		}
-		response.Logs = append(response.Logs, &openshellv1.SandboxLogLine{
-			SandboxId: sandbox.ID, TimestampMs: line.TS.UnixMilli(), Level: line.Level,
+		response.Logs = append(response.Logs, &compatv1.SandboxLogLine{
+			SandboxId: sandbox.ID, EventTime: timestamppb.New(line.TS), Level: line.Level,
 			Target: line.Target, Message: line.Text, Source: source, Fields: fields,
 		})
 	}
 	return response, nil
 }
 
-func (s *openShellRPC) PushSandboxLogs(stream grpc.ClientStreamingServer[openshellv1.PushSandboxLogsRequest, openshellv1.PushSandboxLogsResponse]) error {
+func (s *compatRPCAdapter) PushSandboxLogs(stream grpc.ClientStreamingServer[compatv1.PushSandboxLogsRequest, compatv1.PushSandboxLogsResponse]) error {
 	if s.runtime == nil || s.runtime.st == nil || s.runtime.logs == nil {
 		return status.Error(codes.Unavailable, "sandbox log buffer is not initialized")
 	}
@@ -126,18 +127,18 @@ func (s *openShellRPC) PushSandboxLogs(stream grpc.ClientStreamingServer[openshe
 			return status.Error(codes.PermissionDenied, "log stream sandbox_id changed after validation")
 		}
 		lines := batch.GetLogs()
-		if len(lines) > maxOpenShellLogBatch {
-			lines = lines[:maxOpenShellLogBatch]
+		if len(lines) > compatMaxLogBatch {
+			lines = lines[:compatMaxLogBatch]
 		}
 		converted := make([]logbuf.Line, 0, len(lines))
 		for _, line := range lines {
-			if line == nil || len(line.GetMessage()) > maxOpenShellLogMessageBytes || len(line.GetFields()) > maxOpenShellLogFieldCount {
+			if line == nil || len(line.GetMessage()) > compatMaxLogMessageBytes || len(line.GetFields()) > compatMaxLogFieldCount {
 				continue
 			}
 			fields := make(map[string]string, len(line.GetFields()))
 			valid := true
 			for key, value := range line.GetFields() {
-				if len(key) > 256 || len(value) > maxOpenShellLogMessageBytes {
+				if len(key) > 256 || len(value) > compatMaxLogMessageBytes {
 					valid = false
 					break
 				}
@@ -147,8 +148,8 @@ func (s *openShellRPC) PushSandboxLogs(stream grpc.ClientStreamingServer[openshe
 				continue
 			}
 			ts := time.Now().UTC()
-			if line.GetTimestampMs() > 0 {
-				ts = time.UnixMilli(line.GetTimestampMs()).UTC()
+			if line.GetEventTime() != nil {
+				ts = line.GetEventTime().AsTime().UTC()
 			}
 			converted = append(converted, logbuf.Line{TS: ts, Source: "sandbox", Level: line.GetLevel(), Target: line.GetTarget(), Text: line.GetMessage(), Fields: fields})
 		}
@@ -164,10 +165,10 @@ func (s *openShellRPC) PushSandboxLogs(stream grpc.ClientStreamingServer[openshe
 		s.runtime.logs.Append(validated.Name, converted)
 		s.runtime.logLifecycleMu.Unlock()
 	}
-	return stream.SendAndClose(&openshellv1.PushSandboxLogsResponse{})
+	return stream.SendAndClose(&compatv1.PushSandboxLogsResponse{})
 }
 
-func (s *openShellRPC) sandboxRecordByReference(reference string) (store.Sandbox, error) {
+func (s *compatRPCAdapter) sandboxRecordByReference(reference string) (store.Sandbox, error) {
 	if sandbox, ok := s.runtime.st.GetSandbox(reference); ok {
 		return sandbox, nil
 	}
@@ -179,7 +180,7 @@ func (s *openShellRPC) sandboxRecordByReference(reference string) (store.Sandbox
 	return store.Sandbox{}, status.Error(codes.NotFound, "sandbox not found")
 }
 
-func openShellLevelMatches(level, minLevel string) bool {
+func logLevelMatches(level, minLevel string) bool {
 	if minLevel == "" {
 		return true
 	}

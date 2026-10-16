@@ -52,8 +52,8 @@ func configStartup(args []string) (Options, *gatewayconfig.File, error) {
 			return opt, nil, err
 		}
 		file = &parsed
-		g := file.OpenShell.Gateway
-		opt.SupervisorMiddlewareServices, err = supervisorMiddlewareServices(file.OpenShell.Supervisor.Middleware)
+		g := file.Compatibility.Gateway
+		opt.SupervisorMiddlewareServices, err = supervisorMiddlewareServices(file.Compatibility.Supervisor.Middleware)
 		if err != nil {
 			return opt, file, err
 		}
@@ -67,7 +67,9 @@ func configStartup(args []string) (Options, *gatewayconfig.File, error) {
 			opt.Name = *g.Name
 		}
 		opt.ComputeDriverNames = []string{"docker"}
-		if g.ComputeDrivers != nil {
+		if g.ComputeDriver != nil {
+			opt.ComputeDriverNames = []string{*g.ComputeDriver}
+		} else if g.ComputeDrivers != nil {
 			opt.ComputeDriverNames = append([]string(nil), (*g.ComputeDrivers)...)
 		}
 		if len(opt.ComputeDriverNames) == 0 {
@@ -75,7 +77,7 @@ func configStartup(args []string) (Options, *gatewayconfig.File, error) {
 		}
 		opt.ComputeDriverConfigs = make(DriverConfigs)
 		inheritable := []string{"sandbox_namespace", "default_image", "supervisor_image", "client_tls_secret_name", "service_account_name", "host_gateway_ip", "enable_user_namespaces", "sa_token_ttl_secs", "guest_tls_ca", "guest_tls_cert", "guest_tls_key"}
-		for name, raw := range file.OpenShell.Drivers {
+		for name, raw := range file.Compatibility.Drivers {
 			if _, ok := raw.(map[string]any); !ok {
 				return opt, file, fmt.Errorf("openshell.drivers.%s must be a table", name)
 			}
@@ -83,12 +85,10 @@ func configStartup(args []string) (Options, *gatewayconfig.File, error) {
 		}
 		seenCompute := map[string]bool{}
 		for _, name := range opt.ComputeDriverNames {
-			switch name {
-			case "docker", "podman", "kubernetes", "vm":
-			default:
+			if !isLocalComputeDriver(name) {
 				config := opt.ComputeDriverConfigs[name]
 				if config == nil || strings.TrimSpace(stringConfig(config, "grpc_endpoint")) == "" {
-					return opt, file, fmt.Errorf("openshell.gateway.compute_drivers: unknown driver %q (built-in or grpc_endpoint-backed driver required)", name)
+					return opt, file, fmt.Errorf("openshell.gateway.compute_drivers: unknown driver %q (registered backend or grpc_endpoint-backed driver required)", name)
 				}
 			}
 			if seenCompute[name] {
@@ -106,7 +106,7 @@ func configStartup(args []string) (Options, *gatewayconfig.File, error) {
 			opt.DefaultCredentialDriver = *g.DefaultCredentialDriver
 		}
 		opt.CredentialDriverConfigs = make(DriverConfigs)
-		for name, raw := range file.OpenShell.CredentialDrivers {
+		for name, raw := range file.Compatibility.CredentialDrivers {
 			table, ok := raw.(map[string]any)
 			if !ok {
 				return opt, file, fmt.Errorf("openshell.credential_drivers.%s must be a table", name)
@@ -425,8 +425,8 @@ func optionalListenerAddress(mainAddress, configured, port string) (string, erro
 func configRuntimeGaps(file *gatewayconfig.File, opt Options) error {
 	var gaps []string
 	if file != nil {
-		g := file.OpenShell.Gateway
-		supported := map[string]bool{"name": true, "bind_address": true, "health_bind_address": true, "metrics_bind_address": true, "log_level": true, "ssh_session_ttl_secs": true, "disable_tls": true, "auth": true, "tls": true, "oidc": true, "mtls_auth": true, "provider_profile_sources": true, "credential_storage": true, "compute_drivers": true, "credential_drivers": true, "default_credential_driver": true, "interceptors": true}
+		g := file.Compatibility.Gateway
+		supported := map[string]bool{"name": true, "bind_address": true, "health_bind_address": true, "metrics_bind_address": true, "log_level": true, "ssh_session_ttl_secs": true, "disable_tls": true, "auth": true, "tls": true, "oidc": true, "mtls_auth": true, "provider_profile_sources": true, "credential_storage": true, "compute_driver": true, "compute_drivers": true, "credential_drivers": true, "default_credential_driver": true, "interceptors": true}
 		value := reflect.ValueOf(g)
 		for i := 0; i < value.NumField(); i++ {
 			field, key := value.Field(i), value.Type().Field(i).Tag.Get("toml")

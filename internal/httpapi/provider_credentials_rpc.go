@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	_ "github.com/cautem/cautem-driver/driver/all"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"github.com/cautem/cautem-providers/provider"
@@ -20,13 +20,18 @@ import (
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// openShellRPC exposes the pinned OpenShell protobuf service. Backend-specific
+// compatRPCAdapter exposes the pinned OpenShell protobuf service. Backend-specific
 // capabilities that have no safe implementation return an explicit status
 // rather than silently accepting an ineffective request.
 
-func (s *openShellRPC) GetSandboxProviderEnvironment(ctx context.Context, req *openshellv1.GetSandboxProviderEnvironmentRequest) (*openshellv1.GetSandboxProviderEnvironmentResponse, error) {
+func (s *compatRPCAdapter) GetSandboxProviderEnvironment(ctx context.Context, req *compatv1.GetSandboxProviderEnvironmentRequest) (*compatv1.GetSandboxProviderEnvironmentResponse, error) {
+	if req == nil || strings.TrimSpace(req.GetSandboxId()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "sandbox_id is required")
+	}
 	if s.runtime == nil || s.runtime.st == nil || s.runtime.sec == nil {
 		return nil, status.Error(codes.Unavailable, "credential runtime is not initialized")
 	}
@@ -34,11 +39,35 @@ func (s *openShellRPC) GetSandboxProviderEnvironment(ctx context.Context, req *o
 	if principal.Kind != PrincipalSandbox || principal.Sandbox != req.GetSandboxId() {
 		return nil, status.Error(codes.PermissionDenied, "sandbox supervisor identity required")
 	}
-	env, err := resolveSandboxSecretsWithSourcesAndDrivers(ctx, s.runtime.st, s.runtime.sec, s.runtime.drivers, s.runtime.opt, BuiltinProvidersDir(), req.GetSandboxId(), s.runtime.opt.ProviderProfileSources)
-	if err != nil {
-		return nil, status.Error(codes.FailedPrecondition, "provider environment is unavailable")
+	sandbox, ok := s.runtime.st.GetSandbox(req.GetSandboxId())
+	if !ok {
+		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
-	return &openshellv1.GetSandboxProviderEnvironmentResponse{Environment: env}, nil
+	response := &compatv1.GetSandboxProviderEnvironmentResponse{
+		Environment:                              map[string]string{},
+		SupportsStablePlaceholderEnvironmentKeys: false,
+	}
+	if !req.GetSupportsStaticCredentialBindings() {
+		if len(sandbox.AttachedProviders) > 0 {
+			response.ReadinessReason = compatv1.ProviderReadinessReason_PROVIDER_READINESS_REASON_UNSUPPORTED_SUPERVISOR
+		}
+		return response, nil
+	}
+
+	policyDoc, err := effectivePolicyWithSources(s.runtime.st, BuiltinProvidersDir(), sandbox.Name, s.runtime.opt.ProviderProfileSources)
+	if err != nil {
+		return nil, status.Error(codes.FailedPrecondition, "effective sandbox policy is unavailable")
+	}
+	bindings := staticCredentialEndpointBindings(policyDoc)
+	environment, expirations, deliveredBindings, readiness, err := s.resolveSandboxStaticCredentials(ctx, sandbox, bindings)
+	if err != nil {
+		return nil, status.Error(codes.FailedPrecondition, "bound provider credentials are unavailable")
+	}
+	response.Environment = environment
+	response.StaticCredentialBindings = deliveredBindings
+	response.CredentialExpirationTimes = expirations
+	response.ReadinessReason = readiness
+	return response, nil
 }
 
 // ExchangeProviderSubjectToken performs the gateway half of OpenShell's
@@ -48,7 +77,7 @@ func (s *openShellRPC) GetSandboxProviderEnvironment(ctx context.Context, req *o
 // ExchangeProviderSubjectToken performs the gateway half of OpenShell's
 // workload-identity token exchange. Both SVIDs are verified against the local
 // Workload API bundle before any provider credential is read or sent upstream.
-func (s *openShellRPC) ExchangeProviderSubjectToken(ctx context.Context, req *openshellv1.ExchangeProviderSubjectTokenRequest) (*openshellv1.ExchangeProviderSubjectTokenResponse, error) {
+func (s *compatRPCAdapter) ExchangeProviderSubjectToken(ctx context.Context, req *compatv1.ExchangeProviderSubjectTokenRequest) (*compatv1.ExchangeProviderSubjectTokenResponse, error) {
 	if s.runtime == nil || s.runtime.st == nil || s.runtime.sec == nil {
 		return nil, status.Error(codes.Unavailable, "credential runtime is not initialized")
 	}
@@ -173,7 +202,7 @@ func (s *openShellRPC) ExchangeProviderSubjectToken(ctx context.Context, req *op
 	if err := json.Unmarshal(body, &token); err != nil || token.AccessToken == "" {
 		return nil, status.Error(codes.FailedPrecondition, "provider token response is invalid")
 	}
-	return &openshellv1.ExchangeProviderSubjectTokenResponse{AccessToken: token.AccessToken, ExpiresIn: token.ExpiresIn, TokenType: token.TokenType}, nil
+	return &compatv1.ExchangeProviderSubjectTokenResponse{AccessToken: token.AccessToken, ExpiresAfter: durationpb.New(time.Duration(token.ExpiresIn) * time.Second), TokenType: token.TokenType}, nil
 }
 
 func deriveTokenGrantAudience(tokenEndpoint string) string {
@@ -186,15 +215,15 @@ func deriveTokenGrantAudience(tokenEndpoint string) string {
 	return tokenEndpoint
 }
 
-func (s *openShellRPC) GetProviderRefreshStatus(ctx context.Context, req *openshellv1.GetProviderRefreshStatusRequest) (*openshellv1.GetProviderRefreshStatusResponse, error) {
-	if err := s.requireProviderAccess(ctx, req.GetWorkspace(), false); err != nil {
+func (s *compatRPCAdapter) GetProviderRefreshStatus(ctx context.Context, req *compatv1.GetProviderRefreshStatusRequest) (*compatv1.GetProviderRefreshStatusResponse, error) {
+	if err := s.requireProviderAccess(ctx, requestWorkspace(req.GetWorkspaceScope()), false); err != nil {
 		return nil, err
 	}
 	rec, ok := s.runtime.st.GetProvider(req.GetProvider())
 	if !ok {
 		return nil, status.Error(codes.NotFound, "provider not found")
 	}
-	if !providerInWorkspace(rec, req.GetWorkspace()) {
+	if !providerInWorkspace(rec, requestWorkspace(req.GetWorkspaceScope())) {
 		return nil, status.Error(codes.NotFound, "provider not found")
 	}
 	keys := make([]string, 0, len(rec.Refresh))
@@ -204,18 +233,18 @@ func (s *openShellRPC) GetProviderRefreshStatus(ctx context.Context, req *opensh
 		}
 	}
 	sort.Strings(keys)
-	result := &openshellv1.GetProviderRefreshStatusResponse{}
+	result := &compatv1.GetProviderRefreshStatusResponse{}
 	for _, key := range keys {
 		result.Credentials = append(result.Credentials, providerRefreshStatus(rec, key))
 	}
 	return result, nil
 }
 
-func (s *openShellRPC) ConfigureProviderRefresh(ctx context.Context, req *openshellv1.ConfigureProviderRefreshRequest) (*openshellv1.ConfigureProviderRefreshResponse, error) {
-	if err := s.requireProviderAccess(ctx, req.GetWorkspace(), true); err != nil {
+func (s *compatRPCAdapter) ConfigureProviderRefresh(ctx context.Context, req *compatv1.ConfigureProviderRefreshRequest) (*compatv1.ConfigureProviderRefreshResponse, error) {
+	if err := s.requireProviderAccess(ctx, requestWorkspace(req.GetWorkspaceScope()), true); err != nil {
 		return nil, err
 	}
-	if err := s.requireWorkspaceActive(defaultWorkspace(req.GetWorkspace())); err != nil {
+	if err := s.requireWorkspaceActive(defaultWorkspace(requestWorkspace(req.GetWorkspaceScope()))); err != nil {
 		return nil, err
 	}
 	if s.runtime == nil || s.runtime.st == nil || s.runtime.sec == nil {
@@ -228,7 +257,7 @@ func (s *openShellRPC) ConfigureProviderRefresh(ctx context.Context, req *opensh
 	if !ok {
 		return nil, status.Error(codes.NotFound, "provider not found")
 	}
-	if !providerInWorkspace(rec, req.GetWorkspace()) {
+	if !providerInWorkspace(rec, requestWorkspace(req.GetWorkspaceScope())) {
 		return nil, status.Error(codes.NotFound, "provider not found")
 	}
 	strategy, ok := refreshStrategyName(req.GetStrategy())
@@ -271,8 +300,8 @@ func (s *openShellRPC) ConfigureProviderRefresh(ctx context.Context, req *opensh
 	if cfg.Outputs == nil && (strategy == "oauth2_refresh_token" || strategy == "oauth2_client_credentials" || strategy == "google_service_account_jwt") {
 		cfg.Outputs = map[string]string{"access_token": req.GetCredentialKey()}
 	}
-	if req.ExpiresAtMs != nil {
-		cfg.ExpiresAtMS = req.GetExpiresAtMs()
+	if req.ExpirationTime != nil {
+		cfg.ExpiresAtMS = req.GetExpirationTime().AsTime().UnixMilli()
 	}
 	if err := validateRefreshMaterialNames(cfg.Material, req.GetSecretMaterialKeys()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -294,14 +323,14 @@ func (s *openShellRPC) ConfigureProviderRefresh(ctx context.Context, req *opensh
 	if err := s.runtime.st.UpsertProvider(rec); err != nil {
 		return nil, status.Error(codes.Internal, "could not persist refresh configuration")
 	}
-	return &openshellv1.ConfigureProviderRefreshResponse{Status: providerRefreshStatus(rec, req.GetCredentialKey())}, nil
+	return &compatv1.ConfigureProviderRefreshResponse{Status: providerRefreshStatus(rec, req.GetCredentialKey())}, nil
 }
 
-func (s *openShellRPC) RotateProviderCredential(ctx context.Context, req *openshellv1.RotateProviderCredentialRequest) (*openshellv1.RotateProviderCredentialResponse, error) {
-	if err := s.requireProviderAccess(ctx, req.GetWorkspace(), true); err != nil {
+func (s *compatRPCAdapter) RotateProviderCredential(ctx context.Context, req *compatv1.RotateProviderCredentialRequest) (*compatv1.RotateProviderCredentialResponse, error) {
+	if err := s.requireProviderAccess(ctx, requestWorkspace(req.GetWorkspaceScope()), true); err != nil {
 		return nil, err
 	}
-	if err := s.requireWorkspaceActive(defaultWorkspace(req.GetWorkspace())); err != nil {
+	if err := s.requireWorkspaceActive(defaultWorkspace(requestWorkspace(req.GetWorkspaceScope()))); err != nil {
 		return nil, err
 	}
 	if s.runtime == nil || s.runtime.st == nil || s.runtime.sec == nil {
@@ -314,26 +343,26 @@ func (s *openShellRPC) RotateProviderCredential(ctx context.Context, req *opensh
 	if !ok {
 		return nil, status.Error(codes.NotFound, "provider not found")
 	}
-	if !providerInWorkspace(rec, req.GetWorkspace()) {
+	if !providerInWorkspace(rec, requestWorkspace(req.GetWorkspaceScope())) {
 		return nil, status.Error(codes.NotFound, "provider not found")
 	}
-	return &openshellv1.RotateProviderCredentialResponse{Status: providerRefreshStatus(rec, req.GetCredentialKey())}, nil
+	return &compatv1.RotateProviderCredentialResponse{Status: providerRefreshStatus(rec, req.GetCredentialKey())}, nil
 }
 
-func (s *openShellRPC) DeleteProviderRefresh(ctx context.Context, req *openshellv1.DeleteProviderRefreshRequest) (*openshellv1.DeleteProviderRefreshResponse, error) {
-	if err := s.requireProviderAccess(ctx, req.GetWorkspace(), true); err != nil {
+func (s *compatRPCAdapter) DeleteProviderRefresh(ctx context.Context, req *compatv1.DeleteProviderRefreshRequest) (*compatv1.DeleteProviderRefreshResponse, error) {
+	if err := s.requireProviderAccess(ctx, requestWorkspace(req.GetWorkspaceScope()), true); err != nil {
 		return nil, err
 	}
 	if s.runtime == nil || s.runtime.st == nil || s.runtime.sec == nil {
 		return nil, status.Error(codes.Unavailable, "credential runtime is not initialized")
 	}
 	rec, ok := s.runtime.st.GetProvider(req.GetProvider())
-	if !ok || !providerInWorkspace(rec, req.GetWorkspace()) {
-		return &openshellv1.DeleteProviderRefreshResponse{}, nil
+	if !ok || !providerInWorkspace(rec, requestWorkspace(req.GetWorkspaceScope())) {
+		return &compatv1.DeleteProviderRefreshResponse{}, nil
 	}
 	_, exists := rec.Refresh[req.GetCredentialKey()]
 	if !exists {
-		return &openshellv1.DeleteProviderRefreshResponse{}, nil
+		return &compatv1.DeleteProviderRefreshResponse{}, nil
 	}
 	if err := s.runtime.sec.DeletePrefix(ctx, refreshMaterialKey(rec.Name, req.GetCredentialKey(), "")); err != nil {
 		return nil, status.Error(codes.Internal, "could not delete refresh material")
@@ -342,10 +371,10 @@ func (s *openShellRPC) DeleteProviderRefresh(ctx context.Context, req *openshell
 	if err := s.runtime.st.UpsertProvider(rec); err != nil {
 		return nil, status.Error(codes.Internal, "could not delete refresh configuration")
 	}
-	return &openshellv1.DeleteProviderRefreshResponse{Deleted: true}, nil
+	return &compatv1.DeleteProviderRefreshResponse{Outcome: compatv1.DeletionOutcome_DELETION_OUTCOME_COMPLETED}, nil
 }
 
-func (s *openShellRPC) requireProviderAccess(ctx context.Context, workspace string, write bool) error {
+func (s *compatRPCAdapter) requireProviderAccess(ctx context.Context, workspace string, write bool) error {
 	if s.runtime == nil || s.runtime.st == nil {
 		return status.Error(codes.Unavailable, "credential runtime is not initialized")
 	}
@@ -394,35 +423,35 @@ func providerInWorkspace(rec store.ProviderRecord, workspace string) bool {
 	return providerWorkspace == workspace
 }
 
-func refreshStrategyName(strategy openshellv1.ProviderCredentialRefreshStrategy) (string, bool) {
+func refreshStrategyName(strategy compatv1.ProviderCredentialRefreshStrategy) (string, bool) {
 	switch strategy {
-	case openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_STATIC:
+	case compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_STATIC:
 		return "static", true
-	case openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_EXTERNAL:
+	case compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_EXTERNAL:
 		return "external", true
-	case openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_REFRESH_TOKEN:
+	case compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_REFRESH_TOKEN:
 		return "oauth2_refresh_token", true
-	case openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_CLIENT_CREDENTIALS:
+	case compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_CLIENT_CREDENTIALS:
 		return "oauth2_client_credentials", true
-	case openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_GOOGLE_SERVICE_ACCOUNT_JWT:
+	case compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_GOOGLE_SERVICE_ACCOUNT_JWT:
 		return "google_service_account_jwt", true
-	case openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_AWS_STS_ASSUME_ROLE:
+	case compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_AWS_STS_ASSUME_ROLE:
 		return "aws_sts_assume_role", true
 	default:
 		return "", false
 	}
 }
 
-func providerRefreshStatus(rec store.ProviderRecord, key string) *openshellv1.ProviderCredentialRefreshStatus {
+func providerRefreshStatus(rec store.ProviderRecord, key string) *compatv1.ProviderCredentialRefreshStatus {
 	cfg := rec.Refresh[key]
-	strategy := openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_UNSPECIFIED
-	strategies := map[openshellv1.ProviderCredentialRefreshStrategy]string{
-		openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_STATIC:                     "static",
-		openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_EXTERNAL:                   "external",
-		openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_REFRESH_TOKEN:       "oauth2_refresh_token",
-		openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_CLIENT_CREDENTIALS:  "oauth2_client_credentials",
-		openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_GOOGLE_SERVICE_ACCOUNT_JWT: "google_service_account_jwt",
-		openshellv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_AWS_STS_ASSUME_ROLE:        "aws_sts_assume_role",
+	strategy := compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_UNSPECIFIED
+	strategies := map[compatv1.ProviderCredentialRefreshStrategy]string{
+		compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_STATIC:                     "static",
+		compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_EXTERNAL:                   "external",
+		compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_REFRESH_TOKEN:       "oauth2_refresh_token",
+		compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_OAUTH2_CLIENT_CREDENTIALS:  "oauth2_client_credentials",
+		compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_GOOGLE_SERVICE_ACCOUNT_JWT: "google_service_account_jwt",
+		compatv1.ProviderCredentialRefreshStrategy_PROVIDER_CREDENTIAL_REFRESH_STRATEGY_AWS_STS_ASSUME_ROLE:        "aws_sts_assume_role",
 	}
 	for value, name := range strategies {
 		if name == cfg.Strategy {
@@ -440,7 +469,11 @@ func providerRefreshStatus(rec store.ProviderRecord, key string) *openshellv1.Pr
 	if expires > 0 && expires <= time.Now().UnixMilli() {
 		state = "expired"
 	}
-	return &openshellv1.ProviderCredentialRefreshStatus{ProviderName: rec.Name, ProviderId: rec.Name, CredentialKey: key, Strategy: strategy, Status: state, ExpiresAtMs: expires}
+	var expiration *timestamppb.Timestamp
+	if expires > 0 {
+		expiration = timestamppb.New(time.UnixMilli(expires))
+	}
+	return &compatv1.ProviderCredentialRefreshStatus{Provider: rec.Name, ProviderId: rec.Name, CredentialKey: key, Strategy: strategy, Status: state, ExpirationTime: expiration}
 }
 
 func validateRefreshMaterialNames(material map[string]string, names []string) error {

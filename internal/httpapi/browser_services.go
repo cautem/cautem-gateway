@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/sshrelay"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"github.com/coder/websocket"
@@ -315,8 +315,8 @@ func mountBrowserServiceManagement(mux *http.ServeMux, st *store.Store, runtime 
 			http.Error(w, "invalid service request", http.StatusBadRequest)
 			return
 		}
-		response, err := (&openShellRPC{runtime: runtime, options: opt}).ExposeService(withPrincipal(r.Context(), PrincipalFrom(r.Context())), &openshellv1.ExposeServiceRequest{
-			Sandbox: name, Workspace: defaultWorkspace(sandbox.Workspace), Service: body.Name, TargetPort: body.Port,
+		response, err := (&compatRPCAdapter{runtime: runtime, options: opt}).ExposeService(withPrincipal(r.Context(), PrincipalFrom(r.Context())), &compatv1.ExposeServiceRequest{
+			Sandbox: name, WorkspaceScope: workspaceScope(defaultWorkspace(sandbox.Workspace)), Name: body.Name, TargetPort: body.Port,
 		})
 		if err != nil {
 			writeServiceAccessError(w, err)
@@ -324,7 +324,7 @@ func mountBrowserServiceManagement(mux *http.ServeMux, st *store.Store, runtime 
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(map[string]any{"name": response.GetEndpoint().GetServiceName(), "port": response.GetEndpoint().GetTargetPort()})
+		_ = json.NewEncoder(w).Encode(map[string]any{"name": response.GetEndpoint().GetName(), "port": response.GetEndpoint().GetTargetPort()})
 	})
 	mux.HandleFunc("DELETE /v1/sandboxes/{sandbox}/services/{service}", func(w http.ResponseWriter, r *http.Request) {
 		if runtime == nil || runtime.st == nil {
@@ -336,14 +336,14 @@ func mountBrowserServiceManagement(mux *http.ServeMux, st *store.Store, runtime 
 			http.NotFound(w, r)
 			return
 		}
-		response, err := (&openShellRPC{runtime: runtime, options: opt}).DeleteService(withPrincipal(r.Context(), PrincipalFrom(r.Context())), &openshellv1.DeleteServiceRequest{
-			Sandbox: r.PathValue("sandbox"), Service: r.PathValue("service"), Workspace: defaultWorkspace(sandbox.Workspace),
+		response, err := (&compatRPCAdapter{runtime: runtime, options: opt}).DeleteService(withPrincipal(r.Context(), PrincipalFrom(r.Context())), &compatv1.DeleteServiceRequest{
+			Sandbox: r.PathValue("sandbox"), Name: r.PathValue("service"), WorkspaceScope: workspaceScope(defaultWorkspace(sandbox.Workspace)),
 		})
 		if err != nil {
 			writeServiceAccessError(w, err)
 			return
 		}
-		if !response.GetDeleted() {
+		if response.GetOutcome() == compatv1.DeletionOutcome_DELETION_OUTCOME_ALREADY_ABSENT || response.GetOutcome() == compatv1.DeletionOutcome_DELETION_OUTCOME_UNSPECIFIED {
 			http.NotFound(w, r)
 			return
 		}

@@ -3,13 +3,31 @@ package httpapi
 import (
 	"testing"
 
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	sandboxv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/sandboxv1"
 	"github.com/cautem/cautem-core/policy"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-func TestParseOpenShellSandboxPolicyMapsFilesystemFieldAndValidates(t *testing.T) {
-	doc, err := parseOpenShellSandboxPolicy(&sandboxv1.SandboxPolicy{Version: 1, Filesystem: &sandboxv1.FilesystemPolicy{IncludeWorkdir: true, ReadWrite: []string{"/workspace"}}})
+func TestMainProcessRestartPolicyMapsCompatEnum(t *testing.T) {
+	for input, want := range map[compatv1.SandboxRestartPolicy]string{
+		compatv1.SandboxRestartPolicy_SANDBOX_RESTART_POLICY_UNSPECIFIED: "never",
+		compatv1.SandboxRestartPolicy_SANDBOX_RESTART_POLICY_NEVER:       "never",
+		compatv1.SandboxRestartPolicy_SANDBOX_RESTART_POLICY_ON_FAILURE:  "on-failure",
+		compatv1.SandboxRestartPolicy_SANDBOX_RESTART_POLICY_ALWAYS:      "always",
+	} {
+		got, err := mainProcessRestartPolicy(input)
+		if err != nil || got != want {
+			t.Errorf("mainProcessRestartPolicy(%s)=(%q,%v), want %q", input, got, err, want)
+		}
+	}
+	if _, err := mainProcessRestartPolicy(compatv1.SandboxRestartPolicy(99)); err == nil {
+		t.Fatal("unsupported restart policy enum accepted")
+	}
+}
+
+func TestParseSandboxPolicyMapsFilesystemFieldAndValidates(t *testing.T) {
+	doc, err := parseSandboxPolicy(&sandboxv1.SandboxPolicy{Version: 1, Filesystem: &sandboxv1.FilesystemPolicy{IncludeWorkdir: true, ReadWrite: []string{"/workspace"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,7 +36,7 @@ func TestParseOpenShellSandboxPolicyMapsFilesystemFieldAndValidates(t *testing.T
 	}
 }
 
-func TestEngineResourceLimitsApplyOpenShellLimits(t *testing.T) {
+func TestEngineResourceLimitsApplyCompatibilityLimits(t *testing.T) {
 	resources, err := structpb.NewStruct(map[string]any{
 		"limits": map[string]any{"cpu": "500m", "memory": "2Gi"},
 	})
@@ -103,6 +121,14 @@ func TestSandboxGatewayURLUsesConfiguredEndpointAndRewritesLoopback(t *testing.T
 	}
 	if got != "https://host.docker.internal:7443" {
 		t.Fatalf("gateway endpoint=%q", got)
+	}
+	vmURL, err := sandboxGatewayURLForExecutionMode(Options{}, guestTLS, true)
+	if err != nil || vmURL != "https://127.0.0.1:7443" {
+		t.Fatalf("VM host gateway endpoint=%q, err=%v", vmURL, err)
+	}
+	vmListenURL, err := sandboxGatewayURLForExecutionMode(Options{Listen: "127.0.0.1:7443"}, nil, true)
+	if err != nil || vmListenURL != "http://127.0.0.1:7443" {
+		t.Fatalf("VM host listener endpoint=%q, err=%v", vmListenURL, err)
 	}
 	if _, err := sandboxGatewayURL(Options{}, map[string]any{"grpc_endpoint": "http://user:secret@gateway:7443"}); err == nil {
 		t.Fatal("expected credential-bearing endpoint to be rejected")

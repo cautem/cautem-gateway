@@ -7,6 +7,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	core "github.com/cautem/cautem-core"
 	"github.com/cautem/cautem-driver/driver"
@@ -28,6 +29,110 @@ func newRemoteComputeEngine(name string, client computev1.ComputeDriverClient) d
 	return &remoteComputeEngine{name: name, client: client}
 }
 
+func (e *remoteComputeEngine) BackendCapabilityInfo() driver.BackendInfo {
+	if e == nil {
+		return driver.BackendInfo{}
+	}
+	return driver.BackendInfo{
+		ID: driver.CanonicalBackendID(e.name),
+		Capabilities: map[driver.Capability]struct{}{
+			driver.CapabilityPlatformEvents: {},
+		},
+	}
+}
+
+func (e *remoteComputeEngine) WatchPlatformEvents(ctx context.Context, request driver.PlatformEventWatchRequest) (<-chan driver.PlatformEventResult, error) {
+	if e == nil || e.client == nil {
+		return nil, fmt.Errorf("remote compute driver is not connected")
+	}
+	remoteStream, err := e.client.WatchSandboxes(ctx, &computev1.WatchSandboxesRequest{})
+	if err != nil {
+		return nil, err
+	}
+	results := make(chan driver.PlatformEventResult, 1)
+	go func() {
+		defer close(results)
+		for {
+			item, recvErr := remoteStream.Recv()
+			if recvErr != nil {
+				if ctx.Err() != nil || recvErr == io.EOF {
+					return
+				}
+				select {
+				case results <- driver.PlatformEventResult{Err: recvErr}:
+				case <-ctx.Done():
+				}
+				return
+			}
+			if event, ok := convertRemoteBackendEvent(item, request); ok {
+				select {
+				case results <- driver.PlatformEventResult{Event: event}:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+	return results, nil
+}
+
+func convertRemoteBackendEvent(item *computev1.WatchSandboxesEvent, request driver.PlatformEventWatchRequest) (driver.PlatformEvent, bool) {
+	if item == nil {
+		return driver.PlatformEvent{}, false
+	}
+	match := func(value string) bool {
+		value = strings.TrimSpace(value)
+		return value != "" && (value == string(request.SandboxID) || value == request.SandboxName)
+	}
+	if platform := item.GetPlatformEvent(); platform != nil && match(platform.GetSandboxId()) {
+		event := platform.GetEvent()
+		if event == nil {
+			return driver.PlatformEvent{}, false
+		}
+		occurredAt := time.Now()
+		if event.GetEventTime() != nil && event.GetEventTime().CheckValid() == nil {
+			occurredAt = event.GetEventTime().AsTime()
+		}
+		return driver.PlatformEvent{
+			SandboxID: request.SandboxID,
+			Time:      occurredAt,
+			Source:    event.GetSource(),
+			Type:      event.GetType(),
+			Reason:    event.GetReason(),
+			Message:   event.GetMessage(),
+			Metadata:  cloneStringMap(event.GetMetadata()),
+		}, true
+	}
+	if deleted := item.GetDeleted(); deleted != nil && match(deleted.GetSandboxId()) {
+		return driver.PlatformEvent{
+			SandboxID: request.SandboxID,
+			Time:      time.Now(),
+			Source:    "compute",
+			Type:      "Normal",
+			Reason:    "Deleted",
+			Message:   "sandbox was deleted",
+			Metadata:  map[string]string{"sandbox_id": string(request.SandboxID)},
+			Terminal:  true,
+		}, true
+	}
+	if updated := item.GetSandbox(); updated != nil && updated.GetSandbox() != nil {
+		remote := updated.GetSandbox()
+		if !match(remote.GetId()) && !match(remote.GetName()) {
+			return driver.PlatformEvent{}, false
+		}
+		return driver.PlatformEvent{
+			SandboxID: request.SandboxID,
+			Time:      time.Now(),
+			Source:    "compute",
+			Type:      "Normal",
+			Reason:    "SandboxUpdated",
+			Message:   "compute driver reported a sandbox update",
+			Metadata:  map[string]string{"sandbox_id": string(request.SandboxID)},
+		}, true
+	}
+	return driver.PlatformEvent{}, false
+}
+
 func (e *remoteComputeEngine) Create(ctx context.Context, spec driver.Spec) (driver.Handle, error) {
 	if e == nil || e.client == nil {
 		return driver.Handle{}, fmt.Errorf("remote compute driver is not connected")
@@ -35,6 +140,13 @@ func (e *remoteComputeEngine) Create(ctx context.Context, spec driver.Spec) (dri
 	sandboxID := spec.Name
 	if strings.TrimSpace(sandboxID) == "" {
 		return driver.Handle{}, fmt.Errorf("remote compute driver requires a sandbox name")
+	}
+	restartPolicy, err := driver.NormalizeMainProcessRestartPolicy(spec.MainProcessRestartPolicy)
+	if err != nil {
+		return driver.Handle{}, err
+	}
+	if restartPolicy != "never" {
+		return driver.Handle{}, fmt.Errorf("remote compute driver %q does not advertise main process restart policy support", e.name)
 	}
 	template := &computev1.DriverSandboxTemplate{
 		Image:       spec.Image,
@@ -52,6 +164,26 @@ func (e *remoteComputeEngine) Create(ctx context.Context, spec driver.Spec) (dri
 			return driver.Handle{}, fmt.Errorf("remote compute driver config: %w", err)
 		}
 		template.DriverConfig = config
+	}
+	// External compute drivers receive these Cautem-owned options in the
+	// platform_config namespace and can reject unsupported values in Validate.
+	if spec.PidsLimit != 0 || len(spec.CDIDevices) > 0 {
+		runtimeConfig := map[string]any{}
+		if spec.PidsLimit != 0 {
+			runtimeConfig["pids_limit"] = strconv.FormatInt(spec.PidsLimit, 10)
+		}
+		if len(spec.CDIDevices) > 0 {
+			devices := make([]any, len(spec.CDIDevices))
+			for i, device := range spec.CDIDevices {
+				devices[i] = device
+			}
+			runtimeConfig["cdi_devices"] = devices
+		}
+		config, err := structpb.NewStruct(map[string]any{"cautem_runtime": runtimeConfig})
+		if err != nil {
+			return driver.Handle{}, fmt.Errorf("remote compute runtime options: %w", err)
+		}
+		template.PlatformConfig = config
 	}
 	driverSpec := &computev1.DriverSandboxSpec{
 		Template: template,
@@ -80,17 +212,17 @@ func (e *remoteComputeEngine) callValidate(ctx context.Context, sandbox *compute
 }
 
 func (e *remoteComputeEngine) Start(ctx context.Context, id core.ID) error {
-	_, err := e.client.StartSandbox(ctx, &computev1.StartSandboxRequest{SandboxId: string(id), SandboxName: string(id)})
+	_, err := e.client.StartSandbox(ctx, &computev1.StartSandboxRequest{SandboxId: string(id), Name: string(id)})
 	return err
 }
 
 func (e *remoteComputeEngine) Stop(ctx context.Context, id core.ID) error {
-	_, err := e.client.StopSandbox(ctx, &computev1.StopSandboxRequest{SandboxId: string(id), SandboxName: string(id)})
+	_, err := e.client.StopSandbox(ctx, &computev1.StopSandboxRequest{SandboxId: string(id), Name: string(id)})
 	return err
 }
 
 func (e *remoteComputeEngine) Delete(ctx context.Context, id core.ID) error {
-	response, err := e.client.DeleteSandbox(ctx, &computev1.DeleteSandboxRequest{SandboxId: string(id), SandboxName: string(id)})
+	response, err := e.client.DeleteSandbox(ctx, &computev1.DeleteSandboxRequest{SandboxId: string(id), Name: string(id)})
 	if err == nil && response != nil && !response.GetDeleted() {
 		return fmt.Errorf("remote compute driver did not delete sandbox %q", id)
 	}
@@ -127,7 +259,7 @@ func (e *remoteComputeEngine) List(ctx context.Context) ([]driver.Info, error) {
 }
 
 func (e *remoteComputeEngine) Inspect(ctx context.Context, nameOrID string) (driver.Info, error) {
-	response, err := e.client.GetSandbox(ctx, &computev1.GetSandboxRequest{SandboxId: nameOrID, SandboxName: nameOrID})
+	response, err := e.client.GetSandbox(ctx, &computev1.GetSandboxRequest{SandboxId: nameOrID, Name: nameOrID})
 	if err != nil {
 		return driver.Info{}, err
 	}

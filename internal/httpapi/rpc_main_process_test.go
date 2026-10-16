@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	openshellv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
+	compatv1 "github.com/NVIDIA/OpenShell/sdk/go/proto/openshellv1"
 	"github.com/cautem/cautem-gateway/internal/sshrelay"
 	"github.com/cautem/cautem-gateway/internal/storage/store"
 	"google.golang.org/grpc/codes"
@@ -22,20 +22,20 @@ func TestMainProcessExitReportFinalizeAndRestart(t *testing.T) {
 	}
 	relay := sshrelay.NewHub()
 	done := make(chan struct{})
-	remove := relay.RegisterOpenShellSupervisor("demo", "instance-1", func(string, string) error { return nil }, done, nil)
+	remove := relay.RegisterSupervisor("demo", "instance-1", func(string, string) error { return nil }, done, nil)
 	t.Cleanup(func() { close(done); remove() })
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, relay: relay}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, relay: relay}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalSandbox, Sandbox: "sandbox-id"})
 
-	finalize := &openshellv1.FinalizeMainProcessExitRequest{SandboxId: "sandbox-id", InstanceId: "instance-1"}
+	finalize := &compatv1.FinalizeMainProcessExitRequest{SandboxId: "sandbox-id", InstanceId: "instance-1"}
 	if _, err := rpc.FinalizeMainProcessExit(ctx, finalize); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("finalize before report error=%v; want FailedPrecondition", err)
 	}
-	if _, err := rpc.ReportMainProcessExit(ctx, &openshellv1.ReportMainProcessExitRequest{SandboxId: "sandbox-id", InstanceId: "instance-1", ExitCode: 0}); err != nil {
+	if _, err := rpc.ReportMainProcessExit(ctx, &compatv1.ReportMainProcessExitRequest{SandboxId: "sandbox-id", InstanceId: "instance-1", ExitCode: 0}); err != nil {
 		t.Fatal(err)
 	}
 	// Duplicate reports are idempotent, and the first canonical exit wins.
-	if _, err := rpc.ReportMainProcessExit(ctx, &openshellv1.ReportMainProcessExitRequest{SandboxId: "sandbox-id", InstanceId: "instance-1", ExitCode: 7}); err != nil {
+	if _, err := rpc.ReportMainProcessExit(ctx, &compatv1.ReportMainProcessExitRequest{SandboxId: "sandbox-id", InstanceId: "instance-1", ExitCode: 7}); err != nil {
 		t.Fatal(err)
 	}
 	rec, ok := st.GetSandbox("demo")
@@ -62,9 +62,9 @@ func TestMainProcessExitReportFinalizeAndRestart(t *testing.T) {
 	if _, err := st.SetSupervisorInstance("demo", "instance-2"); err != nil {
 		t.Fatal(err)
 	}
-	remove = relay.RegisterOpenShellSupervisor("demo", "instance-2", func(string, string) error { return nil }, done, nil)
+	remove = relay.RegisterSupervisor("demo", "instance-2", func(string, string) error { return nil }, done, nil)
 	remove()
-	if _, err := rpc.ReportMainProcessExit(ctx, &openshellv1.ReportMainProcessExitRequest{SandboxId: "sandbox-id", InstanceId: "instance-1", ExitCode: 9}); err != nil {
+	if _, err := rpc.ReportMainProcessExit(ctx, &compatv1.ReportMainProcessExitRequest{SandboxId: "sandbox-id", InstanceId: "instance-1", ExitCode: 9}); err != nil {
 		t.Fatal(err)
 	}
 	if rec, _ = st.GetSandbox("demo"); rec.MainProcessExitCode != nil {
@@ -80,8 +80,8 @@ func TestMainProcessExitRequiresMatchingSandboxPrincipal(t *testing.T) {
 	if err := st.UpsertSandbox(store.Sandbox{Name: "demo", ID: "sandbox-id", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, relay: sshrelay.NewHub()}}
-	_, err = rpc.ReportMainProcessExit(withPrincipal(context.Background(), Principal{Kind: PrincipalSandbox, Sandbox: "other"}), &openshellv1.ReportMainProcessExitRequest{SandboxId: "sandbox-id", InstanceId: "instance-1"})
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, relay: sshrelay.NewHub()}}
+	_, err = rpc.ReportMainProcessExit(withPrincipal(context.Background(), Principal{Kind: PrincipalSandbox, Sandbox: "other"}), &compatv1.ReportMainProcessExitRequest{SandboxId: "sandbox-id", InstanceId: "instance-1"})
 	if status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("cross-sandbox exit report error=%v; want PermissionDenied", err)
 	}
@@ -100,16 +100,16 @@ func TestMainProcessFinalizeSurvivesRelayDisconnectAfterReport(t *testing.T) {
 	}
 	relay := sshrelay.NewHub()
 	done := make(chan struct{})
-	remove := relay.RegisterOpenShellSupervisor("demo", "instance-1", func(string, string) error { return nil }, done, nil)
+	remove := relay.RegisterSupervisor("demo", "instance-1", func(string, string) error { return nil }, done, nil)
 	t.Cleanup(func() { close(done); remove() })
-	rpc := &openShellRPC{runtime: &grpcRuntime{st: st, relay: relay}}
+	rpc := &compatRPCAdapter{runtime: &grpcRuntime{st: st, relay: relay}}
 	ctx := withPrincipal(context.Background(), Principal{Kind: PrincipalSandbox, Sandbox: "sandbox-id"})
-	request := &openshellv1.ReportMainProcessExitRequest{SandboxId: "sandbox-id", InstanceId: "instance-1", ExitCode: 7}
+	request := &compatv1.ReportMainProcessExitRequest{SandboxId: "sandbox-id", InstanceId: "instance-1", ExitCode: 7}
 	if _, err := rpc.ReportMainProcessExit(ctx, request); err != nil {
 		t.Fatal(err)
 	}
 	remove()
-	if _, err := rpc.FinalizeMainProcessExit(ctx, &openshellv1.FinalizeMainProcessExitRequest{SandboxId: "sandbox-id", InstanceId: "instance-1"}); err != nil {
+	if _, err := rpc.FinalizeMainProcessExit(ctx, &compatv1.FinalizeMainProcessExitRequest{SandboxId: "sandbox-id", InstanceId: "instance-1"}); err != nil {
 		t.Fatalf("finalize after relay disconnect: %v", err)
 	}
 	if rec, _ := st.GetSandbox("demo"); !rec.MainProcessFinalized || rec.MainProcessExitCode == nil || *rec.MainProcessExitCode != 7 {

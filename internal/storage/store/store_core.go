@@ -152,6 +152,7 @@ type ProviderRecord struct {
 	Name                  string                           `json:"name"`
 	Type                  string                           `json:"type"`
 	Workspace             string                           `json:"workspace,omitempty"`
+	Labels                map[string]string                `json:"labels,omitempty"`
 	EnvVars               []string                         `json:"env_vars,omitempty"`
 	CredentialDriver      string                           `json:"credential_driver,omitempty"`
 	CredentialHandles     map[string]CredentialHandle      `json:"credential_handles,omitempty"`

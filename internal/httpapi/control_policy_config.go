@@ -104,7 +104,7 @@ func (a *controlAPI) UpdateSandboxPolicy(ctx context.Context, req *connect.Reque
 	if a.opt.grpcRuntime == nil {
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New("policy service is unavailable"))
 	}
-	if err := (&openShellRPC{options: a.opt, runtime: a.opt.grpcRuntime}).requireSandboxWrite(ctx, workspace); err != nil {
+	if err := (&compatRPCAdapter{options: a.opt, runtime: a.opt.grpcRuntime}).requireSandboxWrite(ctx, workspace); err != nil {
 		return nil, controlActionError(err)
 	}
 	sandbox, ok := a.store.GetSandbox(strings.TrimSpace(req.Msg.GetSandboxName()))
@@ -136,7 +136,7 @@ func (a *controlAPI) UpdateSandboxPolicy(ctx context.Context, req *connect.Reque
 		_ = a.auditPolicyMutation(ctx, "policy.sandbox.update", workspace, sandbox.Name, "failed", "invalid_argument")
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("sandbox policy is invalid or cannot be composed"))
 	}
-	policyRPC := &openShellRPC{options: a.opt, runtime: a.opt.grpcRuntime}
+	policyRPC := &compatRPCAdapter{options: a.opt, runtime: a.opt.grpcRuntime}
 	if err := policyRPC.syncSandboxRuntimePolicy(ctx, sandbox.Name, revision); err != nil {
 		_ = a.auditPolicyMutation(ctx, "policy.sandbox.update", workspace, sandbox.Name, "failed", "runtime_sync")
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("sandbox policy was stored but could not be delivered to the runtime"))
@@ -208,7 +208,7 @@ func (a *controlAPI) policySandbox(ctx context.Context, requestedWorkspace, name
 		if a.opt.grpcRuntime == nil {
 			return "", store.Sandbox{}, connect.NewError(connect.CodeUnavailable, errors.New("policy service is unavailable"))
 		}
-		if err := (&openShellRPC{options: a.opt, runtime: a.opt.grpcRuntime}).requireSandboxWrite(ctx, workspace); err != nil {
+		if err := (&compatRPCAdapter{options: a.opt, runtime: a.opt.grpcRuntime}).requireSandboxWrite(ctx, workspace); err != nil {
 			return "", store.Sandbox{}, controlActionError(err)
 		}
 	} else {
